@@ -77,9 +77,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (!submissionId) {
-    // Trigger a full sync if no specific submission
-    await fetch(`${req.headers['x-forwarded-proto'] || 'https'}://${req.headers.host}/api/sync`);
-    return res.status(200).json({ ok: true, action: 'full-sync-triggered' });
+    // No specific submission — nothing to do (legacy sync endpoint removed)
+    return res.status(200).json({ ok: true, action: 'no-submission-id' });
   }
 
   try {

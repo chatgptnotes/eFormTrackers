@@ -272,29 +272,26 @@ export default function DirectorDashboard({ data }: Props) {
     : 0;
   const approvedToday = approvedIds.size;
 
-  const LEVEL_FIELD_MAP: Record<number, { statusField: string; approverField: string; dateField: string }> = {
-    1: { statusField: 'submission[8]',  approverField: 'submission[9]',  dateField: 'submission[10]' },
-    2: { statusField: 'submission[11]', approverField: 'submission[12]', dateField: 'submission[13]' },
-    3: { statusField: 'submission[14]', approverField: 'submission[15]', dateField: 'submission[16]' },
-    4: { statusField: 'submission[17]', approverField: 'submission[18]', dateField: 'submission[19]' },
-  };
-
   const pushToJotForm = async (sub: Submission, decision: 'approved' | 'rejected', reason?: string) => {
     if (typeof sub.currentApprovalLevel !== 'number') return;
-    // The inline LEVEL_FIELD_MAP only applies to the Purchase Order form.
-    // Content Publishing and Task Test forms use different field layouts and
-    // cannot be actioned via this quick-reject path; they must use SubmissionModal.
-    if (sub.formId !== '260562405560351') throw new Error(`Quick reject is only supported for Purchase Order submissions. Please open the detail modal to action this submission.`);
     const lvl = sub.currentApprovalLevel;
-    const fields = LEVEL_FIELD_MAP[lvl];
-    if (!fields) throw new Error(`No field map for level ${lvl}`);
+    const lf = sub.levelFieldMap?.find(m => m.level === lvl);
+    if (!lf) throw new Error(`No field map for level ${lvl}. Please open the detail modal to action this submission.`);
+    const maxLevel = sub.levelFieldMap
+      ? Math.max(...sub.levelFieldMap.map(m => m.level))
+      : sub.approvalHistory.length > 0
+        ? Math.max(...sub.approvalHistory.map(h => h.level))
+        : 1;
     const today = new Date();
     const dateStr = `${today.getMonth() + 1}-${String(today.getDate()).padStart(2, '0')}-${today.getFullYear()}`;
     const params = new URLSearchParams();
-    params.set(fields.statusField, decision === 'approved' ? 'Approved' : 'Rejected');
-    params.set(fields.approverField, reason ? `${currentUser.name}: ${reason}` : currentUser.name);
-    params.set(fields.dateField, dateStr);
-    params.set('submission[20]', decision === 'rejected' ? 'Rejected' : lvl === 4 ? 'Completed' : 'In Progress');
+    params.set(`submission[${lf.statusFieldId}]`, decision === 'approved' ? 'Approved' : 'Rejected');
+    if (lf.approverFieldId) {
+      params.set(`submission[${lf.approverFieldId}]`, reason ? `${currentUser.name}: ${reason}` : currentUser.name);
+    }
+    if (lf.overallStatusFieldId) {
+      params.set(`submission[${lf.overallStatusFieldId}]`, decision === 'rejected' ? 'Rejected' : lvl >= maxLevel ? 'Completed' : 'In Progress');
+    }
     const res = await fetch(`/api/jotform-update?submissionId=${sub.id}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

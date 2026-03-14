@@ -22,21 +22,6 @@ interface FieldResult {
   evaluatorEmailFieldId: string;
 }
 
-// Hardcoded level counts for known forms (override for auto-detection)
-const FORM_LEVELS: Record<string, number> = {
-  '260633608278058': 3, // Proj Completion
-  '260633424454050': 2, // Supplier Rating
-  '260561554311046': 2, // Form (generic) — 2 levels
-  '260561614487865': 3, // Form demo
-  '260703226946458': 2, // Test Approval Workflow
-  '260702886904463': 3, // Title Me Form
-  '260562237554357': 2, // IT Support
-  '260701439834862': 2, // Contact Information
-  '260657596557070': 2, // Sign Form
-  '260561840657360': 1, // Employee Leave
-  '260561852126354': 2, // Media Event Planning
-};
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -101,8 +86,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // Use hardcoded config, then auto-detected count, then default to 1
-    const numLevels = FORM_LEVELS[formId] || detectedLevelCount || 1;
+    // Use auto-detected level count, default to 1
+    const numLevels = detectedLevelCount || 1;
 
     // Check if all required fields exist (including evaluator email)
     let allExist = !!overallStatusFieldId;

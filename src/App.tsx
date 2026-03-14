@@ -44,7 +44,7 @@ function ProtectedApp() {
         <Route path="/analytics" element={<AdvancedAnalytics data={data} />} />
         <Route path="/kanban" element={<KanbanBoard data={data} />} />
         <Route path="/director" element={<DirectorDashboard data={data} />} />
-        <Route path="/submit-request" element={<SubmitRequest />} />
+        <Route path="/submit-request" element={<SubmitRequest activeForms={data.activeForms} />} />
       </Routes>
     </Layout>
   );

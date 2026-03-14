@@ -27,58 +27,13 @@ const levelColors: Record<string, string> = {
   'rejected': 'bg-gray-500',
 };
 
-// Form-specific field maps for approval actions.
-// Purchase Order form (260562405560351) has 4 approval levels, each with their own status + approver fields.
-// Content Publishing form (260562114142344) has a single approvalStatus field at id 10.
-// Other forms are not supported for direct approval from JotFlow.
-
-const PO_FORM_ID = '260562405560351';
-const CP_FORM_ID = '260562114142344';
-const LEAVE_FORM_ID = '260561840657360';
-const MEDIA_EVENT_FORM_ID = '260561852126354';
-
-// Pure submission forms — no approval status fields, always redirect to JotForm
-// Only truly form-only submissions with NO approval fields at all
-const FORM_ONLY_IDS = new Set([
-  '260658067584064', // Blank/template Form
-  '260673958643066', // Task test form
-]);
-
 type FieldMap = { statusField: string; approverField: string | null; overallStatusField: string | null };
 
 function getFieldMap(submission: Submission, level: number): FieldMap | null {
-  const formId = submission.formId;
-
-  // Pure submission forms — no direct approval
-  if (FORM_ONLY_IDS.has(formId)) return null;
-
-  if (formId === PO_FORM_ID) {
-    const po: Record<number, { statusField: string; approverField: string }> = {
-      1: { statusField: '8',  approverField: '9'  },
-      2: { statusField: '11', approverField: '12' },
-      3: { statusField: '14', approverField: '15' },
-      4: { statusField: '17', approverField: '18' },
-    };
-    const m = po[level];
-    return m ? { ...m, overallStatusField: '20' } : null;
-  }
-  if (formId === CP_FORM_ID && level === 1) {
-    return { statusField: '10', approverField: null, overallStatusField: null };
-  }
-  // Employee Leave Request — Q8 = Manager Approval (Pending|Approved|Rejected)
-  if (formId === LEAVE_FORM_ID && level === 1) {
-    return { statusField: '8', approverField: null, overallStatusField: null };
-  }
-  // Media Event Planning — Q11 = Approval Status (single overall status field)
-  if (formId === MEDIA_EVENT_FORM_ID && level === 1) {
-    return { statusField: '11', approverField: null, overallStatusField: '11' };
-  }
-  // Dynamic form: use levelFieldMap populated by the generic mapper
   if (submission.levelFieldMap) {
     const lf = submission.levelFieldMap.find(m => m.level === level);
     if (lf) return { statusField: lf.statusFieldId, approverField: lf.approverFieldId, overallStatusField: lf.overallStatusFieldId };
   }
-  // No field map found — caller should call ensureFields() to create them
   return null;
 }
 
@@ -334,7 +289,6 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
     if (!submission || !level) return;
     if (hasStaticFieldMap) return; // already has fields
     if (dynamicFieldMap) return; // already resolved
-    if (FORM_ONLY_IDS.has(submission.formId)) return; // pure submission form
 
     let cancelled = false;
     setEnsuringFields(true);

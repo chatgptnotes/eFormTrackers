@@ -36,12 +36,6 @@ const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>
   marketing: Megaphone,
 };
 
-// Fallback workflows shown before dynamic forms load
-const FALLBACK_WORKFLOWS = [
-  { id: '260562405560351', label: 'Purchase Order Approval', icon: Package },
-  { id: '260562114142344', label: 'Content Publishing Approval', icon: FileText },
-  { id: '260673958643066', label: 'Task Workflow (Test)', icon: ClipboardList },
-];
 
 export default function Layout({ children, refreshConfig, setRefreshConfig, onRefresh, activeForms }: Props) {
   const location = useLocation();
@@ -239,13 +233,10 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
                 <span className="text-sm font-medium flex-1 text-left">All Workflows</span>
               </button>
 
-              {(activeForms && activeForms.length > 0
-                ? activeForms.map(f => ({ id: f.id, label: f.title }))
-                : FALLBACK_WORKFLOWS.map(f => ({ id: f.id, label: f.label }))
-              ).map(wf => {
-                const Icon = wf.id === '260562405560351' ? Package
-                  : wf.id === '260562114142344' ? FileText
-                  : wf.id === '260673958643066' ? ClipboardList
+              {(activeForms || []).map(f => ({ id: f.id, label: f.title })).map(wf => {
+                const lbl = wf.label.toLowerCase();
+                const Icon = lbl.includes('purchase') || lbl.includes('order') ? Package
+                  : lbl.includes('task') ? ClipboardList
                   : FileText;
                 const isActive = activeWorkflowId === wf.id;
                 return (

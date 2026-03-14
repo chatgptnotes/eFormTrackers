@@ -73,39 +73,8 @@ function getActionType(steps: WorkflowStep[], currentLevel: number | string): Wo
   return step?.type ?? 'approval';
 }
 
-// ─── Forms we track ───────────────────────────────────────────────────────────
-const FORM_ID = '260562405560351';
-const FORM_TITLE = 'Purchase Order Approval';
-
-const CONTENT_FORM_ID = '260562114142344';
-const CONTENT_FORM_TITLE = 'Content Publishing Approval Request';
-
-const TASK_TEST_FORM_ID = '260673958643066';
-const TASK_TEST_FORM_TITLE = 'Task Workflow (Test)';
-
 // Pure submission forms — no approval status fields; always show "Open in JotForm"
-const FORM_ONLY_IDS = new Set([
-  // IT Support, Contact Info, Sign Form removed — they now have L1/L2 status fields (Mar 12 2026)
-  '260658067584064', // Blank/template Form — still no status fields
-]);
-
-// ─── Field ID map for form 260562405560351 (Purchase Order) ───────────────────
-const FIELD = {
-  requesterName: '2', email: '3', department: '4',
-  description: '5', amount: '6', priority: '7',
-  l1Status: '8', l1Approver: '9', l1Date: '10',
-  l2Status: '11', l2Approver: '12', l2Date: '13',
-  l3Status: '14', l3Approver: '15', l3Date: '16',
-  l4Status: '17', l4Approver: '18', l4Date: '19',
-  overallStatus: '20',
-} as const;
-
-// ─── Field ID map for form 260562114142344 (Content Publishing) ───────────────
-const CP_FIELD = {
-  requesterName: '2', email: '3', department: '4',
-  contentType: '5', description: '6', priority: '7',
-  publishDate: '8', attachments: '9', approvalStatus: '10',
-} as const;
+const FORM_ONLY_IDS = new Set<string>();
 
 // ─── Field extractor ─────────────────────────────────────────────────────────
 function extractText(answer: unknown): string {
@@ -122,228 +91,6 @@ function extractText(answer: unknown): string {
     return Object.values(obj).filter(v => v && typeof v === 'string').join(' ');
   }
   return '';
-}
-
-// ─── Map a raw JotForm submission to our Submission model ─────────────────────
-function mapJotFormSubmission(raw: Record<string, unknown>, workflowSteps: WorkflowStep[] = []): Submission {
-  const answers = (raw.answers as Record<string, { answer: unknown; text?: string }>) || {};
-  const get = (id: string) => extractText(answers[id]?.answer);
-
-  const requesterName = get(FIELD.requesterName);
-  const email = get(FIELD.email);
-  const department = get(FIELD.department) || 'General';
-  const description = get(FIELD.description) || FORM_TITLE;
-  const amount = get(FIELD.amount);
-  const priorityRaw = (get(FIELD.priority) || 'medium').toLowerCase();
-  const priority = (['urgent', 'high', 'medium', 'low'].find(p => priorityRaw.includes(p)) || 'medium') as 'low' | 'medium' | 'high' | 'urgent';
-
-  const levelDefs = [
-    { level: 1, statusId: FIELD.l1Status, approverNameId: FIELD.l1Approver, dateId: FIELD.l1Date, title: 'Department Head' },
-    { level: 2, statusId: FIELD.l2Status, approverNameId: FIELD.l2Approver, dateId: FIELD.l2Date, title: 'Division Manager' },
-    { level: 3, statusId: FIELD.l3Status, approverNameId: FIELD.l3Approver, dateId: FIELD.l3Date, title: 'Director' },
-    { level: 4, statusId: FIELD.l4Status, approverNameId: FIELD.l4Approver, dateId: FIELD.l4Date, title: 'Executive' },
-  ];
-
-  const history: ApprovalEntry[] = [];
-  let currentLevel: ApprovalLevel | 'completed' | 'rejected' = 1;
-
-  for (const def of levelDefs) {
-    const statusVal = get(def.statusId);
-    const approverName = get(def.approverNameId) || def.title;
-    const date = get(def.dateId) || undefined;
-    const s = statusVal.toLowerCase();
-
-    if (s === 'approved') {
-      history.push({ level: def.level as ApprovalLevel, approverName, status: 'approved', date });
-      currentLevel = def.level === 4 ? 'completed' : (def.level + 1) as ApprovalLevel;
-    } else if (s === 'rejected' || s === 'denied') {
-      history.push({ level: def.level as ApprovalLevel, approverName, status: 'rejected', date });
-      currentLevel = 'rejected';
-      break;
-    } else {
-      // Pending or blank — stop here
-      history.push({ level: def.level as ApprovalLevel, approverName, status: 'pending' });
-      currentLevel = def.level as ApprovalLevel;
-      break;
-    }
-  }
-
-  const overallStatus = get(FIELD.overallStatus).toLowerCase();
-  if (overallStatus.includes('complet')) currentLevel = 'completed';
-  else if (overallStatus.includes('reject')) currentLevel = 'rejected';
-
-  const createdAt = (raw.created_at as string) || '';
-  const submissionDate = createdAt ? parseUTC(createdAt) : new Date();
-  const totalDays = Math.floor((Date.now() - submissionDate.getTime()) / (1000 * 60 * 60 * 24));
-
-  // Days at current level = time since the last approval date, or since submission if at level 1
-  const lastApproval = [...history].reverse().find(h => h.status === 'approved' && h.date);
-  const levelStartDate = lastApproval?.date ? parseUTC(lastApproval.date) : submissionDate;
-  const daysAtCurrentLevel = Math.floor((Date.now() - levelStartDate.getTime()) / (1000 * 60 * 60 * 24));
-
-  const id = String(raw.id);
-  const editLink = String(raw.edit_link || '');
-  // For completed/rejected submissions currentLevel is a string — getActionType
-  // returns 'approval' for those (non-number), but the modal guards on
-  // typeof currentApprovalLevel === 'number', so no action section is shown.
-  const actionType = getActionType(workflowSteps, currentLevel);
-  // Both taskUrl and formUrl point to the main form's inbox for this submission.
-  // From the inbox, JotForm shows the appropriate native action button
-  // ("View Task" or "View This Form") depending on the current workflow step.
-  const taskUrl = `https://eforms.mediaoffice.ae/inbox/${FORM_ID}/${id}`;
-  const formUrl = `https://eforms.mediaoffice.ae/inbox/${FORM_ID}/${id}`;
-
-  const rawOverallStatus = get(FIELD.overallStatus);
-  const jotformStatus = rawOverallStatus ||
-    (currentLevel === 'completed' ? 'Completed' :
-     currentLevel === 'rejected' ? 'Rejected' :
-     history.some(h => h.status === 'approved') ? 'In Progress' : 'Pending');
-
-  return {
-    id,
-    formId: FORM_ID,
-    formTitle: FORM_TITLE,
-    referenceNumber: `PO-${id.slice(-6)}`,
-    title: description,
-    description: `${description}${amount ? ' — AED ' + amount : ''}`,
-    editLink: editLink || undefined,
-    actionType,
-    taskUrl,
-    formUrl,
-    submittedBy: { name: requesterName || 'Unknown', department, email },
-    submissionDate: submissionDate.toISOString().slice(0, 10),
-    currentApprovalLevel: currentLevel,
-    approvalHistory: history,
-    daysAtCurrentLevel,
-    totalDaysSinceSubmission: totalDays,
-    overallStatus: agingStatus(daysAtCurrentLevel),
-    jotformStatus,
-    priority,
-    answers: { description, amount, department, email, requester: requesterName },
-  };
-}
-
-// ─── Map a raw Content Publishing submission to our Submission model ──────────
-function mapContentPublishingSubmission(raw: Record<string, unknown>, workflowSteps: WorkflowStep[] = []): Submission {
-  const answers = (raw.answers as Record<string, { answer: unknown; text?: string }>) || {};
-  const get = (id: string) => extractText(answers[id]?.answer);
-
-  const requesterName = get(CP_FIELD.requesterName);
-  const email = get(CP_FIELD.email);
-  const department = get(CP_FIELD.department) || 'General';
-  const contentType = get(CP_FIELD.contentType);
-  const description = get(CP_FIELD.description) || 'Content Request';
-  const priorityRaw = (get(CP_FIELD.priority) || 'medium').toLowerCase();
-  const priority = (['urgent', 'high', 'medium', 'low'].find(p => priorityRaw.includes(p)) || 'medium') as 'low' | 'medium' | 'high' | 'urgent';
-  const approvalStatus = get(CP_FIELD.approvalStatus).toLowerCase();
-
-  let currentLevel: ApprovalLevel | 'completed' | 'rejected' = 1;
-  if (approvalStatus.includes('approved') || approvalStatus.includes('complet')) currentLevel = 'completed';
-  else if (approvalStatus.includes('reject') || approvalStatus.includes('denied')) currentLevel = 'rejected';
-
-  const history: ApprovalEntry[] = [{
-    level: 1 as ApprovalLevel,
-    approverName: 'Content Approver',
-    status: currentLevel === 'completed' ? 'approved' : currentLevel === 'rejected' ? 'rejected' : 'pending',
-  }];
-
-  const createdAt = (raw.created_at as string) || '';
-  const submissionDate = createdAt ? parseUTC(createdAt) : new Date();
-  const totalDays = Math.floor((Date.now() - submissionDate.getTime()) / (1000 * 60 * 60 * 24));
-  // For pending submissions, daysAtCurrentLevel = totalDays (single-level form).
-  // For completed/rejected submissions, they are no longer waiting — use 0 so
-  // they don't incorrectly appear as "critical" in the aging column.
-  const daysAtCurrentLevel = typeof currentLevel === 'number' ? totalDays : 0;
-  const id = String(raw.id);
-  const editLink = String(raw.edit_link || '');
-  // For completed/rejected submissions getActionType returns 'approval' (non-number
-  // currentLevel) — the modal's typeof guard prevents showing action buttons.
-  const actionType = getActionType(workflowSteps, currentLevel);
-  const taskUrl = `https://eforms.mediaoffice.ae/inbox/${CONTENT_FORM_ID}/${id}`;
-  const formUrl = `https://eforms.mediaoffice.ae/inbox/${CONTENT_FORM_ID}/${id}`;
-
-  const rawApprovalStatus = get(CP_FIELD.approvalStatus);
-  const cpJotformStatus = rawApprovalStatus ||
-    (currentLevel === 'completed' ? 'Completed' :
-     currentLevel === 'rejected' ? 'Rejected' : 'Pending');
-
-  return {
-    id,
-    formId: CONTENT_FORM_ID,
-    formTitle: CONTENT_FORM_TITLE,
-    referenceNumber: `CP-${id.slice(-6)}`,
-    title: `${contentType ? contentType + ' — ' : ''}${description}`,
-    description,
-    editLink: editLink || undefined,
-    actionType,
-    taskUrl,
-    formUrl,
-    submittedBy: { name: requesterName || 'Unknown', department, email },
-    submissionDate: submissionDate.toISOString().slice(0, 10),
-    currentApprovalLevel: currentLevel,
-    approvalHistory: history,
-    daysAtCurrentLevel,
-    totalDaysSinceSubmission: totalDays,
-    overallStatus: agingStatus(daysAtCurrentLevel),
-    jotformStatus: cpJotformStatus,
-    priority,
-    answers: { description, contentType, department, email, requester: requesterName },
-  };
-}
-
-// ─── Map a raw Task Workflow (Test) submission to our Submission model ────────
-// Form 260673958643066 — Level 1: approval, Level 2: task
-// Known fields: Q3=Name (fullname), Q4=Email, Q5=File Upload
-// No explicit approval-status fields — treat all submissions as pending at level 1
-function mapTaskTestSubmission(raw: Record<string, unknown>, workflowSteps: WorkflowStep[] = []): Submission {
-  const answers = (raw.answers as Record<string, { answer: unknown; text?: string }>) || {};
-  const get = (id: string) => extractText(answers[id]?.answer);
-
-  const requesterName = get('3');
-  const email = get('4');
-  const department = 'General';
-
-  // Single pending approval history — no status field to read
-  const currentLevel: ApprovalLevel | 'completed' | 'rejected' = 1;
-  const history: ApprovalEntry[] = [{
-    level: 1 as ApprovalLevel,
-    approverName: 'Approver',
-    status: 'pending',
-  }];
-
-  const createdAt = (raw.created_at as string) || '';
-  const submissionDate = createdAt ? parseUTC(createdAt) : new Date();
-  const totalDays = Math.floor((Date.now() - submissionDate.getTime()) / (1000 * 60 * 60 * 24));
-  const daysAtCurrentLevel = totalDays;
-
-  const id = String(raw.id);
-  const editLink = String(raw.edit_link || '');
-  const actionType = getActionType(workflowSteps, currentLevel);
-  const taskUrl = `https://eforms.mediaoffice.ae/inbox/${TASK_TEST_FORM_ID}/${id}`;
-  const formUrl = `https://eforms.mediaoffice.ae/inbox/${TASK_TEST_FORM_ID}/${id}`;
-
-  return {
-    id,
-    formId: TASK_TEST_FORM_ID,
-    formTitle: TASK_TEST_FORM_TITLE,
-    referenceNumber: `TT-${id.slice(-6)}`,
-    title: requesterName ? `Task Request — ${requesterName}` : 'Task Request',
-    description: requesterName ? `Task workflow request from ${requesterName}` : 'Task workflow test submission',
-    editLink: editLink || undefined,
-    actionType,
-    taskUrl,
-    formUrl,
-    submittedBy: { name: requesterName || 'Unknown', department, email },
-    submissionDate: submissionDate.toISOString().slice(0, 10),
-    currentApprovalLevel: currentLevel,
-    approvalHistory: history,
-    daysAtCurrentLevel,
-    totalDaysSinceSubmission: totalDays,
-    overallStatus: agingStatus(daysAtCurrentLevel),
-    jotformStatus: 'Pending',
-    priority: 'medium',
-    answers: { description: '', department, email, requester: requesterName },
-  };
 }
 
 // ─── Map any JotForm submission using heuristically-detected fields ───────────
@@ -505,11 +252,6 @@ function mapGenericSubmission(
 function mapSupabaseRow(row: Record<string, unknown>): Submission {
   const raw = (row.raw_data as Record<string, unknown>) || {};
 
-  // If raw_data has the full JotForm answers, use them
-  if (raw.answers) {
-    return mapJotFormSubmission({ ...raw, id: row.jotform_submission_id });
-  }
-
   // Fallback: use the pre-mapped fields from Supabase
   const mapped = (raw._mapped as Record<string, unknown>) || {};
   const levels = (mapped.levels as Array<{ id: number; status: string; approver: string; date?: string }>) || [];
@@ -526,15 +268,15 @@ function mapSupabaseRow(row: Record<string, unknown>): Submission {
     status === 'completed' ? 'completed' : status === 'rejected' ? 'rejected' : (Number(row.current_level) || 1) as ApprovalLevel;
 
   const sbId = String(row.jotform_submission_id);
-  const sbFormId = String(row.form_id || FORM_ID);
+  const sbFormId = String(row.form_id || '');
 
   return {
     id: sbId,
     formId: sbFormId,
-    formTitle: FORM_TITLE,
-    referenceNumber: `PO-${sbId.slice(-6)}`,
-    title: String(row.title || 'Purchase Order'),
-    description: String(row.title || 'Purchase Order'),
+    formTitle: String(row.title || 'Form'),
+    referenceNumber: `F-${sbId.slice(-6)}`,
+    title: String(row.title || 'Request'),
+    description: String(row.title || 'Request'),
     actionType: 'approval' as WorkflowActionType,
     taskUrl: `https://eforms.mediaoffice.ae/inbox/${sbFormId}/${sbId}`,
     formUrl: `https://eforms.mediaoffice.ae/inbox/${sbFormId}/${sbId}`,
@@ -601,9 +343,7 @@ export function useSubmissions() {
 
     // ── Fetch all forms + submissions fresh from JotForm ─────────────────────
     try {
-      fetch('/api/sync').catch(err => console.warn('[JotFlow] Sync failed:', err));
-
-      // Discover all enabled JotForm workflows for this account
+      // Discover all enabled JotForm workflows for this account (no fire-and-forget sync)
       const forms = await fetchUserForms();
       // Don't setActiveForms yet — wait until submissions are ready to avoid mid-load flicker
 
