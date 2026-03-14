@@ -417,6 +417,25 @@ function mapGenericSubmission(
   if (overallFinal.includes('complet')) currentLevel = 'completed';
   else if (overallFinal.includes('reject')) currentLevel = 'rejected';
 
+  // Detect native JotForm approval: hidden fields blank but submission was acted upon
+  let needsSync = false;
+  if (typeof currentLevel === 'number') {
+    const currentEntry = history.find(h => h.level === currentLevel && h.status === 'pending');
+    if (currentEntry) {
+      const rawCreated = String(raw.created_at || '');
+      const rawUpdated = String(raw.updated_at || '');
+      const isViewed = String((raw as Record<string, unknown>).new) === '0';
+
+      if (rawCreated && rawUpdated && rawCreated !== rawUpdated && isViewed) {
+        const createdMs = new Date(rawCreated.replace(' ', 'T') + 'Z').getTime();
+        const updatedMs = new Date(rawUpdated.replace(' ', 'T') + 'Z').getTime();
+        if ((updatedMs - createdMs) > 60000) {
+          needsSync = true;
+        }
+      }
+    }
+  }
+
   const createdAt = (raw.created_at as string) || '';
   const submissionDate = createdAt ? parseUTC(createdAt) : new Date();
   const totalDays = Math.floor((Date.now() - submissionDate.getTime()) / (1000 * 60 * 60 * 24));
@@ -470,6 +489,7 @@ function mapGenericSubmission(
       : fields.overallStatusFieldId
         ? [{ level: 1, statusFieldId: fields.overallStatusFieldId, approverFieldId: null, overallStatusFieldId: fields.overallStatusFieldId }]
         : undefined,
+    needsSync,
   };
 }
 
@@ -535,7 +555,7 @@ export function useSubmissions() {
   const [error, setError] = useState<string | null>(null);
   const [refreshConfig, setRefreshConfig] = useState<RefreshConfig>({
     autoRefresh: true,
-    intervalMinutes: 5,
+    intervalMinutes: 1,
     lastUpdated: null,
   });
 
@@ -650,7 +670,24 @@ export function useSubmissions() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Auto-refresh
+  // Supabase real-time subscription — re-fetch when needs_sync rows appear
+  useEffect(() => {
+    const channel = supabase
+      .channel('jf_sync_needed')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'jf_submissions',
+        filter: 'needs_sync=eq.true',
+      }, () => {
+        loadData();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [loadData]);
+
+  // Auto-refresh (1 min fallback if webhooks fail)
   useEffect(() => {
     if (!refreshConfig.autoRefresh) return;
     const interval = setInterval(loadData, refreshConfig.intervalMinutes * 60 * 1000);

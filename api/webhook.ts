@@ -1,9 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
+import { detectLevelFields, type DetectedLevelFields } from './detect-fields';
 
 const JOTFORM_BASE = 'https://eforms.mediaoffice.ae/API';
 const API_KEY = process.env.JOTFORM_API_KEY;
-const FORM_ID = process.env.JOTFORM_FORM_ID || '260562405560351';
+const TEAM_ID = process.env.JOTFORM_TEAM_ID || '260541093809054';
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://eekudqlzzklhyhwkqvme.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
@@ -24,6 +25,28 @@ function extractText(answer: unknown): string {
 }
 
 const WEBHOOK_SECRET = process.env.JOTFORM_WEBHOOK_SECRET || '';
+
+// ── In-process cache for detected fields (keyed by formId, 1hr TTL) ──
+const fieldCache: Record<string, { fields: DetectedLevelFields; at: number }> = {};
+const FIELD_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+async function getFieldsForForm(formId: string): Promise<DetectedLevelFields> {
+  const cached = fieldCache[formId];
+  if (cached && Date.now() - cached.at < FIELD_CACHE_TTL) {
+    return cached.fields;
+  }
+
+  const qRes = await fetch(
+    `${JOTFORM_BASE}/form/${formId}/questions?apiKey=${API_KEY}&teamID=${TEAM_ID}`
+  );
+  if (!qRes.ok) throw new Error(`Failed to fetch questions for form ${formId}: ${qRes.status}`);
+  const qData = await qRes.json();
+  const questions = qData.content || {};
+
+  const fields = detectLevelFields(questions);
+  fieldCache[formId] = { fields, at: Date.now() };
+  return fields;
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Webhooks are server-to-server — no CORS needed, restrict to POST
@@ -50,7 +73,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? Object.fromEntries(new URLSearchParams(req.body))
       : req.body;
     submissionId = body.submissionID || body.submissionId;
-    formId = body.formID || body.formId || FORM_ID;
+    formId = body.formID || body.formId;
   }
 
   if (!submissionId) {
@@ -68,23 +91,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const raw = jfData.content as Record<string, unknown>;
     if (!raw) throw new Error('No content in JotForm response');
 
-    const answers = (raw.answers as Record<string, { answer: unknown }>) || {};
-    const get = (id: string) => extractText(answers[id]?.answer);
+    // Use formId from webhook body, or from submission itself
+    if (!formId) formId = String(raw.form_id || '');
+    if (!formId) throw new Error('No formId found in webhook body or submission');
 
-    const levels = [
-      { id: 1, status: get('8'), approver: get('9'), date: get('10') },
-      { id: 2, status: get('11'), approver: get('12'), date: get('13') },
-      { id: 3, status: get('14'), approver: get('15'), date: get('16') },
-      { id: 4, status: get('17'), approver: get('18'), date: get('19') },
-    ];
+    const answers = (raw.answers as Record<string, { answer: unknown }>) || {};
+    const get = (id: string | null | undefined) => id ? extractText(answers[id]?.answer) : '';
+
+    // Dynamically detect fields for this form
+    const detected = await getFieldsForForm(formId);
+
+    // Build levels from detected fields
+    const levels = detected.levelFields.map(lf => ({
+      id: lf.level,
+      status: get(lf.statusFieldId),
+      approver: get(lf.approverFieldId),
+      date: get(lf.dateFieldId),
+    }));
+
+    // If no level fields detected, try overall status field only
+    if (levels.length === 0 && detected.overallStatusFieldId) {
+      levels.push({
+        id: 1,
+        status: get(detected.overallStatusFieldId),
+        approver: '',
+        date: '',
+      });
+    }
 
     let currentLevel = 1;
     let status = 'pending';
+    const maxLevel = levels.length || 1;
+
     for (const lvl of levels) {
       const s = (lvl.status || '').toLowerCase();
       if (s === 'approved') {
         currentLevel = lvl.id + 1;
-        if (lvl.id === 4) { currentLevel = 4; status = 'completed'; }
+        if (lvl.id === maxLevel) { currentLevel = maxLevel; status = 'completed'; }
       } else if (s === 'rejected') {
         currentLevel = lvl.id; status = 'rejected'; break;
       } else {
@@ -92,24 +135,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    // Read submitter info from detected fields
+    const submittedBy = get(detected.nameFieldId);
+    const title = get(detected.descFieldId) || `Form ${formId}`;
+    const department = get(detected.deptFieldId) || 'General';
+
     const createdAt = (raw.created_at as string) || '';
     const submissionDate = createdAt ? new Date(createdAt.replace(' ', 'T') + 'Z') : new Date();
     const totalDays = Math.floor((Date.now() - submissionDate.getTime()) / (1000 * 60 * 60 * 24));
 
+    // Detect native JotForm approval: all hidden fields blank but submission was acted upon
+    const allFieldsBlank = levels.every(l => !l.status);
+    const rawCreatedAt = (raw.created_at as string) || '';
+    const rawUpdatedAt = (raw.updated_at as string) || '';
+    const acted = rawCreatedAt && rawUpdatedAt && rawCreatedAt !== rawUpdatedAt;
+    const needsSync = (status === 'pending' && allFieldsBlank && acted) ? true : false;
+
     const record = {
       jotform_submission_id: submissionId,
-      form_id: formId || FORM_ID,
-      title: get('5') || 'Purchase Order',
-      submitted_by: get('2'),
-      department: get('4') || 'General',
+      form_id: formId,
+      title,
+      submitted_by: submittedBy,
+      department,
       submission_date: submissionDate.toISOString(),
-      current_level: Math.min(currentLevel, 4),
+      current_level: Math.min(currentLevel, maxLevel),
       status,
       days_at_level: totalDays,
       total_days: totalDays,
       approver_name: levels.find(l => l.approver)?.approver || '',
       raw_data: { ...raw, _mapped: { levels } },
       last_synced: new Date().toISOString(),
+      needs_sync: needsSync,
     };
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);

@@ -39,8 +39,9 @@ const STEP_ASSIGNEE_CONFIG: Record<string, Record<number, string>> = {
     1: 'huzaifa.dawasaz@mediaoffice.ae',
     2: 'bk@bettroi.com',
   },
-  '260561554311046': { // Form (generic) — 1 level
+  '260561554311046': { // Form (generic) — 2 levels
     1: 'huzaifa.dawasaz@mediaoffice.ae',
+    2: 'bk@bettroi.com',
   },
   '260561614487865': { // Form demo — Approve & Sign → Form → review Task
     1: 'huzaifa.dawasaz@mediaoffice.ae',
@@ -86,8 +87,8 @@ const STEP_TYPE_CONFIG: Record<string, Record<number, StepType>> = {
   '260633424454050': { // Supplier Rating
     1: 'approval', 2: 'approval',
   },
-  '260561554311046': { // Form (generic)
-    1: 'approval',
+  '260561554311046': { // Form (generic) — 2 levels
+    1: 'approval', 2: 'form',
   },
   '260561614487865': { // Form demo — Approve & Sign → Form → review Task
     1: 'approval', 2: 'form', 3: 'task',
@@ -204,14 +205,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ formId, steps: [], source: 'no-api-key' });
   }
 
+  const TEAM_ID = process.env.JOTFORM_TEAM_ID || '260541093809054';
+
   try {
-    const qRes = await fetch(`${JOTFORM_BASE}/form/${formId}/questions?apiKey=${API_KEY}`);
+    const qRes = await fetch(`${JOTFORM_BASE}/form/${formId}/questions?apiKey=${API_KEY}&teamID=${TEAM_ID}`);
     if (!qRes.ok) return res.status(500).json({ error: `JotForm questions API returned ${qRes.status}` });
 
     const qData = await qRes.json();
     const questions = (qData.content || {}) as Record<string, {
       type: string;
       text?: string;
+      name?: string;
       order?: string;
     }>;
 
@@ -234,6 +238,64 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       label: c.text,
       questionId: c.qid,
     }));
+
+    // ── Auto-detect evaluator emails from submission fields ──
+    // Look for "L1 Evaluator Email", "L2 Evaluator Email" etc. in questions
+    const evaluatorEmails: Record<number, string> = {};
+    for (const [, q] of Object.entries(questions)) {
+      const lbl = (q.text || q.name || '').toLowerCase();
+      const emailMatch = lbl.match(/^(?:l|level)\s*([1-4])\s+(?:evaluator|approver|reviewer)\s+email$/);
+      if (emailMatch) {
+        // This field exists — we'll read the email from form properties below
+        evaluatorEmails[parseInt(emailMatch[1])] = '';
+      }
+    }
+
+    // ── Try form properties API for assignee emails ──
+    try {
+      const propsRes = await fetch(
+        `${JOTFORM_BASE}/form/${formId}/properties?apiKey=${API_KEY}&teamID=${TEAM_ID}`
+      );
+      if (propsRes.ok) {
+        const propsData = await propsRes.json();
+        const props = propsData.content || {};
+
+        // JotForm stores approval flow info in various property keys
+        // Look for approver/assignee email patterns in properties
+        const propsStr = JSON.stringify(props);
+
+        // Try to extract emails from flow/conditions/approver properties
+        if (props.flow || props.approverEmails || props.conditions) {
+          const flowData = props.flow || props.approverEmails || props.conditions;
+          const flowStr = typeof flowData === 'string' ? flowData : JSON.stringify(flowData);
+          const emailPattern = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+          const emails = flowStr.match(emailPattern) || [];
+
+          // Assign emails to levels in order
+          for (let i = 0; i < Math.min(emails.length, steps.length); i++) {
+            if (!steps[i].assigneeEmail) {
+              steps[i].assigneeEmail = emails[i];
+            }
+          }
+        }
+
+        // Also check for approval widget properties with level-specific emails
+        for (const [key, value] of Object.entries(props)) {
+          if (typeof value !== 'string') continue;
+          // Look for properties like "approver_1_email", "level1_assignee" etc.
+          const lvlPropMatch = key.match(/(?:approver|assignee|evaluator)[_\s]*([1-4])/i);
+          if (lvlPropMatch) {
+            const lvl = parseInt(lvlPropMatch[1]);
+            const step = steps.find(s => s.level === lvl);
+            if (step && !step.assigneeEmail && value.includes('@')) {
+              step.assigneeEmail = value;
+            }
+          }
+        }
+      }
+    } catch {
+      // Properties API failed — non-critical, continue without assignee emails
+    }
 
     cache[formId] = { steps, at: Date.now() };
     return res.status(200).json({ formId, steps });

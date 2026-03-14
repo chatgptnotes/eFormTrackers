@@ -32,8 +32,21 @@ function AgingCell({ days }: { days: number }) {
   );
 }
 
-function PendingWithCell({ submission }: { submission: Submission }) {
+function PendingWithCell({ submission, onSyncClick }: { submission: Submission; onSyncClick?: (sub: Submission) => void }) {
   const { currentApprovalLevel, approvalHistory, actionType } = submission;
+
+  // Native JotForm approval detected — needs sync
+  if (submission.needsSync && onSyncClick) {
+    return (
+      <button
+        onClick={() => onSyncClick(submission)}
+        className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 transition-colors"
+      >
+        <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+        <span className="text-xs text-amber-400 font-medium">Sync Needed</span>
+      </button>
+    );
+  }
 
   // Form-only submissions — JotForm tracks approval internally, we can't read the level
   if (actionType === 'form') {
@@ -148,6 +161,8 @@ export default function DirectorDashboard({ data }: Props) {
   const [rejectReason, setRejectReason] = useState('');
   const [confirmRejectId, setConfirmRejectId] = useState<string | null>(null);
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
+  const [syncSubmission, setSyncSubmission] = useState<Submission | null>(null);
+  const [syncLoading, setSyncLoading] = useState(false);
 
   // When opening the detail modal, clear any inline reject state so the
   // reject input for a different row doesn't stay open in the background.
@@ -247,6 +262,7 @@ export default function DirectorDashboard({ data }: Props) {
   }, [data.allSubmissions, activeSidebarCategory, activeWorkflowId, search, sortKey, sortDir, dismissedIds, currentUser]);
 
   // Stats
+  const syncNeededCount = directorSubmissions.filter(s => s.needsSync).length;
   const pendingCount = directorSubmissions.filter(s => typeof s.currentApprovalLevel === 'number').length;
   const completedCount = directorSubmissions.filter(s => s.currentApprovalLevel === 'completed').length;
   const rejectedCount = directorSubmissions.filter(s => s.currentApprovalLevel === 'rejected').length;
@@ -307,6 +323,59 @@ export default function DirectorDashboard({ data }: Props) {
       alert(`Rejection failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  const handleSyncConfirm = async (sub: Submission, action: 'approve' | 'reject') => {
+    if (typeof sub.currentApprovalLevel !== 'number') return;
+    setSyncLoading(true);
+    try {
+      const lvl = sub.currentApprovalLevel;
+      const levelField = sub.levelFieldMap?.find(lf => lf.level === lvl);
+      if (!levelField) throw new Error(`No field map for level ${lvl}`);
+
+      const today = new Date();
+      const dateStr = `${today.getMonth() + 1}-${String(today.getDate()).padStart(2, '0')}-${today.getFullYear()}`;
+      const params = new URLSearchParams();
+      params.set(`submission[${levelField.statusFieldId}]`, action === 'approve' ? 'Approved' : 'Rejected');
+      if (levelField.approverFieldId) {
+        params.set(`submission[${levelField.approverFieldId}]`, 'Synced via JotFlow');
+      }
+      // Find date field from levelFieldMap raw data if available
+      const totalLevels = sub.levelFieldMap?.length || 1;
+      const isLastLevel = lvl === totalLevels;
+      const overallFieldId = levelField.overallStatusFieldId;
+      if (overallFieldId) {
+        params.set(`submission[${overallFieldId}]`,
+          action === 'reject' ? 'Rejected' : isLastLevel ? 'Completed' : 'In Progress');
+      }
+
+      const res = await fetch(`/api/jotform-update?submissionId=${sub.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+      });
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
+
+      // Clear needs_sync in Supabase
+      supabase.from('jf_submissions')
+        .update({ needs_sync: false, last_synced: new Date().toISOString() })
+        .eq('jotform_submission_id', sub.id)
+        .then(() => {});
+
+      const newLevel = action === 'reject' ? 'rejected' as const
+        : isLastLevel ? 'completed' as const
+        : (lvl + 1) as 1 | 2 | 3 | 4;
+      const newStatus = action === 'reject' ? 'Rejected' : isLastLevel ? 'Completed' : 'In Progress';
+      data.optimisticUpdate(sub.id, { newLevel, newJotformStatus: newStatus, approverName: 'Synced via JotFlow', approvalDate: dateStr });
+      addAuditEntry(sub.id, action === 'approve' ? 'approved' : 'rejected', 'JotFlow Sync', `Native JotForm action synced as ${action}`);
+
+      setSyncSubmission(null);
+      setTimeout(() => data.refresh({ force: true }), 3000);
+    } catch (err) {
+      alert(`Sync failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSyncLoading(false);
     }
   };
 
@@ -389,7 +458,7 @@ export default function DirectorDashboard({ data }: Props) {
       {/* Stat Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Pending Approval', value: pendingCount, icon: FileText, color: 'text-blue-400', bg: 'bg-blue-500/10' },
+          { label: syncNeededCount > 0 ? `Pending (${syncNeededCount} sync)` : 'Pending Approval', value: pendingCount, icon: FileText, color: 'text-blue-400', bg: 'bg-blue-500/10' },
           { label: 'Completed', value: completedCount + approvedToday, icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
           { label: 'Rejected', value: rejectedCount, icon: XCircle, color: 'text-red-400', bg: 'bg-red-500/10' },
           { label: 'Critical (>7d)', value: criticalCount, icon: AlertTriangle, color: 'text-amber-400', bg: 'bg-amber-500/10' },
@@ -514,7 +583,7 @@ export default function DirectorDashboard({ data }: Props) {
                         : <LevelBadge level={sub.currentApprovalLevel} />}
                     </td>
                     <td className="px-4 py-3">
-                      <PendingWithCell submission={sub} />
+                      <PendingWithCell submission={sub} onSyncClick={setSyncSubmission} />
                     </td>
                     <td className="px-4 py-3">
                       <AgingCell days={sub.daysAtCurrentLevel} />
@@ -719,6 +788,63 @@ export default function DirectorDashboard({ data }: Props) {
           }}
         />
       )}
+
+      {/* Sync Confirmation Modal */}
+      <AnimatePresence>
+        {syncSubmission && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+            onClick={() => !syncLoading && setSyncSubmission(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              className="glass-card p-6 max-w-sm w-full mx-4 border border-amber-500/30"
+            >
+              <div className="flex items-center gap-2 mb-4">
+                <AlertTriangle className="w-5 h-5 text-amber-400" />
+                <h3 className="text-lg font-bold text-white">Sync Native Action</h3>
+              </div>
+              <p className="text-sm text-gray-300 mb-1">
+                <span className="text-gold font-mono">{syncSubmission.referenceNumber}</span> — {syncSubmission.submittedBy.name}
+              </p>
+              <p className="text-sm text-gray-400 mb-4">
+                This submission was acted upon in JotForm's native inbox but the dashboard fields weren't updated. What was the action?
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => handleSyncConfirm(syncSubmission, 'approve')}
+                  disabled={syncLoading}
+                  className="flex-1 px-4 py-2.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/30 text-sm font-medium flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                >
+                  {syncLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                  Approved
+                </button>
+                <button
+                  onClick={() => handleSyncConfirm(syncSubmission, 'reject')}
+                  disabled={syncLoading}
+                  className="flex-1 px-4 py-2.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30 text-sm font-medium flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                >
+                  {syncLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+                  Rejected
+                </button>
+              </div>
+              <button
+                onClick={() => setSyncSubmission(null)}
+                disabled={syncLoading}
+                className="w-full mt-3 px-4 py-2 rounded-lg text-gray-500 hover:text-gray-300 text-xs transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -67,6 +67,9 @@ DO $$ BEGIN
       TO anon, authenticated USING (true) WITH CHECK (true);
   END IF;
 END $$;
+
+-- 7. Add needs_sync column to jf_submissions (for native JotForm approval detection)
+ALTER TABLE public.jf_submissions ADD COLUMN IF NOT EXISTS needs_sync boolean DEFAULT false;
 `.trim();
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

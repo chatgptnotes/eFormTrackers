@@ -19,13 +19,14 @@ interface FieldResult {
   statusFieldId: string;
   approverFieldId: string;
   dateFieldId: string;
+  evaluatorEmailFieldId: string;
 }
 
-// How many approval levels each form has (from STEP_TYPE_CONFIG)
+// Hardcoded level counts for known forms (override for auto-detection)
 const FORM_LEVELS: Record<string, number> = {
   '260633608278058': 3, // Proj Completion
   '260633424454050': 2, // Supplier Rating
-  '260561554311046': 1, // Form (generic)
+  '260561554311046': 2, // Form (generic) — 2 levels
   '260561614487865': 3, // Form demo
   '260703226946458': 2, // Test Approval Workflow
   '260702886904463': 3, // Title Me Form
@@ -55,11 +56,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const questions = qData.content || {};
 
     // Step 2: Check if status fields already exist
-    const existing: Record<number, { s?: string; a?: string; d?: string }> = {};
+    const existing: Record<number, { s?: string; a?: string; d?: string; e?: string }> = {};
     let overallStatusFieldId: string | null = null;
+    let detectedLevelCount = 0; // auto-detect from existing workflow step fields
 
     for (const [qid, q] of Object.entries(questions)) {
-      const qObj = q as { text?: string; name?: string };
+      const qObj = q as { text?: string; name?: string; type?: string };
       const lbl = (qObj.text || qObj.name || '').toLowerCase();
 
       // Check for level-specific fields
@@ -67,12 +69,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (lvlMatch) {
         const lvl = parseInt(lvlMatch[1]);
         if (!existing[lvl]) existing[lvl] = {};
-        if (lbl.includes('status') || lbl.includes('decision') || lbl.includes('approval')) {
+        if (lbl.includes('evaluator') && lbl.includes('email') || lbl.includes('approver') && lbl.includes('email')) {
+          if (!existing[lvl].e) existing[lvl].e = qid;
+        } else if (lbl.includes('status') || lbl.includes('decision') || lbl.includes('approval')) {
           if (!existing[lvl].s) existing[lvl].s = qid;
         } else if (lbl.includes('approver') || lbl.includes('approved by')) {
           if (!existing[lvl].a) existing[lvl].a = qid;
         } else if (lbl.includes('date') || lbl.includes('time')) {
           if (!existing[lvl].d) existing[lvl].d = qid;
+        }
+        if (lvl > detectedLevelCount) detectedLevelCount = lvl;
+      }
+
+      // Detect level count from workflow step dropdowns (e.g. "Level 1 Approval")
+      if (qObj.type === 'control_dropdown' && lbl.match(/\b(level|approval|task|step|evaluation)\b/)) {
+        const stepLvlMatch = lbl.match(/(?:level|l)\s*([1-4])/);
+        if (stepLvlMatch) {
+          const lvl = parseInt(stepLvlMatch[1]);
+          if (lvl > detectedLevelCount) detectedLevelCount = lvl;
         }
       }
 
@@ -87,12 +101,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    const numLevels = FORM_LEVELS[formId] || 1;
+    // Use hardcoded config, then auto-detected count, then default to 1
+    const numLevels = FORM_LEVELS[formId] || detectedLevelCount || 1;
 
-    // Check if all required fields exist
+    // Check if all required fields exist (including evaluator email)
     let allExist = !!overallStatusFieldId;
     for (let lvl = 1; lvl <= numLevels; lvl++) {
-      if (!existing[lvl]?.s) { allExist = false; break; }
+      if (!existing[lvl]?.s || !existing[lvl]?.e) { allExist = false; break; }
     }
 
     if (allExist) {
@@ -104,6 +119,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           statusFieldId: existing[lvl].s!,
           approverFieldId: existing[lvl].a || '',
           dateFieldId: existing[lvl].d || '',
+          evaluatorEmailFieldId: existing[lvl].e || '',
         });
       }
       return res.status(200).json({ fields, overallStatusFieldId, created: false });
@@ -142,6 +158,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           name: `l${lvl}Date`,
           hidden: 'Yes',
           order: String(902 + lvl * 10),
+        };
+        idx++;
+      }
+      if (!existing[lvl]?.e) {
+        questionsToAdd[String(idx)] = {
+          type: 'control_textbox',
+          text: `L${lvl} Evaluator Email`,
+          name: `l${lvl}EvaluatorEmail`,
+          hidden: 'Yes',
+          order: String(903 + lvl * 10),
         };
         idx++;
       }
@@ -191,7 +217,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const updatedQuestions = q2Data.content || {};
 
     // Re-detect fields
-    const finalFields: Record<number, { s?: string; a?: string; d?: string }> = {};
+    const finalFields: Record<number, { s?: string; a?: string; d?: string; e?: string }> = {};
     let finalOverall: string | null = null;
 
     for (const [qid, q] of Object.entries(updatedQuestions)) {
@@ -201,7 +227,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (lvlMatch) {
         const lvl = parseInt(lvlMatch[1]);
         if (!finalFields[lvl]) finalFields[lvl] = {};
-        if (lbl.includes('status')) { if (!finalFields[lvl].s) finalFields[lvl].s = qid; }
+        if (lbl.includes('evaluator') && lbl.includes('email') || lbl.includes('approver') && lbl.includes('email')) {
+          if (!finalFields[lvl].e) finalFields[lvl].e = qid;
+        } else if (lbl.includes('status')) { if (!finalFields[lvl].s) finalFields[lvl].s = qid; }
         else if (lbl.includes('approver')) { if (!finalFields[lvl].a) finalFields[lvl].a = qid; }
         else if (lbl.includes('date')) { if (!finalFields[lvl].d) finalFields[lvl].d = qid; }
       }
@@ -218,6 +246,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         statusFieldId: finalFields[lvl]?.s || '',
         approverFieldId: finalFields[lvl]?.a || '',
         dateFieldId: finalFields[lvl]?.d || '',
+        evaluatorEmailFieldId: finalFields[lvl]?.e || '',
       });
     }
 
