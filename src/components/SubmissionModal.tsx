@@ -198,6 +198,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
 
     // Use workflow action API to approve/reject directly in JotForm's workflow engine
     let result: { success: boolean; message: string };
+    let instanceCompleted = false;
     try {
       const wfAction = action === 'approve' ? 'approve' : 'reject';
       const res = await fetch('/api/workflow-action', {
@@ -213,6 +214,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
       const data = await res.json();
       if (res.ok && data.ok) {
         result = { success: true, message: `${actionLabel} successfully via workflow engine` };
+        instanceCompleted = data.instanceCompleted === true;
       } else {
         result = { success: false, message: data.error || `Workflow action failed: ${res.status}` };
       }
@@ -245,20 +247,24 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
     setRejecting(false);
 
     if (result.success && onUpdate) {
-      // Compute new level/status for optimistic update in parent
+      // Use instanceCompleted from workflow API — don't guess isLastLevel
       let newLevel: import('../types').ApprovalLevel | 'completed' | 'rejected' | undefined;
       let newJotformStatus: string | undefined;
       if (action === 'reject') {
         newLevel = 'rejected';
         newJotformStatus = 'Rejected';
+      } else if (instanceCompleted) {
+        newLevel = 'completed';
+        newJotformStatus = 'Completed';
       } else {
-        newLevel = isLastLevel ? 'completed' : (lvl + 1) as import('../types').ApprovalLevel;
-        newJotformStatus = isLastLevel ? 'Completed' : 'In Progress';
+        // Workflow advanced to next step — don't mark as completed
+        newLevel = (lvl + 1) as import('../types').ApprovalLevel;
+        newJotformStatus = 'In Progress';
       }
 
-      // Immediately patch Supabase cache so next reload shows correct level
-      const sbStatus = action === 'reject' ? 'rejected' : (isLastLevel ? 'completed' : 'in_progress');
-      const sbLevel = action === 'reject' ? lvl : (isLastLevel ? lvl : lvl + 1);
+      // Immediately patch Supabase cache
+      const sbStatus = action === 'reject' ? 'rejected' : (instanceCompleted ? 'completed' : 'in_progress');
+      const sbLevel = action === 'reject' ? lvl : (instanceCompleted ? 999 : lvl + 1);
       supabase
         .from('jf_submissions')
         .update({
@@ -270,7 +276,8 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
         .eq('jotform_submission_id', submission.id)
         .then(() => {}); // fire and forget — don't block UI
 
-      setTimeout(() => onUpdate(submission.id, newLevel, newJotformStatus), 1200);
+      // Notify parent for optimistic update, then force refresh to get real workflow state
+      setTimeout(() => onUpdate(submission.id, newLevel, newJotformStatus), 500);
     }
   };
 

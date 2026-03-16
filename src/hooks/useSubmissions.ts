@@ -142,6 +142,8 @@ function clearAllJotFlowCaches() {
   });
   // Clear in-process workflow step cache
   Object.keys(workflowCache).forEach(k => delete workflowCache[k]);
+  // Clear workflow task cache (per-submission real workflow data)
+  Object.keys(workflowTaskCache).forEach(k => delete workflowTaskCache[k]);
   // Clear approver config cache
   approverConfigCache = null;
 }
