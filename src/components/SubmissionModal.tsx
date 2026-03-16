@@ -128,12 +128,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
       const df = dynamicFieldMap.find(m => m.level === lvl);
       if (df) fields = { statusField: df.statusFieldId, approverField: df.approverFieldId, overallStatusField: df.overallStatusFieldId };
     }
-    if (!fields) {
-      setPushResult({ success: false, message: `Could not resolve approval fields. Please try refreshing the page.` });
-      setApproving(false);
-      setRejecting(false);
-      return;
-    }
+    // If no form fields found, we still proceed — workflow-action API doesn't need them
 
     const actionLabel = action === 'approve' ? 'Approved' : 'Rejected';
     const timestamp = new Date().toLocaleString('en-AE', { timeZone: 'Asia/Dubai', hour12: true });
@@ -224,23 +219,25 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
       result = { success: false, message: `Workflow action error: ${(err as Error).message}` };
     }
 
-    // Also update form fields as backup (for forms with status fields)
-    try {
-      const updates: Record<string, string> = { [fields.statusField]: actionLabel };
-      if (fields.approverField && fields.approverField !== fields.statusField) {
-        updates[fields.approverField] = approverNote;
-      }
-      if (fields.overallStatusField) {
-        if (action === 'reject') updates[fields.overallStatusField] = 'Rejected';
-        else if (isLastLevel) updates[fields.overallStatusField] = 'Completed';
-        else updates[fields.overallStatusField] = 'In Progress';
-      }
-      await jotformApi.updateSubmission(submission.id, updates, {
-        _action: action,
-        _level: String(lvl),
-        _signatureUrl: signatureUrl,
-      });
-    } catch {} // form field update is best-effort backup
+    // Also update form fields as backup (only for forms that have status fields)
+    if (fields) {
+      try {
+        const updates: Record<string, string> = { [fields.statusField]: actionLabel };
+        if (fields.approverField && fields.approverField !== fields.statusField) {
+          updates[fields.approverField] = approverNote;
+        }
+        if (fields.overallStatusField) {
+          if (action === 'reject') updates[fields.overallStatusField] = 'Rejected';
+          else if (isLastLevel) updates[fields.overallStatusField] = 'Completed';
+          else updates[fields.overallStatusField] = 'In Progress';
+        }
+        await jotformApi.updateSubmission(submission.id, updates, {
+          _action: action,
+          _level: String(lvl),
+          _signatureUrl: signatureUrl,
+        });
+      } catch {} // form field update is best-effort backup
+    }
 
     setPushResult(result);
     setApproving(false);
@@ -587,7 +584,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                       </button>
                     </div>
                   </div>
-                ) : supportsDirectApproval ? (
+                ) : (
                   <div className="space-y-2 pt-1">
                     {/* Show who needs to act if it's not the current user */}
                     {!isDesignatedApprover && designatedApproverEmail && (
@@ -606,7 +603,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                       title={!isDesignatedApprover ? `Only ${designatedApproverEmail} can approve at this level` : ''}
                       className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-all"
                     >
-                      <CheckCircle2 className="w-4 h-4" /> Approve
+                      <CheckCircle2 className="w-4 h-4" /> Approve & Sign
                     </button>
                     <button
                       type="button"
@@ -618,27 +615,6 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                       <XCircle className="w-4 h-4" /> Reject
                     </button>
                   </div>
-                  </div>
-                ) : ensuringFields ? (
-                  <div className="pt-1 space-y-3">
-                    <div className="p-3 rounded-lg text-sm bg-blue-500/10 text-blue-300 border border-blue-500/20 flex items-center gap-2">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Setting up approval fields for this form...
-                    </div>
-                  </div>
-                ) : (
-                  <div className="pt-1 space-y-3">
-                    <div className="p-3 rounded-lg text-sm bg-amber-500/10 text-amber-300 border border-amber-500/20">
-                      Could not set up approval fields. You can approve directly in JotForm.
-                    </div>
-                    <a
-                      href={submission.taskUrl || submission.formUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-semibold transition-all w-full"
-                    >
-                      <ExternalLink className="w-4 h-4" /> Open in JotForm to Action
-                    </a>
                   </div>
                 )}
 
