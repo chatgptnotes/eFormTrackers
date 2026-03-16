@@ -59,6 +59,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
   let upserted = 0;
   let errors = 0;
+  const errorDetails: string[] = [];
 
   // Process in chunks to avoid Supabase payload limits
   const CHUNK_SIZE = 20;
@@ -93,7 +94,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         level_history: r.approvalHistory || [],
         raw_data: { _mapped: { levels: r.approvalHistory } },
         last_synced: new Date().toISOString(),
-        needs_sync: false,
       };
     });
 
@@ -102,12 +102,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .upsert(rows, { onConflict: 'jotform_submission_id' });
 
     if (error) {
-      console.error('Supabase upsert error:', error.message);
+      console.error('Supabase upsert error:', error.message, error.details, error.hint);
+      errorDetails.push(error.message);
       errors += chunk.length;
     } else {
       upserted += chunk.length;
     }
   }
 
-  return res.status(200).json({ ok: true, upserted, errors, total: records.length });
+  return res.status(200).json({ ok: true, upserted, errors, total: records.length, errorDetails });
 }
