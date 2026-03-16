@@ -88,7 +88,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       updatedAt: String(t.updated_at || t.updatedAt || t.completed_at || ''),
     }));
 
-    return res.status(200).json({ tasks });
+    // Include raw sample for debugging (first task only)
+    const debugSample = rawTaskList.length > 0 ? { keys: Object.keys(rawTaskList[0]), firstTask: rawTaskList[0] } : null;
+    return res.status(200).json({ tasks, debug: debugSample });
   } catch (error) {
     console.error('workflow-tasks error:', error);
     return res.status(500).json({ error: 'Failed to fetch workflow tasks', message: String(error) });
