@@ -7,6 +7,7 @@ const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
 
 export interface WorkflowTask {
   name: string;
+  type: string;           // "workflow_approval", "workflow_assign_task", "workflow_assign_form", etc.
   status: string;        // "COMPLETED", "ACTIVE", "PENDING"
   assigneeName: string;
   assigneeEmail: string;
@@ -80,12 +81,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const firstRecipient = (recipients[0] || {}) as Record<string, unknown>;
 
       const name = String(element.name || props.taskName || t.name || '');
+      const type = String(element.type || '');
       const assigneeName = String(assigneeUser.name || firstRecipient.name || t.assignee_name || '');
       const assigneeEmail = String(props.assigneeEmail || assigneeUser.email || firstRecipient.email || t.assignee || '');
       const status = String(t.status || 'PENDING').toUpperCase();
       const updatedAt = String(t.updated_at || '');
 
-      return { name, status, assigneeName, assigneeEmail, updatedAt };
+      return { name, type, status, assigneeName, assigneeEmail, updatedAt };
     };
 
     // Filter out the initial "Form" submission step (COMPLETED with no assignee)
@@ -97,8 +99,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Normalize and number sequentially
     const tasks: WorkflowTask[] = filteredTasks.map((t, index) => {
-      const { name, status, assigneeName, assigneeEmail, updatedAt } = extractTask(t);
-      return { name, status, assigneeName, assigneeEmail, level: index + 1, updatedAt };
+      const { name, type, status, assigneeName, assigneeEmail, updatedAt } = extractTask(t);
+      return { name, type, status, assigneeName, assigneeEmail, level: index + 1, updatedAt };
     });
 
     return res.status(200).json({ tasks });

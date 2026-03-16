@@ -31,6 +31,7 @@ async function fetchWorkflowSteps(formId: string): Promise<WorkflowStep[]> {
 // ─── Workflow task cache (per submissionId) — actual approver from workflow API ─
 interface WorkflowTaskInfo {
   name: string;
+  type: string;
   level: number;
   assigneeName: string;
   assigneeEmail: string;
@@ -49,6 +50,7 @@ async function fetchWorkflowTasks(submissionId: string): Promise<WorkflowTaskInf
     const data = await res.json();
     const tasks: WorkflowTaskInfo[] = (data.tasks || []).map((t: Record<string, unknown>) => ({
       name: String(t.name || ''),
+      type: String(t.type || ''),
       level: Number(t.level || 0),
       assigneeName: String(t.assigneeName || ''),
       assigneeEmail: String(t.assigneeEmail || ''),
@@ -617,14 +619,20 @@ export function useSubmissions() {
               sub.pendingApproverName = activeTask.assigneeName || undefined;
               sub.pendingApproverEmail = activeTask.assigneeEmail || undefined;
 
-              // Override action type based on step name
-              const stepName = activeTask.name.toLowerCase();
-              if (stepName.includes('task') || stepName.includes('review task')) {
+              // Detect action type from real workflow element.type
+              const taskType = activeTask.type || '';
+              if (taskType === 'workflow_assign_task') {
                 sub.actionType = 'task';
-              } else if (stepName.includes('form') || stepName.includes('view form')) {
+              } else if (taskType === 'workflow_assign_form') {
                 sub.actionType = 'form';
-              } else {
+              } else if (taskType === 'workflow_approval') {
                 sub.actionType = 'approval';
+              } else {
+                // Fallback to name-based detection for unknown types
+                const stepName = activeTask.name.toLowerCase();
+                if (stepName.includes('task')) sub.actionType = 'task';
+                else if (stepName.includes('form')) sub.actionType = 'form';
+                else sub.actionType = 'approval';
               }
 
               // Rebuild approval history from workflow tasks
