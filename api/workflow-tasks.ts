@@ -68,29 +68,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const rawTaskList: Array<Record<string, unknown>> =
       instanceData?.content?.taskList || instanceData?.taskList || [];
 
-    // Filter out the initial Form submission step (COMPLETED with no meaningful assignee, name === "Form")
+    // Extract data from nested structure:
+    // - Step name: element.name or properties.taskName
+    // - Assignee name: properties.assigneeUser.name or properties.recipients[0].name
+    // - Assignee email: properties.assigneeEmail or properties.assigneeUser.email
+    const extractTask = (t: Record<string, unknown>) => {
+      const element = (t.element || {}) as Record<string, unknown>;
+      const props = (t.properties || {}) as Record<string, unknown>;
+      const assigneeUser = (props.assigneeUser || {}) as Record<string, unknown>;
+      const recipients = Array.isArray(props.recipients) ? props.recipients : [];
+      const firstRecipient = (recipients[0] || {}) as Record<string, unknown>;
+
+      const name = String(element.name || props.taskName || t.name || '');
+      const assigneeName = String(assigneeUser.name || firstRecipient.name || t.assignee_name || '');
+      const assigneeEmail = String(props.assigneeEmail || assigneeUser.email || firstRecipient.email || t.assignee || '');
+      const status = String(t.status || 'PENDING').toUpperCase();
+      const updatedAt = String(t.updated_at || '');
+
+      return { name, status, assigneeName, assigneeEmail, updatedAt };
+    };
+
+    // Filter out the initial "Form" submission step (COMPLETED with no assignee)
     const filteredTasks = rawTaskList.filter((t) => {
-      const name = String(t.name || '').trim();
-      const status = String(t.status || '').toUpperCase();
-      const assignee = String(t.assignee || '').trim();
-      // Remove the initial "Form" step that is just the submission itself
-      if (name === 'Form' && status === 'COMPLETED' && !assignee) return false;
+      const { name, status, assigneeEmail } = extractTask(t);
+      if (name === 'Form' && status === 'COMPLETED' && !assigneeEmail) return false;
       return true;
     });
 
     // Normalize and number sequentially
-    const tasks: WorkflowTask[] = filteredTasks.map((t, index) => ({
-      name: String(t.name || ''),
-      status: String(t.status || 'PENDING').toUpperCase(),
-      assigneeName: String(t.assignee_name || t.assigneeName || ''),
-      assigneeEmail: String(t.assignee || t.assignee_email || t.assigneeEmail || ''),
-      level: index + 1,
-      updatedAt: String(t.updated_at || t.updatedAt || t.completed_at || ''),
-    }));
+    const tasks: WorkflowTask[] = filteredTasks.map((t, index) => {
+      const { name, status, assigneeName, assigneeEmail, updatedAt } = extractTask(t);
+      return { name, status, assigneeName, assigneeEmail, level: index + 1, updatedAt };
+    });
 
-    // Include raw sample for debugging (first task only)
-    const debugSample = rawTaskList.length > 0 ? { keys: Object.keys(rawTaskList[0]), firstTask: rawTaskList[0] } : null;
-    return res.status(200).json({ tasks, debug: debugSample });
+    return res.status(200).json({ tasks });
   } catch (error) {
     console.error('workflow-tasks error:', error);
     return res.status(500).json({ error: 'Failed to fetch workflow tasks', message: String(error) });
