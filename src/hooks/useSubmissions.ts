@@ -514,47 +514,64 @@ export function useSubmissions() {
       if (totalRows > 0) {
         const mapped: Submission[] = [];
         const newStepsByForm: Record<string, WorkflowStep[]> = {};
-        const approverConfigs = await fetchApproverConfigs();
 
-        // Auto-populate approver config from existing submissions if empty
-        if (approverConfigs.length === 0) {
-          try {
-            const detectRes = await fetch('/api/detect-approvers');
-            if (detectRes.ok) {
-              const detectData = await detectRes.json();
-              const detected: { formId: string; level: number; approverName: string; approverEmail: string }[] = detectData.detectedApprovers || [];
-              for (const d of detected) {
-                await fetch('/api/approver-config', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    formId: d.formId,
-                    level: d.level,
-                    approverName: d.approverName,
-                    approverEmail: d.approverEmail,
-                  }),
-                });
-                // Also add to local configs array so current render uses them
-                approverConfigs.push({
-                  formId: d.formId,
-                  level: d.level,
-                  approverName: d.approverName,
-                  approverEmail: d.approverEmail,
-                });
+        // ── Dynamic approver detection: scan ALL submissions to build a live approver map ──
+        // For each form+level, find the most recent person who approved, and use their
+        // name for pending submissions at that level. Fully dynamic — no config table needed.
+        const dynamicApprovers: ApproverConfig[] = [];
+        for (const { form, rows, detectedFields } of formResults) {
+          // For each level field, scan all submissions to find who approved
+          for (const lf of detectedFields.levelFields) {
+            const approverCounts: Record<string, { name: string; email: string; count: number; latestDate: string }> = {};
+            for (const raw of rows) {
+              const answers = (raw.answers as Record<string, { answer: unknown }>) || {};
+              const statusVal = lf.statusFieldId ? extractText(answers[lf.statusFieldId]?.answer).toLowerCase() : '';
+              if (!statusVal.includes('approved') && !statusVal.includes('rejected')) continue;
+              const approverVal = lf.approverFieldId ? extractText(answers[lf.approverFieldId]?.answer) : '';
+              const parsed = parseApproverFromActionText(approverVal);
+              if (!parsed || !parsed.name) continue;
+              const key = parsed.email || parsed.name;
+              const date = String(raw.updated_at || raw.created_at || '');
+              if (!approverCounts[key]) {
+                approverCounts[key] = { name: parsed.name, email: parsed.email, count: 0, latestDate: date };
               }
-              // Clear cache so next fetch gets the saved configs
-              approverConfigCache = null;
+              approverCounts[key].count++;
+              if (date > approverCounts[key].latestDate) {
+                approverCounts[key].latestDate = date;
+                approverCounts[key].name = parsed.name;
+                approverCounts[key].email = parsed.email;
+              }
             }
-          } catch {
-            // Non-critical — continue without auto-detection
+            // Pick the most recent approver (not most common — reflects latest assignment)
+            const best = Object.values(approverCounts).sort((a, b) =>
+              b.latestDate.localeCompare(a.latestDate) || b.count - a.count
+            )[0];
+            if (best) {
+              dynamicApprovers.push({
+                formId: form.id,
+                level: lf.level,
+                approverName: best.name,
+                approverEmail: best.email,
+              });
+            }
           }
         }
 
-        // First pass: map all submissions without workflow tasks
+        // Also merge any manually configured approvers (admin overrides)
+        const manualConfigs = await fetchApproverConfigs();
+        const mergedConfigs = [...dynamicApprovers];
+        for (const mc of manualConfigs) {
+          // Manual config overrides dynamic detection
+          const idx = mergedConfigs.findIndex(d => d.formId === mc.formId && d.level === mc.level);
+          if (idx >= 0) mergedConfigs[idx] = mc;
+          else mergedConfigs.push(mc);
+        }
+
+        // First pass: map all submissions with dynamic approver data
         for (const { form, rows, detectedFields, steps } of formResults) {
           newStepsByForm[form.id] = steps;
           for (const raw of rows) {
-            mapped.push(mapGenericSubmission(raw, form.id, form.title, detectedFields, steps, [], approverConfigs));
+            mapped.push(mapGenericSubmission(raw, form.id, form.title, detectedFields, steps, [], mergedConfigs));
           }
         }
 
