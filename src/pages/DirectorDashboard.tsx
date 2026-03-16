@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   CheckCircle2, XCircle, MessageSquare, Clock, AlertTriangle, User,
   Search, ArrowUpDown, ChevronDown, ChevronUp, FileText, Loader2,
-  TrendingUp, Shield, ExternalLink, ClipboardList, FileEdit, Lock, Users,
+  TrendingUp, Shield, ExternalLink, ClipboardList, FileEdit, Lock,
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useSubmissions } from '../hooks/useSubmissions';
@@ -13,7 +13,6 @@ import SubmissionModal from '../components/SubmissionModal';
 import { getUserConfig } from '../config/currentUser';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import ApproverConfigModal from '../components/ApproverConfigModal';
 
 interface Props {
   data: ReturnType<typeof useSubmissions>;
@@ -107,26 +106,64 @@ function PendingWithCell({ submission, onSyncClick }: { submission: Submission; 
   const isEmail = pendingEntry.approverName.includes('@');
   const displayEmail = pendingEntry.approverEmail || (isEmail ? pendingEntry.approverName : '');
   const displayName = isGenericFallback
-    ? 'Pending Review'
+    ? ''
     : isEmail ? pendingEntry.approverName.split('@')[0] : pendingEntry.approverName;
+
+  // Workflow step type label
+  const aType = submission.actionType as string;
+  const stepLabel = aType === 'task' ? 'Task' : aType === 'form' ? 'Form Review' : 'Approval';
+
   return (
     <div className="flex items-center gap-2">
-      <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 shrink-0 ${isGenericFallback ? 'bg-amber-500/20' : 'bg-purple-500/20'}`}>
-        {isEmail && !pendingEntry.approverEmail
-          ? <span className="text-purple-400 text-[10px] font-bold">@</span>
-          : <User className={`w-3.5 h-3.5 ${isGenericFallback ? 'text-amber-400' : 'text-purple-400'}`} />}
+      <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 shrink-0 ${
+        aType === 'task' ? 'bg-gold/20' : aType === 'form' ? 'bg-blue-500/20' : 'bg-purple-500/20'
+      }`}>
+        {aType === 'task' ? <ClipboardList className="w-3.5 h-3.5 text-gold" /> :
+         aType === 'form' ? <FileEdit className="w-3.5 h-3.5 text-blue-400" /> :
+         <User className="w-3.5 h-3.5 text-purple-400" />}
       </div>
       <div className="min-w-0">
-        <p className={`text-sm leading-tight truncate max-w-[160px] ${isGenericFallback ? 'text-amber-400 italic' : 'text-white'}`} title={pendingEntry.approverName}>
-          {displayName}
-        </p>
-        {displayEmail && !displayName.includes('@') && (
-          <p className="text-[10px] text-gray-500 truncate max-w-[160px]" title={displayEmail}>{displayEmail}</p>
+        {displayName ? (
+          <>
+            <p className="text-sm text-white leading-tight truncate max-w-[160px]" title={pendingEntry.approverName}>{displayName}</p>
+            {displayEmail && !displayName.includes('@') && (
+              <p className="text-[10px] text-gray-500 truncate max-w-[160px]" title={displayEmail}>{displayEmail}</p>
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-amber-400 italic">{stepLabel} Pending</p>
         )}
-        <p className="text-xs text-gray-500">Level {pendingEntry.level}</p>
+        <p className="text-xs text-gray-500">Level {pendingEntry.level} · {stepLabel}</p>
       </div>
     </div>
   );
+}
+
+function WorkflowStatusBadge({ submission }: { submission: Submission }) {
+  const { currentApprovalLevel, actionType, approvalHistory } = submission;
+
+  if (currentApprovalLevel === 'completed') {
+    return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-400">Completed</span>;
+  }
+  if (currentApprovalLevel === 'rejected') {
+    return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/20 text-red-400">Rejected</span>;
+  }
+
+  const level = typeof currentApprovalLevel === 'number' ? currentApprovalLevel : 1;
+  const hasApproved = approvalHistory.some(h => h.status === 'approved');
+
+  // Show workflow-step-aware status
+  if (actionType === 'task') {
+    return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gold/20 text-gold">L{level} Task Pending</span>;
+  }
+  if (actionType === 'form') {
+    return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400">Form Pending</span>;
+  }
+
+  if (hasApproved) {
+    return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400">L{level} Approval Pending</span>;
+  }
+  return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400">L{level} Approval Pending</span>;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -177,8 +214,6 @@ export default function DirectorDashboard({ data }: Props) {
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
   const [syncSubmission, setSyncSubmission] = useState<Submission | null>(null);
   const [syncLoading, setSyncLoading] = useState(false);
-  const [showApproverConfig, setShowApproverConfig] = useState(false);
-
   // When opening the detail modal, clear any inline reject state so the
   // reject input for a different row doesn't stay open in the background.
   const openModal = (sub: Submission) => {
@@ -461,18 +496,8 @@ export default function DirectorDashboard({ data }: Props) {
               <p className="text-xs text-gray-500 mt-0.5">Filter: {activeSidebarCategory.label}</p>
             )}
           </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowApproverConfig(true)}
-              className="px-3 py-2 rounded-lg bg-navy-light/20 border border-navy-light/30 hover:bg-navy-light/40 text-gray-400 hover:text-gold text-xs font-medium flex items-center gap-1.5 transition-colors"
-              title="Configure Approvers"
-            >
-              <Users className="w-4 h-4" />
-              <span className="hidden sm:inline">Approvers</span>
-            </button>
-            <div className="w-12 h-12 rounded-full bg-gold/20 flex items-center justify-center">
-              <User className="w-6 h-6 text-gold" />
-            </div>
+          <div className="w-12 h-12 rounded-full bg-gold/20 flex items-center justify-center">
+            <User className="w-6 h-6 text-gold" />
           </div>
         </div>
       </motion.div>
@@ -611,7 +636,7 @@ export default function DirectorDashboard({ data }: Props) {
                       <AgingCell days={sub.daysAtCurrentLevel} />
                     </td>
                     <td className="px-4 py-3">
-                      <StatusBadge status={sub.jotformStatus || 'Pending'} />
+                      <WorkflowStatusBadge submission={sub} />
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
@@ -868,16 +893,6 @@ export default function DirectorDashboard({ data }: Props) {
         )}
       </AnimatePresence>
 
-      {showApproverConfig && (
-        <ApproverConfigModal
-          activeForms={data.activeForms.map(f => ({ id: f.id, title: f.title }))}
-          onClose={() => setShowApproverConfig(false)}
-          onSaved={() => {
-            // Clear approver config cache and refresh
-            setTimeout(() => data.refresh({ force: true }), 500);
-          }}
-        />
-      )}
     </div>
   );
 }
