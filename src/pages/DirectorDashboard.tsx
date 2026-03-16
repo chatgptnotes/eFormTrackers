@@ -35,28 +35,6 @@ function AgingCell({ days }: { days: number }) {
 function PendingWithCell({ submission, onSyncClick }: { submission: Submission; onSyncClick?: (sub: Submission) => void }) {
   const { currentApprovalLevel, approvalHistory, actionType } = submission;
 
-  // Native JotForm approval detected — needs sync
-  if (submission.needsSync && onSyncClick) {
-    return (
-      <button
-        onClick={() => onSyncClick(submission)}
-        className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 transition-colors"
-      >
-        <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-        <span className="text-xs text-amber-400 font-medium">Sync Needed</span>
-      </button>
-    );
-  }
-
-  // Form-only submissions — JotForm tracks approval internally, we can't read the level
-  if (actionType === 'form') {
-    return (
-      <div className="flex items-center gap-1.5">
-        <span className="text-xs text-gray-500 italic">Tracked in JotForm</span>
-      </div>
-    );
-  }
-
   // Completed or rejected — nothing pending
   if (currentApprovalLevel === 'completed') {
     return (
@@ -625,9 +603,7 @@ export default function DirectorDashboard({ data }: Props) {
                       <p className="text-xs text-gray-500">{sub.submittedBy.department}</p>
                     </td>
                     <td className="px-4 py-3">
-                      {sub.actionType === 'form'
-                        ? <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-500/20 text-gray-500">--</span>
-                        : <LevelBadge level={sub.currentApprovalLevel} />}
+                      <LevelBadge level={sub.currentApprovalLevel} />
                     </td>
                     <td className="px-4 py-3">
                       <PendingWithCell submission={sub} onSyncClick={setSyncSubmission} />
