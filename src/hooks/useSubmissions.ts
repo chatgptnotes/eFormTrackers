@@ -30,10 +30,12 @@ async function fetchWorkflowSteps(formId: string): Promise<WorkflowStep[]> {
 
 // ─── Workflow task cache (per submissionId) — actual approver from workflow API ─
 interface WorkflowTaskInfo {
+  name: string;
   level: number;
   assigneeName: string;
   assigneeEmail: string;
   status: string;
+  updatedAt: string;
 }
 const workflowTaskCache: Record<string, { tasks: WorkflowTaskInfo[]; at: number }> = {};
 const WORKFLOW_TASK_CACHE_TTL = 5 * 60 * 1000;
@@ -46,10 +48,12 @@ async function fetchWorkflowTasks(submissionId: string): Promise<WorkflowTaskInf
     if (!res.ok) return [];
     const data = await res.json();
     const tasks: WorkflowTaskInfo[] = (data.tasks || []).map((t: Record<string, unknown>) => ({
+      name: String(t.name || ''),
       level: Number(t.level || 0),
       assigneeName: String(t.assigneeName || ''),
       assigneeEmail: String(t.assigneeEmail || ''),
-      status: String(t.status || 'pending'),
+      status: String(t.status || 'PENDING').toUpperCase(),
+      updatedAt: String(t.updatedAt || ''),
     }));
     workflowTaskCache[submissionId] = { tasks, at: Date.now() };
     return tasks;
@@ -566,8 +570,8 @@ export function useSubmissions() {
           }
         }
 
-        // Second pass: batch-fetch workflow tasks for pending submissions (first page only, max 10)
-        const pendingSubs = mapped.filter(s => typeof s.currentApprovalLevel === 'number').slice(0, 10);
+        // Second pass: batch-fetch REAL workflow tasks for pending submissions (up to 50)
+        const pendingSubs = mapped.filter(s => typeof s.currentApprovalLevel === 'number').slice(0, 50);
         if (pendingSubs.length > 0) {
           const taskResults = await Promise.allSettled(
             pendingSubs.map(sub => fetchWorkflowTasks(sub.id))
@@ -577,16 +581,49 @@ export function useSubmissions() {
             if (result.status !== 'fulfilled' || result.value.length === 0) continue;
             const tasks = result.value;
             const sub = pendingSubs[i];
-            const pendingTask = tasks.find(t => t.status === 'pending');
-            if (pendingTask && (pendingTask.assigneeName || pendingTask.assigneeEmail)) {
-              // Update the pending entry in approval history
-              const pendingEntry = sub.approvalHistory.find(a => a.status === 'pending');
-              if (pendingEntry) {
-                if (pendingTask.assigneeName) pendingEntry.approverName = pendingTask.assigneeName;
-                if (pendingTask.assigneeEmail) pendingEntry.approverEmail = pendingTask.assigneeEmail;
+
+            // Find the currently ACTIVE task
+            const activeTask = tasks.find(t => t.status === 'ACTIVE');
+            if (activeTask) {
+              // Override the current level
+              sub.currentApprovalLevel = activeTask.level as ApprovalLevel;
+
+              // Override pending approver
+              sub.pendingApproverName = activeTask.assigneeName || undefined;
+              sub.pendingApproverEmail = activeTask.assigneeEmail || undefined;
+
+              // Override action type based on step name
+              const stepName = activeTask.name.toLowerCase();
+              if (stepName.includes('task') || stepName.includes('review task')) {
+                sub.actionType = 'task';
+              } else if (stepName.includes('form') || stepName.includes('view form')) {
+                sub.actionType = 'form';
+              } else {
+                sub.actionType = 'approval';
               }
-              sub.pendingApproverName = pendingTask.assigneeName || undefined;
-              sub.pendingApproverEmail = pendingTask.assigneeEmail || undefined;
+
+              // Rebuild approval history from workflow tasks
+              const newHistory: ApprovalEntry[] = [];
+              for (const task of tasks) {
+                const isCompleted = task.status === 'COMPLETED';
+                newHistory.push({
+                  level: task.level as ApprovalLevel,
+                  approverName: task.assigneeName || task.name,
+                  approverEmail: task.assigneeEmail || '',
+                  status: isCompleted ? 'approved' : 'pending',
+                  date: task.updatedAt || undefined,
+                });
+              }
+              if (newHistory.length > 0) {
+                sub.approvalHistory = newHistory;
+              }
+
+              // Update jotformStatus based on workflow state
+              const completedCount = tasks.filter(t => t.status === 'COMPLETED').length;
+              const totalSteps = tasks.length;
+              sub.jotformStatus = activeTask
+                ? `${activeTask.name} Pending`
+                : completedCount === totalSteps ? 'Completed' : 'Pending';
             }
           }
         }
