@@ -584,7 +584,30 @@ export function useSubmissions() {
 
             // Find the currently ACTIVE task
             const activeTask = tasks.find(t => t.status === 'ACTIVE');
-            if (activeTask) {
+            const allCompleted = tasks.length > 0 && tasks.every(t => t.status === 'COMPLETED');
+
+            if (allCompleted) {
+              // All workflow tasks are done — mark submission as completed
+              sub.currentApprovalLevel = 'completed';
+              sub.pendingApproverName = undefined;
+              sub.pendingApproverEmail = undefined;
+              sub.jotformStatus = 'Completed';
+
+              // Rebuild approval history from workflow tasks
+              const newHistory: ApprovalEntry[] = [];
+              for (const task of tasks) {
+                newHistory.push({
+                  level: task.level as ApprovalLevel,
+                  approverName: task.assigneeName || task.name,
+                  approverEmail: task.assigneeEmail || '',
+                  status: 'approved',
+                  date: task.updatedAt || undefined,
+                });
+              }
+              if (newHistory.length > 0) {
+                sub.approvalHistory = newHistory;
+              }
+            } else if (activeTask) {
               // Override the current level
               sub.currentApprovalLevel = activeTask.level as ApprovalLevel;
 
@@ -619,11 +642,7 @@ export function useSubmissions() {
               }
 
               // Update jotformStatus based on workflow state
-              const completedCount = tasks.filter(t => t.status === 'COMPLETED').length;
-              const totalSteps = tasks.length;
-              sub.jotformStatus = activeTask
-                ? `${activeTask.name} Pending`
-                : completedCount === totalSteps ? 'Completed' : 'Pending';
+              sub.jotformStatus = `${activeTask.name} Pending`;
             }
           }
         }
