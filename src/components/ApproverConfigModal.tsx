@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, Save, Loader2, Users, CheckCircle2 } from 'lucide-react';
+import { X, Save, Loader2, Users, CheckCircle2, Zap } from 'lucide-react';
 
 interface ApproverRow {
   formId: string;
@@ -21,6 +21,8 @@ interface Props {
 export default function ApproverConfigModal({ activeForms, onClose, onSaved }: Props) {
   const [rows, setRows] = useState<ApproverRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [detecting, setDetecting] = useState(false);
+  const [detectMessage, setDetectMessage] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -105,6 +107,66 @@ export default function ApproverConfigModal({ activeForms, onClose, onSaved }: P
     }
   };
 
+  const handleAutoDetect = async () => {
+    setDetecting(true);
+    setDetectMessage('');
+    try {
+      const res = await fetch('/api/detect-approvers');
+      if (!res.ok) throw new Error('Detection failed');
+      const data = await res.json();
+      const detected: { formId: string; level: number; approverName: string; approverEmail: string; count: number }[] = data.detectedApprovers || [];
+
+      if (detected.length === 0) {
+        setDetectMessage('No approvers found in existing submissions');
+        setDetecting(false);
+        return;
+      }
+
+      // Pre-fill detected values into rows
+      let updatedCount = 0;
+      const uniqueForms = new Set<string>();
+      setRows(prev => prev.map(r => {
+        const match = detected.find(d => d.formId === r.formId && d.level === r.level);
+        if (match) {
+          updatedCount++;
+          uniqueForms.add(match.formId);
+          return { ...r, approverName: match.approverName, approverEmail: match.approverEmail, saved: false };
+        }
+        return r;
+      }));
+
+      detected.forEach(d => uniqueForms.add(d.formId));
+      setDetectMessage(`Found ${detected.length} approver${detected.length !== 1 ? 's' : ''} across ${uniqueForms.size} form${uniqueForms.size !== 1 ? 's' : ''}`);
+
+      // Auto-save detected approvers to Supabase
+      for (const d of detected) {
+        await fetch('/api/approver-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            formId: d.formId,
+            level: d.level,
+            approverName: d.approverName,
+            approverEmail: d.approverEmail,
+          }),
+        });
+      }
+
+      // Mark saved rows
+      setRows(prev => prev.map(r => {
+        const match = detected.find(d => d.formId === r.formId && d.level === r.level);
+        if (match) return { ...r, saved: true };
+        return r;
+      }));
+
+      onSaved?.();
+    } catch {
+      setDetectMessage('Auto-detection failed — please try again');
+    } finally {
+      setDetecting(false);
+    }
+  };
+
   // Group by form
   const formGroups = activeForms.map(form => ({
     ...form,
@@ -138,6 +200,14 @@ export default function ApproverConfigModal({ activeForms, onClose, onSaved }: P
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={handleAutoDetect}
+              disabled={detecting}
+              className="px-4 py-2 rounded-lg bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 text-sm font-medium flex items-center gap-2 transition-colors disabled:opacity-50"
+            >
+              {detecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+              Auto-Detect
+            </button>
+            <button
               onClick={saveAll}
               className="px-4 py-2 rounded-lg bg-gold/20 text-gold hover:bg-gold/30 text-sm font-medium flex items-center gap-2 transition-colors"
             >
@@ -148,6 +218,14 @@ export default function ApproverConfigModal({ activeForms, onClose, onSaved }: P
             </button>
           </div>
         </div>
+
+        {/* Detect message */}
+        {detectMessage && (
+          <div className="mx-6 mt-4 px-4 py-2 rounded-lg bg-purple-500/10 border border-purple-500/20 text-sm text-purple-300 flex items-center gap-2">
+            <Zap className="w-4 h-4 flex-shrink-0" />
+            {detectMessage}
+          </div>
+        )}
 
         {/* Content */}
         <div className="p-6 space-y-6">

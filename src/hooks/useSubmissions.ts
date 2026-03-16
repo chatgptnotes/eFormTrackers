@@ -516,6 +516,40 @@ export function useSubmissions() {
         const newStepsByForm: Record<string, WorkflowStep[]> = {};
         const approverConfigs = await fetchApproverConfigs();
 
+        // Auto-populate approver config from existing submissions if empty
+        if (approverConfigs.length === 0) {
+          try {
+            const detectRes = await fetch('/api/detect-approvers');
+            if (detectRes.ok) {
+              const detectData = await detectRes.json();
+              const detected: { formId: string; level: number; approverName: string; approverEmail: string }[] = detectData.detectedApprovers || [];
+              for (const d of detected) {
+                await fetch('/api/approver-config', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    formId: d.formId,
+                    level: d.level,
+                    approverName: d.approverName,
+                    approverEmail: d.approverEmail,
+                  }),
+                });
+                // Also add to local configs array so current render uses them
+                approverConfigs.push({
+                  formId: d.formId,
+                  level: d.level,
+                  approverName: d.approverName,
+                  approverEmail: d.approverEmail,
+                });
+              }
+              // Clear cache so next fetch gets the saved configs
+              approverConfigCache = null;
+            }
+          } catch {
+            // Non-critical — continue without auto-detection
+          }
+        }
+
         // First pass: map all submissions without workflow tasks
         for (const { form, rows, detectedFields, steps } of formResults) {
           newStepsByForm[form.id] = steps;
