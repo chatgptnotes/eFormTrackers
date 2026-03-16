@@ -32,7 +32,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
   }
 
-  const { submissionId, action, comment } = req.body || {};
+  const { submissionId, action, comment, signature } = req.body || {};
   if (!submissionId) return res.status(400).json({ error: 'submissionId required' });
   if (!action || !['approve', 'reject', 'complete'].includes(action)) {
     return res.status(400).json({ error: 'action must be "approve", "reject", or "complete"' });
@@ -105,6 +105,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const completeUrl = `${JOTFORM_BASE}/workflow/task/${taskId}/complete?apiKey=${API_KEY}&teamID=${TEAM_ID}`;
     const body: Record<string, unknown> = { outcomeID };
     if (comment) body.comment = comment;
+    // For "Approve & Sign" steps, JotForm requires a signature
+    if (signature) body.signature = signature;
 
     const completeRes = await fetch(completeUrl, {
       method: 'POST',

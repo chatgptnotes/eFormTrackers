@@ -207,6 +207,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
           submissionId: submission.id,
           action: wfAction,
           comment: comment.trim() || approverNote,
+          signature: signature || undefined,
         }),
       });
       const data = await res.json();
