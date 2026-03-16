@@ -221,27 +221,37 @@ function mapGenericSubmission(
   if (fields.levelFields.length > 0) {
     for (const lf of fields.levelFields) {
       const statusVal = get(lf.statusFieldId).toLowerCase();
-      // Read the raw approver field value
       const rawApproverField = get(lf.approverFieldId);
-      // Try to parse clean name/email from JotFlow action text (e.g. "Action: Approved | By: Name (email)...")
       const parsed = parseApproverFromActionText(rawApproverField);
-      // Priority: parsed action text → configured approver → workflow task → evaluator email → step assignee → fallback
       const wfApprover = getWorkflowTaskApprover(workflowTasks, lf.level);
-      const configApprover = getConfiguredApprover(approverConfigs, formId, lf.level);
-      const approverName = parsed?.name || configApprover?.name || wfApprover?.name || getEvaluatorEmail(lf.level) || getStepAssignee(lf.level)
-        || (rawApproverField && !rawApproverField.includes('Action:') ? rawApproverField : '')
-        || `Level ${lf.level} Approver`;
-      const approverEmail = parsed?.email || configApprover?.email || wfApprover?.email || '';
       const date = get(lf.dateFieldId) || undefined;
+
       if (statusVal === 'approved') {
+        // APPROVED: use actual data — parsed action text, then raw field, then config as fallback
+        const configApprover = getConfiguredApprover(approverConfigs, formId, lf.level);
+        const approverName = parsed?.name || configApprover?.name || wfApprover?.name || getEvaluatorEmail(lf.level) || getStepAssignee(lf.level)
+          || (rawApproverField && !rawApproverField.includes('Action:') ? rawApproverField : '')
+          || `Level ${lf.level} Approver`;
+        const approverEmail = parsed?.email || configApprover?.email || wfApprover?.email || '';
         history.push({ level: lf.level as ApprovalLevel, approverName, approverEmail, status: 'approved', date });
         const isLast = lf.level === fields.levelFields[fields.levelFields.length - 1].level;
         currentLevel = isLast ? 'completed' : (lf.level + 1) as ApprovalLevel;
       } else if (statusVal === 'rejected' || statusVal === 'denied') {
+        const configApprover = getConfiguredApprover(approverConfigs, formId, lf.level);
+        const approverName = parsed?.name || configApprover?.name || wfApprover?.name
+          || (rawApproverField && !rawApproverField.includes('Action:') ? rawApproverField : '')
+          || `Level ${lf.level} Approver`;
+        const approverEmail = parsed?.email || configApprover?.email || wfApprover?.email || '';
         history.push({ level: lf.level as ApprovalLevel, approverName, approverEmail, status: 'rejected', date });
         currentLevel = 'rejected';
         break;
       } else {
+        // PENDING: only use THIS submission's own data — don't inject guessed names from other submissions
+        // Use evaluator email or workflow API if available, otherwise show "Level X Approver" (renders as "Pending Review")
+        const approverName = wfApprover?.name || getEvaluatorEmail(lf.level) || getStepAssignee(lf.level)
+          || (rawApproverField && !rawApproverField.includes('Action:') ? rawApproverField : '')
+          || `Level ${lf.level} Approver`;
+        const approverEmail = wfApprover?.email || '';
         history.push({ level: lf.level as ApprovalLevel, approverName, approverEmail, status: 'pending' });
         currentLevel = lf.level as ApprovalLevel;
         break;
@@ -255,9 +265,14 @@ function mapGenericSubmission(
     else currentLevel = 1 as ApprovalLevel;
 
     const wfApprover = getWorkflowTaskApprover(workflowTasks, 1);
-    const configApprover = getConfiguredApprover(approverConfigs, formId, 1);
     const histStatus = typeof currentLevel === 'number' ? 'pending' : currentLevel === 'completed' ? 'approved' : 'rejected';
-    history.push({ level: 1 as ApprovalLevel, approverName: configApprover?.name || wfApprover?.name || evaluatorEmail || getStepAssignee(1) || 'Approver', approverEmail: configApprover?.email || wfApprover?.email || '', status: histStatus });
+    // For acted levels, use config. For pending, only use direct data.
+    if (histStatus !== 'pending') {
+      const configApprover = getConfiguredApprover(approverConfigs, formId, 1);
+      history.push({ level: 1 as ApprovalLevel, approverName: configApprover?.name || wfApprover?.name || evaluatorEmail || getStepAssignee(1) || 'Approver', approverEmail: configApprover?.email || wfApprover?.email || '', status: histStatus });
+    } else {
+      history.push({ level: 1 as ApprovalLevel, approverName: wfApprover?.name || evaluatorEmail || getStepAssignee(1) || 'Approver', approverEmail: wfApprover?.email || '', status: 'pending' });
+    }
   }
 
   // Overall status field can override level computation
