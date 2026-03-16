@@ -654,6 +654,38 @@ export function useSubmissions() {
         if (partialDataWarning) {
           setError('Some submissions could not be loaded — showing partial data');
         }
+
+        // ── Sync enriched data to Supabase (fire-and-forget) ──────────────
+        // Push ALL submissions with workflow-enriched data so Supabase
+        // always mirrors the latest state from JotForm + workflow API.
+        try {
+          const syncRecords = mapped.map(s => ({
+            id: s.id,
+            formId: s.formId,
+            formTitle: s.formTitle,
+            title: s.title,
+            description: s.description,
+            submitterName: s.submittedBy.name,
+            submitterEmail: s.submittedBy.email,
+            department: s.submittedBy.department,
+            submissionDate: s.submissionDate,
+            currentLevel: s.currentApprovalLevel,
+            status: s.jotformStatus,
+            priority: s.priority,
+            jotformStatus: s.jotformStatus,
+            pendingApproverName: s.pendingApproverName,
+            pendingApproverEmail: s.pendingApproverEmail,
+            approvalHistory: s.approvalHistory,
+            answers: s.answers,
+            actionType: s.actionType,
+          }));
+          // Fire-and-forget — don't block the UI
+          fetch('/api/sync-to-supabase', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ records: syncRecords }),
+          }).catch(() => {}); // silently ignore sync errors
+        } catch {} // ignore sync errors — dashboard still works from JotForm API
       } else if (forms.length === 0 && !hasCachedData) {
         setError('No JotForm workflows found. Please ensure your JotForm account has enabled forms.');
       } else if (totalRows === 0 && !hasCachedData) {
