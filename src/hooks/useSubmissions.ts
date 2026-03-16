@@ -624,15 +624,21 @@ export function useSubmissions() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Supabase real-time subscription — re-fetch when needs_sync rows appear
+  // Supabase real-time subscription — re-fetch on ANY change to jf_submissions or jf_approval_history
   useEffect(() => {
     const channel = supabase
-      .channel('jf_sync_needed')
+      .channel('jf_realtime')
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
         table: 'jf_submissions',
-        filter: 'needs_sync=eq.true',
+      }, () => {
+        loadData();
+      })
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'jf_approval_history',
       }, () => {
         loadData();
       })

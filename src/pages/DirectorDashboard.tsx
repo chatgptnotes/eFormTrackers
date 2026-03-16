@@ -130,14 +130,19 @@ function PendingWithCell({ submission, onSyncClick }: { submission: Submission; 
 }
 
 function StatusBadge({ status }: { status: string }) {
+  const lower = (status || '').toLowerCase();
   const styles: Record<string, string> = {
-    'on-track': 'bg-emerald-500/20 text-emerald-400',
-    'delayed': 'bg-amber-500/20 text-amber-400',
-    'critical': 'bg-red-500/20 text-red-400',
+    'pending': 'bg-amber-500/20 text-amber-400',
+    'in progress': 'bg-blue-500/20 text-blue-400',
+    'completed': 'bg-emerald-500/20 text-emerald-400',
+    'approved': 'bg-emerald-500/20 text-emerald-400',
+    'rejected': 'bg-red-500/20 text-red-400',
+    'denied': 'bg-red-500/20 text-red-400',
   };
+  const matched = Object.entries(styles).find(([key]) => lower.includes(key));
   return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${styles[status] || 'bg-gray-500/20 text-gray-400'}`}>
-      {status}
+    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${matched ? matched[1] : 'bg-gray-500/20 text-gray-400'}`}>
+      {status || 'Unknown'}
     </span>
   );
 }
@@ -606,7 +611,7 @@ export default function DirectorDashboard({ data }: Props) {
                       <AgingCell days={sub.daysAtCurrentLevel} />
                     </td>
                     <td className="px-4 py-3">
-                      <StatusBadge status={sub.overallStatus} />
+                      <StatusBadge status={sub.jotformStatus || 'Pending'} />
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
