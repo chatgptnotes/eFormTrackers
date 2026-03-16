@@ -28,6 +28,45 @@ async function fetchWorkflowSteps(formId: string): Promise<WorkflowStep[]> {
   }
 }
 
+// ─── Workflow task cache (per submissionId) — actual approver from workflow API ─
+interface WorkflowTaskInfo {
+  level: number;
+  assigneeName: string;
+  assigneeEmail: string;
+  status: string;
+}
+const workflowTaskCache: Record<string, { tasks: WorkflowTaskInfo[]; at: number }> = {};
+const WORKFLOW_TASK_CACHE_TTL = 5 * 60 * 1000;
+
+async function fetchWorkflowTasks(submissionId: string): Promise<WorkflowTaskInfo[]> {
+  const cached = workflowTaskCache[submissionId];
+  if (cached && Date.now() - cached.at < WORKFLOW_TASK_CACHE_TTL) return cached.tasks;
+  try {
+    const res = await fetch(`/api/workflow-tasks?submissionId=${submissionId}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    const tasks: WorkflowTaskInfo[] = (data.tasks || []).map((t: Record<string, unknown>) => ({
+      level: Number(t.level || 0),
+      assigneeName: String(t.assigneeName || ''),
+      assigneeEmail: String(t.assigneeEmail || ''),
+      status: String(t.status || 'pending'),
+    }));
+    workflowTaskCache[submissionId] = { tasks, at: Date.now() };
+    return tasks;
+  } catch {
+    return [];
+  }
+}
+
+/** Get the workflow task approver for a given submission + level */
+function getWorkflowTaskApprover(tasks: WorkflowTaskInfo[], level: number): { name: string; email: string } | null {
+  const task = tasks.find(t => t.level === level);
+  if (task && (task.assigneeName || task.assigneeEmail)) {
+    return { name: task.assigneeName, email: task.assigneeEmail };
+  }
+  return null;
+}
+
 // ─── Shared utilities ────────────────────────────────────────────────────────
 /** Parse JotForm "YYYY-MM-DD HH:MM:SS" (UTC) or ISO 8601 string into a Date */
 function parseUTC(s: string): Date {
@@ -99,7 +138,8 @@ function mapGenericSubmission(
   formId: string,
   formTitle: string,
   fields: DetectedFields,
-  workflowSteps: WorkflowStep[] = []
+  workflowSteps: WorkflowStep[] = [],
+  workflowTasks: WorkflowTaskInfo[] = [],
 ): Submission {
   const answers = (raw.answers as Record<string, { answer: unknown; text?: string }>) || {};
   const get = (id: string | null) => id ? extractText(answers[id]?.answer) : '';
@@ -131,19 +171,21 @@ function mapGenericSubmission(
   if (fields.levelFields.length > 0) {
     for (const lf of fields.levelFields) {
       const statusVal = get(lf.statusFieldId).toLowerCase();
-      // Use per-level evaluator email, then approver field, then workflow step assignee, then fallback
-      const approverName = get(lf.approverFieldId) || getEvaluatorEmail(lf.level) || getStepAssignee(lf.level) || `Level ${lf.level} Approver`;
+      // Priority: workflow task approver → form field → evaluator email → step assignee → fallback
+      const wfApprover = getWorkflowTaskApprover(workflowTasks, lf.level);
+      const approverName = wfApprover?.name || get(lf.approverFieldId) || getEvaluatorEmail(lf.level) || getStepAssignee(lf.level) || `Level ${lf.level} Approver`;
+      const approverEmail = wfApprover?.email || '';
       const date = get(lf.dateFieldId) || undefined;
       if (statusVal === 'approved') {
-        history.push({ level: lf.level as ApprovalLevel, approverName, status: 'approved', date });
+        history.push({ level: lf.level as ApprovalLevel, approverName, approverEmail, status: 'approved', date });
         const isLast = lf.level === fields.levelFields[fields.levelFields.length - 1].level;
         currentLevel = isLast ? 'completed' : (lf.level + 1) as ApprovalLevel;
       } else if (statusVal === 'rejected' || statusVal === 'denied') {
-        history.push({ level: lf.level as ApprovalLevel, approverName, status: 'rejected', date });
+        history.push({ level: lf.level as ApprovalLevel, approverName, approverEmail, status: 'rejected', date });
         currentLevel = 'rejected';
         break;
       } else {
-        history.push({ level: lf.level as ApprovalLevel, approverName, status: 'pending' });
+        history.push({ level: lf.level as ApprovalLevel, approverName, approverEmail, status: 'pending' });
         currentLevel = lf.level as ApprovalLevel;
         break;
       }
@@ -155,8 +197,9 @@ function mapGenericSubmission(
     else if (overall.includes('reject') || overall.includes('denied')) currentLevel = 'rejected';
     else currentLevel = 1 as ApprovalLevel;
 
+    const wfApprover = getWorkflowTaskApprover(workflowTasks, 1);
     const histStatus = typeof currentLevel === 'number' ? 'pending' : currentLevel === 'completed' ? 'approved' : 'rejected';
-    history.push({ level: 1 as ApprovalLevel, approverName: evaluatorEmail || getStepAssignee(1) || 'Approver', status: histStatus });
+    history.push({ level: 1 as ApprovalLevel, approverName: wfApprover?.name || evaluatorEmail || getStepAssignee(1) || 'Approver', approverEmail: wfApprover?.email || '', status: histStatus });
   }
 
   // Overall status field can override level computation
@@ -245,6 +288,14 @@ function mapGenericSubmission(
         ? [{ level: 1, statusFieldId: fields.overallStatusFieldId, approverFieldId: null, overallStatusFieldId: fields.overallStatusFieldId }]
         : undefined,
     needsSync,
+    pendingApproverName: (() => {
+      const pending = history.find(h => h.status === 'pending');
+      return pending?.approverName || undefined;
+    })(),
+    pendingApproverEmail: (() => {
+      const pending = history.find(h => h.status === 'pending');
+      return pending?.approverEmail || undefined;
+    })(),
   };
 }
 
@@ -270,20 +321,33 @@ function mapSupabaseRow(row: Record<string, unknown>): Submission {
   const sbId = String(row.jotform_submission_id);
   const sbFormId = String(row.form_id || '');
 
+  const pendingApproverName = String(row.pending_approver_name || '') || undefined;
+  const pendingApproverEmail = String(row.pending_approver_email || '') || undefined;
+  const submitterEmail = String(row.submitter_email || (mapped.email as string) || '');
+
+  // Enrich history with pending approver from Supabase if available
+  if (pendingApproverName) {
+    const pendingEntry = history.find(h => h.status === 'pending');
+    if (pendingEntry && (pendingEntry.approverName.startsWith('Level ') || !pendingEntry.approverName)) {
+      pendingEntry.approverName = pendingApproverName;
+      pendingEntry.approverEmail = pendingApproverEmail;
+    }
+  }
+
   return {
     id: sbId,
     formId: sbFormId,
-    formTitle: String(row.title || 'Form'),
+    formTitle: String(row.form_title || row.title || 'Form'),
     referenceNumber: `F-${sbId.slice(-6)}`,
     title: String(row.title || 'Request'),
-    description: String(row.title || 'Request'),
+    description: String(row.description || row.title || 'Request'),
     actionType: 'approval' as WorkflowActionType,
     taskUrl: `https://eforms.mediaoffice.ae/inbox/${sbFormId}/${sbId}`,
     formUrl: `https://eforms.mediaoffice.ae/inbox/${sbFormId}/${sbId}`,
     submittedBy: {
-      name: String(row.submitted_by || 'Unknown'),
+      name: String(row.submitter_name || row.submitted_by || 'Unknown'),
       department: String(row.department || 'General'),
-      email: String((mapped.email as string) || ''),
+      email: submitterEmail,
     },
     submissionDate: String(row.submission_date || new Date().toISOString()).slice(0, 10),
     currentApprovalLevel: currentLevel,
@@ -291,9 +355,11 @@ function mapSupabaseRow(row: Record<string, unknown>): Submission {
     daysAtCurrentLevel: totalDays,
     totalDaysSinceSubmission: totalDays,
     overallStatus: agingStatus(totalDays),
-    jotformStatus: String(row.status || (currentLevel === 'completed' ? 'Completed' : currentLevel === 'rejected' ? 'Rejected' : 'Pending')),
-    priority: 'medium',
-    answers: { description: String(row.title || ''), amount: String((mapped.amount as string) || ''), department: String(row.department || ''), email: String((mapped.email as string) || ''), requester: String(row.submitted_by || '') },
+    jotformStatus: String(row.jotform_status || row.status || (currentLevel === 'completed' ? 'Completed' : currentLevel === 'rejected' ? 'Rejected' : 'Pending')),
+    priority: (String(row.priority || 'medium') as 'low' | 'medium' | 'high' | 'urgent'),
+    answers: (row.answers as Record<string, string>) || { description: String(row.title || ''), amount: String(row.amount || (mapped.amount as string) || ''), department: String(row.department || ''), email: submitterEmail, requester: String(row.submitted_by || '') },
+    pendingApproverName,
+    pendingApproverEmail,
   } as Submission;
 }
 
@@ -386,11 +452,37 @@ export function useSubmissions() {
       if (totalRows > 0) {
         const mapped: Submission[] = [];
         const newStepsByForm: Record<string, WorkflowStep[]> = {};
+
+        // First pass: map all submissions without workflow tasks
         for (const { form, rows, detectedFields, steps } of formResults) {
           newStepsByForm[form.id] = steps;
           for (const raw of rows) {
-            // All forms from GDMO-Bettroi team use the generic mapper (auto field detection)
             mapped.push(mapGenericSubmission(raw, form.id, form.title, detectedFields, steps));
+          }
+        }
+
+        // Second pass: batch-fetch workflow tasks for pending submissions (first page only, max 10)
+        const pendingSubs = mapped.filter(s => typeof s.currentApprovalLevel === 'number').slice(0, 10);
+        if (pendingSubs.length > 0) {
+          const taskResults = await Promise.allSettled(
+            pendingSubs.map(sub => fetchWorkflowTasks(sub.id))
+          );
+          for (let i = 0; i < pendingSubs.length; i++) {
+            const result = taskResults[i];
+            if (result.status !== 'fulfilled' || result.value.length === 0) continue;
+            const tasks = result.value;
+            const sub = pendingSubs[i];
+            const pendingTask = tasks.find(t => t.status === 'pending');
+            if (pendingTask && (pendingTask.assigneeName || pendingTask.assigneeEmail)) {
+              // Update the pending entry in approval history
+              const pendingEntry = sub.approvalHistory.find(a => a.status === 'pending');
+              if (pendingEntry) {
+                if (pendingTask.assigneeName) pendingEntry.approverName = pendingTask.assigneeName;
+                if (pendingTask.assigneeEmail) pendingEntry.approverEmail = pendingTask.assigneeEmail;
+              }
+              sub.pendingApproverName = pendingTask.assigneeName || undefined;
+              sub.pendingApproverEmail = pendingTask.assigneeEmail || undefined;
+            }
           }
         }
         // Batch state updates together — prevents double render / flicker

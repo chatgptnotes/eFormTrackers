@@ -6,7 +6,7 @@ const TEAM_ID = process.env.JOTFORM_TEAM_ID || '260541093809054'; // GDMO-Bettro
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*'; // Set to your domain in production
 
 // Whitelist of query params that may be forwarded to JotForm API
-const ALLOWED_PARAMS = new Set(['limit', 'offset', 'orderby', 'direction', 'filter', 'id']);
+const ALLOWED_PARAMS = new Set(['limit', 'offset', 'orderby', 'direction', 'filter', 'id', 'addWorkflowStatus']);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);

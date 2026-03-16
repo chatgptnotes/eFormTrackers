@@ -136,33 +136,110 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Read submitter info from detected fields
     const submittedBy = get(detected.nameFieldId);
+    const email = get(detected.emailFieldId);
     const title = get(detected.descFieldId) || `Form ${formId}`;
+    const description = get(detected.descFieldId) || '';
     const department = get(detected.deptFieldId) || 'General';
+    const priority = get(detected.priorityFieldId) || 'medium';
+    const amount = get(detected.amountFieldId) || '';
+    const formTitle = String(raw.form_title || '') || `Form ${formId}`;
+    const editLink = String(raw.edit_link || '');
 
     const createdAt = (raw.created_at as string) || '';
+    const updatedAt = (raw.updated_at as string) || '';
     const submissionDate = createdAt ? new Date(createdAt.replace(' ', 'T') + 'Z') : new Date();
+    const updatedDate = updatedAt ? new Date(updatedAt.replace(' ', 'T') + 'Z') : null;
     const totalDays = Math.floor((Date.now() - submissionDate.getTime()) / (1000 * 60 * 60 * 24));
 
     // Detect native JotForm approval: all hidden fields blank but submission was acted upon
     const allFieldsBlank = levels.every(l => !l.status);
-    const rawCreatedAt = (raw.created_at as string) || '';
-    const rawUpdatedAt = (raw.updated_at as string) || '';
+    const rawCreatedAt = createdAt;
+    const rawUpdatedAt = updatedAt;
     const acted = rawCreatedAt && rawUpdatedAt && rawCreatedAt !== rawUpdatedAt;
     const needsSync = (status === 'pending' && allFieldsBlank && acted) ? true : false;
+
+    // Build ALL answers as a flat key-value JSONB object
+    const allAnswers: Record<string, string> = {};
+    for (const [qid, q] of Object.entries(answers)) {
+      const val = extractText((q as { answer: unknown }).answer);
+      if (val) allAnswers[qid] = val;
+    }
+
+    // Fetch workflow tasks to get real pending approver info
+    let pendingApproverName = '';
+    let pendingApproverEmail = '';
+    let workflowTasks: unknown[] = [];
+    try {
+      const wfRes = await fetch(
+        `${JOTFORM_BASE}/workflow/submission/${submissionId}/tasks?apiKey=${API_KEY}&teamID=${TEAM_ID}`
+      );
+      if (wfRes.ok) {
+        const wfData = await wfRes.json();
+        const rawTasks = Array.isArray(wfData.content) ? wfData.content : [];
+        workflowTasks = rawTasks;
+        // Find the pending task to get the current approver
+        const pendingTask = rawTasks.find(
+          (t: Record<string, unknown>) => String(t.status || '').toLowerCase() === 'pending'
+        );
+        if (pendingTask) {
+          pendingApproverName = String(
+            (pendingTask as Record<string, unknown>).assignee_name ||
+            (pendingTask as Record<string, unknown>).assigneeName ||
+            (pendingTask as Record<string, unknown>).name || ''
+          );
+          pendingApproverEmail = String(
+            (pendingTask as Record<string, unknown>).assignee_email ||
+            (pendingTask as Record<string, unknown>).assigneeEmail ||
+            (pendingTask as Record<string, unknown>).email || ''
+          );
+        }
+      }
+    } catch (wfErr) {
+      console.warn('Could not fetch workflow tasks:', wfErr);
+    }
+
+    // Build level history
+    const levelHistory = levels.map(l => ({
+      level: l.id,
+      status: l.status || 'pending',
+      approver: l.approver || pendingApproverName || '',
+      date: l.date || '',
+    }));
+
+    // Determine generic status label
+    const genericStatus = status === 'completed' ? 'Completed' :
+      status === 'rejected' ? 'Rejected' :
+      levels.some(l => l.status?.toLowerCase() === 'approved') ? 'In Progress' : 'Pending';
 
     const record = {
       jotform_submission_id: submissionId,
       form_id: formId,
+      form_title: formTitle,
       title,
+      description,
       submitted_by: submittedBy,
+      submitter_name: submittedBy,
+      submitter_email: email,
       department,
       submission_date: submissionDate.toISOString(),
       current_level: Math.min(currentLevel, maxLevel),
       status,
+      priority,
+      amount,
+      approver_name: pendingApproverName || levels.find(l => l.approver)?.approver || '',
+      approver_email: pendingApproverEmail,
+      pending_approver_name: pendingApproverName,
+      pending_approver_email: pendingApproverEmail,
+      jotform_status: genericStatus,
+      answers: allAnswers,
+      workflow_tasks: workflowTasks,
+      level_history: levelHistory,
+      edit_link: editLink,
+      raw_data: { ...raw, _mapped: { levels, email, amount } },
+      created_at_jf: submissionDate.toISOString(),
+      updated_at_jf: updatedDate?.toISOString() || null,
       days_at_level: totalDays,
       total_days: totalDays,
-      approver_name: levels.find(l => l.approver)?.approver || '',
-      raw_data: { ...raw, _mapped: { levels } },
       last_synced: new Date().toISOString(),
       needs_sync: needsSync,
     };
@@ -174,7 +251,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (error) throw new Error(error.message);
 
-    return res.status(200).json({ ok: true, submissionId, currentLevel, status });
+    // Upsert approval history rows for each level that has been actioned
+    for (const lvl of levels) {
+      if (lvl.status) {
+        const action = lvl.status.toLowerCase().includes('approved') ? 'approved'
+          : lvl.status.toLowerCase().includes('rejected') ? 'rejected'
+          : 'pending';
+        await supabase
+          .from('jf_approval_history')
+          .upsert({
+            submission_id: submissionId,
+            form_id: formId,
+            level: lvl.id,
+            action,
+            approver_name: lvl.approver || pendingApproverName || '',
+            approver_email: pendingApproverEmail || '',
+            actioned_at: lvl.date ? new Date(lvl.date).toISOString() : new Date().toISOString(),
+          }, { onConflict: 'idx_jf_approval_history_sub_level' })
+          .then(() => {}); // best-effort, don't block response
+      }
+    }
+
+    return res.status(200).json({ ok: true, submissionId, currentLevel, status, pendingApproverName, pendingApproverEmail });
   } catch (err) {
     console.error('Webhook error:', err);
     return res.status(500).json({ error: String(err) });

@@ -70,6 +70,78 @@ END $$;
 
 -- 7. Add needs_sync column to jf_submissions (for native JotForm approval detection)
 ALTER TABLE public.jf_submissions ADD COLUMN IF NOT EXISTS needs_sync boolean DEFAULT false;
+
+-- 8. Expand jf_submissions with full submission data columns
+ALTER TABLE public.jf_submissions ADD COLUMN IF NOT EXISTS submitter_email TEXT DEFAULT '';
+ALTER TABLE public.jf_submissions ADD COLUMN IF NOT EXISTS submitter_name TEXT DEFAULT '';
+ALTER TABLE public.jf_submissions ADD COLUMN IF NOT EXISTS approver_email TEXT DEFAULT '';
+ALTER TABLE public.jf_submissions ADD COLUMN IF NOT EXISTS priority TEXT DEFAULT 'medium';
+ALTER TABLE public.jf_submissions ADD COLUMN IF NOT EXISTS amount TEXT DEFAULT '';
+ALTER TABLE public.jf_submissions ADD COLUMN IF NOT EXISTS description TEXT DEFAULT '';
+ALTER TABLE public.jf_submissions ADD COLUMN IF NOT EXISTS form_title TEXT DEFAULT '';
+ALTER TABLE public.jf_submissions ADD COLUMN IF NOT EXISTS answers JSONB DEFAULT '{}';
+ALTER TABLE public.jf_submissions ADD COLUMN IF NOT EXISTS workflow_tasks JSONB DEFAULT '[]';
+ALTER TABLE public.jf_submissions ADD COLUMN IF NOT EXISTS level_history JSONB DEFAULT '[]';
+ALTER TABLE public.jf_submissions ADD COLUMN IF NOT EXISTS pending_approver_name TEXT DEFAULT '';
+ALTER TABLE public.jf_submissions ADD COLUMN IF NOT EXISTS pending_approver_email TEXT DEFAULT '';
+ALTER TABLE public.jf_submissions ADD COLUMN IF NOT EXISTS jotform_status TEXT DEFAULT 'Pending';
+ALTER TABLE public.jf_submissions ADD COLUMN IF NOT EXISTS edit_link TEXT DEFAULT '';
+ALTER TABLE public.jf_submissions ADD COLUMN IF NOT EXISTS created_at_jf TIMESTAMPTZ;
+ALTER TABLE public.jf_submissions ADD COLUMN IF NOT EXISTS updated_at_jf TIMESTAMPTZ;
+
+-- 9. Create jf_approval_history table for per-level approval tracking
+CREATE TABLE IF NOT EXISTS public.jf_approval_history (
+  id              uuid         PRIMARY KEY DEFAULT gen_random_uuid(),
+  submission_id   TEXT         NOT NULL,
+  form_id         TEXT         NOT NULL,
+  level           SMALLINT     NOT NULL,
+  action          TEXT         NOT NULL,
+  approver_name   TEXT         DEFAULT '',
+  approver_email  TEXT         DEFAULT '',
+  comment         TEXT         DEFAULT '',
+  actioned_at     TIMESTAMPTZ  DEFAULT now(),
+  created_at      TIMESTAMPTZ  DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_jf_approval_history_sub_level
+  ON public.jf_approval_history (submission_id, level);
+CREATE INDEX IF NOT EXISTS idx_jf_approval_history_submission
+  ON public.jf_approval_history (submission_id);
+
+-- 10. RLS for jf_approval_history
+ALTER TABLE public.jf_approval_history ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'jf_approval_history' AND policyname = 'allow_select_all'
+  ) THEN
+    CREATE POLICY "allow_select_all"
+      ON public.jf_approval_history FOR SELECT
+      TO anon, authenticated USING (true);
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'jf_approval_history' AND policyname = 'allow_insert_all'
+  ) THEN
+    CREATE POLICY "allow_insert_all"
+      ON public.jf_approval_history FOR INSERT
+      TO anon, authenticated WITH CHECK (true);
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'jf_approval_history' AND policyname = 'allow_update_all'
+  ) THEN
+    CREATE POLICY "allow_update_all"
+      ON public.jf_approval_history FOR UPDATE
+      TO anon, authenticated USING (true) WITH CHECK (true);
+  END IF;
+END $$;
 `.trim();
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

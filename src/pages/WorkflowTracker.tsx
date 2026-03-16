@@ -249,17 +249,25 @@ export default function WorkflowTracker({ data }: Props) {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <p className="text-sm text-white">
-                      {(() => {
-                        const level = sub.currentApprovalLevel;
-                        if (level === 'completed' || level === 'rejected') {
-                          const last = [...sub.approvalHistory].reverse().find(a => a.status !== 'pending');
-                          return last?.approverName || '-';
-                        }
-                        const current = sub.approvalHistory.find(a => a.level === level);
-                        return current?.approverName || '-';
-                      })()}
-                    </p>
+                    {(() => {
+                      const level = sub.currentApprovalLevel;
+                      let entry;
+                      if (level === 'completed' || level === 'rejected') {
+                        entry = [...sub.approvalHistory].reverse().find(a => a.status !== 'pending');
+                      } else {
+                        entry = sub.approvalHistory.find(a => a.level === level);
+                      }
+                      const name = entry?.approverName || '-';
+                      const email = entry?.approverEmail;
+                      return (
+                        <div>
+                          <p className="text-sm text-white">{name}</p>
+                          {email && !name.includes('@') && (
+                            <p className="text-xs text-gray-500 truncate max-w-[150px]" title={email}>{email}</p>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="px-4 py-3">
                     {(() => {

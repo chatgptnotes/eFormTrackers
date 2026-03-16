@@ -18,8 +18,11 @@ export interface DetectedLevelFields {
   evaluatorEmailsByLevel: Record<number, string>;
   levelFields: LevelFieldGroup[];
   nameFieldId: string | null;
+  emailFieldId: string | null;
   descFieldId: string | null;
   deptFieldId: string | null;
+  priorityFieldId: string | null;
+  amountFieldId: string | null;
 }
 
 interface Question {
@@ -42,8 +45,11 @@ export function detectLevelFields(
 
   let overallStatusFieldId: string | null = null;
   let nameFieldId: string | null = null;
+  let emailFieldId: string | null = null;
   let descFieldId: string | null = null;
   let deptFieldId: string | null = null;
+  let priorityFieldId: string | null = null;
+  let amountFieldId: string | null = null;
   const evaluatorEmailsByLevel: Record<number, string> = {};
 
   // level → { status, approver, date }
@@ -61,6 +67,11 @@ export function detectLevelFields(
       lbl.includes('requester') || lbl.includes('submitted by') ||
       lbl.includes('applicant') || lbl.includes('employee name')
     )) { nameFieldId = id; continue; }
+
+    // ── email ──
+    if (!emailFieldId && (
+      q.type === 'control_email' || lbl.includes('email') || lbl.includes('e-mail')
+    )) { emailFieldId = id; continue; }
 
     // ── per-level evaluator email ──
     const levelEmailMatch = lbl.match(/^(?:l|level)\s*([1-4])\s+(?:evaluator|approver|reviewer)\s+email$/);
@@ -82,6 +93,17 @@ export function detectLevelFields(
       lbl.includes('justification') || lbl.includes('title') ||
       (lbl.includes('detail') && !lbl.includes('date'))
     )) { descFieldId = id; continue; }
+
+    // ── priority ──
+    if (!priorityFieldId && lbl.includes('priority'))
+    { priorityFieldId = id; continue; }
+
+    // ── amount ──
+    if (!amountFieldId && (
+      lbl.includes('amount') || lbl.includes('budget') ||
+      lbl.includes('cost') || lbl.includes('total') ||
+      lbl.includes('value') || lbl.includes('price')
+    )) { amountFieldId = id; continue; }
 
     // ── overall / final status (no level number) ──
     const hasLevel = /(?:^|\s)(?:l|level|stage)\s*[1-4](?:\s|$)/.test(lbl);
@@ -128,7 +150,10 @@ export function detectLevelFields(
     evaluatorEmailsByLevel,
     levelFields,
     nameFieldId,
+    emailFieldId,
     descFieldId,
     deptFieldId,
+    priorityFieldId,
+    amountFieldId,
   };
 }

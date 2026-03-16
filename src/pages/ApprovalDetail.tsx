@@ -102,7 +102,12 @@ export default function ApprovalDetail({ data }: Props) {
             {sub.approvalHistory.filter(a => a.status === 'pending').map((a, j) => (
               <div key={j} className="mt-3 pt-3 border-t border-navy-light/10 flex items-center gap-2 text-xs text-gray-400">
                 <User className="w-3 h-3" />
-                <span>Pending approval from: <span className="text-white font-medium">{a.approverName}</span></span>
+                <span>Pending approval from: <span className="text-white font-medium">
+                  {a.approverName}
+                  {a.approverEmail && !a.approverName.includes('@') && (
+                    <span className="text-gray-500 font-normal ml-1">({a.approverEmail})</span>
+                  )}
+                </span></span>
               </div>
             ))}
           </motion.div>

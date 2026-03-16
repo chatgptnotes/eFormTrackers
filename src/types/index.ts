@@ -37,11 +37,16 @@ export interface Submission {
   levelFieldMap?: { level: number; statusFieldId: string; approverFieldId: string | null; overallStatusFieldId: string | null }[];
   /** True when a native JotForm approval was detected but hidden fields weren't updated — user must confirm action */
   needsSync?: boolean;
+  /** Actual pending approver name from workflow API */
+  pendingApproverName?: string;
+  /** Actual pending approver email from workflow API */
+  pendingApproverEmail?: string;
 }
 
 export interface ApprovalEntry {
   level: ApprovalLevel;
   approverName: string;
+  approverEmail?: string;
   approverNameAr?: string;
   status: 'approved' | 'pending' | 'rejected';
   date?: string;
