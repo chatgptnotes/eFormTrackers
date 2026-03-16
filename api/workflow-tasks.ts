@@ -1,17 +1,26 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { fetchWorkflowInstance } from './workflow-instance';
 
-export type { WorkflowTask } from './workflow-instance';
-
+const JOTFORM_BASE = 'https://eforms.mediaoffice.ae/API';
 const API_KEY = process.env.JOTFORM_API_KEY;
 const TEAM_ID = process.env.JOTFORM_TEAM_ID || '260541093809054';
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
 
+export interface WorkflowTask {
+  name: string;
+  status: string;        // "COMPLETED", "ACTIVE", "PENDING"
+  assigneeName: string;
+  assigneeEmail: string;
+  level: number;          // sequential position (1, 2, 3, ...)
+  updatedAt: string;
+}
+
 /**
  * GET /api/workflow-tasks?submissionId=12345
  *
- * Returns normalized workflow tasks from JotForm's workflow instance API.
- * Uses the shared two-step chain in workflow-instance.ts.
+ * Two-step approach (v2):
+ * 1. Fetch submission with addWorkflowStatus=1 → get workflowInstanceID
+ * 2. Fetch /workflow/instance/{instanceId} → get full taskList
+ * 3. Return normalized tasks (filtering out initial Form submission step)
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
@@ -31,7 +40,67 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const tasks = await fetchWorkflowInstance(submissionId, API_KEY, TEAM_ID);
+    // Step 1: Fetch submission with workflow status to get workflowInstanceID
+    const submissionUrl = `${JOTFORM_BASE}/submission/${submissionId}?apiKey=${API_KEY}&teamID=${TEAM_ID}&addWorkflowStatus=1`;
+    const submissionRes = await fetch(submissionUrl);
+    if (!submissionRes.ok) {
+      throw new Error(`JotForm submission API error: ${submissionRes.status}`);
+    }
+    const submissionData = await submissionRes.json();
+    const content = submissionData?.content || submissionData;
+    const workflowInstanceID = content?.workflowInstanceID || content?.workflow_instance_id;
+
+    if (!workflowInstanceID) {
+      // No workflow instance — return empty tasks
+      return res.status(200).json({ tasks: [] });
+    }
+
+    // Step 2: Fetch workflow instance to get full taskList
+    const instanceUrl = `${JOTFORM_BASE}/workflow/instance/${workflowInstanceID}?apiKey=${API_KEY}&teamID=${TEAM_ID}`;
+    const instanceRes = await fetch(instanceUrl);
+    if (!instanceRes.ok) {
+      if (instanceRes.status === 404) {
+        return res.status(200).json({ tasks: [] });
+      }
+      throw new Error(`JotForm workflow instance API error: ${instanceRes.status}`);
+    }
+    const instanceData = await instanceRes.json();
+    const rawTaskList: Array<Record<string, unknown>> =
+      instanceData?.content?.taskList || instanceData?.taskList || [];
+
+    // Extract data from nested structure:
+    // - Step name: element.name or properties.taskName
+    // - Assignee name: properties.assigneeUser.name or properties.recipients[0].name
+    // - Assignee email: properties.assigneeEmail or properties.assigneeUser.email
+    const extractTask = (t: Record<string, unknown>) => {
+      const element = (t.element || {}) as Record<string, unknown>;
+      const props = (t.properties || {}) as Record<string, unknown>;
+      const assigneeUser = (props.assigneeUser || {}) as Record<string, unknown>;
+      const recipients = Array.isArray(props.recipients) ? props.recipients : [];
+      const firstRecipient = (recipients[0] || {}) as Record<string, unknown>;
+
+      const name = String(element.name || props.taskName || t.name || '');
+      const assigneeName = String(assigneeUser.name || firstRecipient.name || t.assignee_name || '');
+      const assigneeEmail = String(props.assigneeEmail || assigneeUser.email || firstRecipient.email || t.assignee || '');
+      const status = String(t.status || 'PENDING').toUpperCase();
+      const updatedAt = String(t.updated_at || '');
+
+      return { name, status, assigneeName, assigneeEmail, updatedAt };
+    };
+
+    // Filter out the initial "Form" submission step (COMPLETED with no assignee)
+    const filteredTasks = rawTaskList.filter((t) => {
+      const { name, status, assigneeEmail } = extractTask(t);
+      if (name === 'Form' && status === 'COMPLETED' && !assigneeEmail) return false;
+      return true;
+    });
+
+    // Normalize and number sequentially
+    const tasks: WorkflowTask[] = filteredTasks.map((t, index) => {
+      const { name, status, assigneeName, assigneeEmail, updatedAt } = extractTask(t);
+      return { name, status, assigneeName, assigneeEmail, level: index + 1, updatedAt };
+    });
+
     return res.status(200).json({ tasks });
   } catch (error) {
     console.error('workflow-tasks error:', error);

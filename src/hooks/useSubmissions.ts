@@ -510,59 +510,112 @@ export function useSubmissions() {
         const mapped: Submission[] = [];
         const newStepsByForm: Record<string, WorkflowStep[]> = {};
 
-        // First pass: map all submissions using form field data (structural mapping only)
-        // No approver guessing — workflow instance API will provide real data
-        for (const { form, rows, detectedFields, steps } of formResults) {
-          newStepsByForm[form.id] = steps;
-          for (const raw of rows) {
-            mapped.push(mapGenericSubmission(raw, form.id, form.title, detectedFields, steps, [], []));
+        // ── Dynamic approver detection: scan ALL submissions to build a live approver map ──
+        // For each form+level, find the most recent person who approved, and use their
+        // name for pending submissions at that level. Fully dynamic — no config table needed.
+        const dynamicApprovers: ApproverConfig[] = [];
+        for (const { form, rows, detectedFields } of formResults) {
+          // For each level field, scan all submissions to find who approved
+          for (const lf of detectedFields.levelFields) {
+            const approverCounts: Record<string, { name: string; email: string; count: number; latestDate: string }> = {};
+            for (const raw of rows) {
+              const answers = (raw.answers as Record<string, { answer: unknown }>) || {};
+              const statusVal = lf.statusFieldId ? extractText(answers[lf.statusFieldId]?.answer).toLowerCase() : '';
+              if (!statusVal.includes('approved') && !statusVal.includes('rejected')) continue;
+              const approverVal = lf.approverFieldId ? extractText(answers[lf.approverFieldId]?.answer) : '';
+              const parsed = parseApproverFromActionText(approverVal);
+              if (!parsed || !parsed.name) continue;
+              const key = parsed.email || parsed.name;
+              const date = String(raw.updated_at || raw.created_at || '');
+              if (!approverCounts[key]) {
+                approverCounts[key] = { name: parsed.name, email: parsed.email, count: 0, latestDate: date };
+              }
+              approverCounts[key].count++;
+              if (date > approverCounts[key].latestDate) {
+                approverCounts[key].latestDate = date;
+                approverCounts[key].name = parsed.name;
+                approverCounts[key].email = parsed.email;
+              }
+            }
+            // Pick the most recent approver (not most common — reflects latest assignment)
+            const best = Object.values(approverCounts).sort((a, b) =>
+              b.latestDate.localeCompare(a.latestDate) || b.count - a.count
+            )[0];
+            if (best) {
+              dynamicApprovers.push({
+                formId: form.id,
+                level: lf.level,
+                approverName: best.name,
+                approverEmail: best.email,
+              });
+            }
           }
         }
 
-        // ── Workflow enrichment: fetch REAL workflow tasks for ALL submissions ──
-        // This is the single source of truth — overrides everything from the first pass.
-        // Uses concurrency-limited batching to avoid JotForm rate limits.
-        const BATCH_SIZE = 10;
-        const BATCH_DELAY_MS = 200;
+        // Also merge any manually configured approvers (admin overrides)
+        const manualConfigs = await fetchApproverConfigs();
+        const mergedConfigs = [...dynamicApprovers];
+        for (const mc of manualConfigs) {
+          // Manual config overrides dynamic detection
+          const idx = mergedConfigs.findIndex(d => d.formId === mc.formId && d.level === mc.level);
+          if (idx >= 0) mergedConfigs[idx] = mc;
+          else mergedConfigs.push(mc);
+        }
 
-        for (let batchStart = 0; batchStart < mapped.length; batchStart += BATCH_SIZE) {
-          const batch = mapped.slice(batchStart, batchStart + BATCH_SIZE);
+        // First pass: map all submissions with dynamic approver data
+        for (const { form, rows, detectedFields, steps } of formResults) {
+          newStepsByForm[form.id] = steps;
+          for (const raw of rows) {
+            mapped.push(mapGenericSubmission(raw, form.id, form.title, detectedFields, steps, [], mergedConfigs));
+          }
+        }
+
+        // Second pass: batch-fetch REAL workflow tasks for pending submissions (up to 50)
+        const pendingSubs = mapped.filter(s => typeof s.currentApprovalLevel === 'number').slice(0, 50);
+        if (pendingSubs.length > 0) {
           const taskResults = await Promise.allSettled(
-            batch.map(sub => fetchWorkflowTasks(sub.id))
+            pendingSubs.map(sub => fetchWorkflowTasks(sub.id))
           );
-
-          for (let i = 0; i < batch.length; i++) {
+          for (let i = 0; i < pendingSubs.length; i++) {
             const result = taskResults[i];
             if (result.status !== 'fulfilled' || result.value.length === 0) continue;
             const tasks = result.value;
-            const sub = batch[i];
+            const sub = pendingSubs[i];
 
-            const allCompleted = tasks.every(t => t.status === 'COMPLETED');
+            // Find the currently ACTIVE task
             const activeTask = tasks.find(t => t.status === 'ACTIVE');
-
-            // Rebuild approval history from real workflow tasks
-            const newHistory: ApprovalEntry[] = tasks.map(task => ({
-              level: task.level as ApprovalLevel,
-              approverName: task.assigneeName || task.name,
-              approverEmail: task.assigneeEmail || '',
-              status: task.status === 'COMPLETED' ? 'approved' as const : 'pending' as const,
-              date: task.updatedAt || undefined,
-            }));
-            if (newHistory.length > 0) {
-              sub.approvalHistory = newHistory;
-            }
+            const allCompleted = tasks.length > 0 && tasks.every(t => t.status === 'COMPLETED');
 
             if (allCompleted) {
+              // All workflow tasks are done — mark submission as completed
               sub.currentApprovalLevel = 'completed';
               sub.pendingApproverName = undefined;
               sub.pendingApproverEmail = undefined;
               sub.jotformStatus = 'Completed';
+
+              // Rebuild approval history from workflow tasks
+              const newHistory: ApprovalEntry[] = [];
+              for (const task of tasks) {
+                newHistory.push({
+                  level: task.level as ApprovalLevel,
+                  approverName: task.assigneeName || task.name,
+                  approverEmail: task.assigneeEmail || '',
+                  status: 'approved',
+                  date: task.updatedAt || undefined,
+                });
+              }
+              if (newHistory.length > 0) {
+                sub.approvalHistory = newHistory;
+              }
             } else if (activeTask) {
+              // Override the current level
               sub.currentApprovalLevel = activeTask.level as ApprovalLevel;
+
+              // Override pending approver
               sub.pendingApproverName = activeTask.assigneeName || undefined;
               sub.pendingApproverEmail = activeTask.assigneeEmail || undefined;
 
-              // Detect action type from step name
+              // Override action type based on step name
               const stepName = activeTask.name.toLowerCase();
               if (stepName.includes('task') || stepName.includes('review task')) {
                 sub.actionType = 'task';
@@ -572,13 +625,25 @@ export function useSubmissions() {
                 sub.actionType = 'approval';
               }
 
+              // Rebuild approval history from workflow tasks
+              const newHistory: ApprovalEntry[] = [];
+              for (const task of tasks) {
+                const isCompleted = task.status === 'COMPLETED';
+                newHistory.push({
+                  level: task.level as ApprovalLevel,
+                  approverName: task.assigneeName || task.name,
+                  approverEmail: task.assigneeEmail || '',
+                  status: isCompleted ? 'approved' : 'pending',
+                  date: task.updatedAt || undefined,
+                });
+              }
+              if (newHistory.length > 0) {
+                sub.approvalHistory = newHistory;
+              }
+
+              // Update jotformStatus based on workflow state
               sub.jotformStatus = `${activeTask.name} Pending`;
             }
-          }
-
-          // Delay between batches to avoid rate limits (skip delay after last batch)
-          if (batchStart + BATCH_SIZE < mapped.length) {
-            await new Promise(r => setTimeout(r, BATCH_DELAY_MS));
           }
         }
         // Batch state updates together — prevents double render / flicker

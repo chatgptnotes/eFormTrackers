@@ -1,7 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import { detectLevelFields, type DetectedLevelFields } from './detect-fields';
-import { fetchWorkflowInstance, deriveWorkflowState } from './workflow-instance';
 
 const JOTFORM_BASE = 'https://eforms.mediaoffice.ae/API';
 const API_KEY = process.env.JOTFORM_API_KEY;
@@ -166,43 +165,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (val) allAnswers[qid] = val;
     }
 
-    // Fetch REAL workflow state from workflow instance API (two-step chain)
+    // Fetch workflow tasks to get real pending approver info
     let pendingApproverName = '';
     let pendingApproverEmail = '';
     let workflowTasks: unknown[] = [];
     try {
-      const tasks = await fetchWorkflowInstance(submissionId, API_KEY!, TEAM_ID);
-      workflowTasks = tasks;
-      const wfState = deriveWorkflowState(tasks);
-      if (wfState) {
-        // Workflow instance API is authoritative — override form-field-based status
-        status = wfState.status === 'completed' ? 'completed' : wfState.status === 'pending' ? 'pending' : status;
-        if (wfState.status === 'completed') {
-          currentLevel = maxLevel;
-        } else if (typeof wfState.currentLevel === 'number') {
-          currentLevel = wfState.currentLevel;
+      const wfRes = await fetch(
+        `${JOTFORM_BASE}/workflow/submission/${submissionId}/tasks?apiKey=${API_KEY}&teamID=${TEAM_ID}`
+      );
+      if (wfRes.ok) {
+        const wfData = await wfRes.json();
+        const rawTasks = Array.isArray(wfData.content) ? wfData.content : [];
+        workflowTasks = rawTasks;
+        // Find the pending task to get the current approver
+        const pendingTask = rawTasks.find(
+          (t: Record<string, unknown>) => String(t.status || '').toLowerCase() === 'pending'
+        );
+        if (pendingTask) {
+          pendingApproverName = String(
+            (pendingTask as Record<string, unknown>).assignee_name ||
+            (pendingTask as Record<string, unknown>).assigneeName ||
+            (pendingTask as Record<string, unknown>).name || ''
+          );
+          pendingApproverEmail = String(
+            (pendingTask as Record<string, unknown>).assignee_email ||
+            (pendingTask as Record<string, unknown>).assigneeEmail ||
+            (pendingTask as Record<string, unknown>).email || ''
+          );
         }
-        pendingApproverName = wfState.pendingApproverName;
-        pendingApproverEmail = wfState.pendingApproverEmail;
       }
     } catch (wfErr) {
-      console.warn('Could not fetch workflow instance:', wfErr);
+      console.warn('Could not fetch workflow tasks:', wfErr);
     }
 
-    // Build level history — merge form fields with workflow task data
-    const levelHistory = levels.length > 0
-      ? levels.map(l => ({
-          level: l.id,
-          status: l.status || 'pending',
-          approver: l.approver || pendingApproverName || '',
-          date: l.date || '',
-        }))
-      : (workflowTasks as Array<{ level: number; status: string; assigneeName: string; updatedAt: string }>).map(t => ({
-          level: t.level,
-          status: t.status === 'COMPLETED' ? 'approved' : 'pending',
-          approver: t.assigneeName || '',
-          date: t.updatedAt || '',
-        }));
+    // Build level history
+    const levelHistory = levels.map(l => ({
+      level: l.id,
+      status: l.status || 'pending',
+      approver: l.approver || pendingApproverName || '',
+      date: l.date || '',
+    }));
 
     // Determine generic status label
     const genericStatus = status === 'completed' ? 'Completed' :
