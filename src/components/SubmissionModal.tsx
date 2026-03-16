@@ -193,13 +193,6 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
     ];
     const approverNote = noteParts.join(' | ');
 
-    const updates: Record<string, string> = {
-      [fields.statusField]: actionLabel,
-    };
-    // Only set the approver note if this form has a separate approver field
-    if (fields.approverField && fields.approverField !== fields.statusField) {
-      updates[fields.approverField] = approverNote;
-    }
     // Determine if this is the last approval level for this form
     const maxLevel = submission.levelFieldMap
       ? Math.max(...submission.levelFieldMap.map(m => m.level))
@@ -208,18 +201,47 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
         : 4;
     const isLastLevel = lvl >= maxLevel;
 
-    // Only update the overall status field if this form has one
-    if (fields.overallStatusField) {
-      if (action === 'reject') updates[fields.overallStatusField] = 'Rejected';
-      else if (isLastLevel) updates[fields.overallStatusField] = 'Completed';
-      else updates[fields.overallStatusField] = 'In Progress';
+    // Use workflow action API to approve/reject directly in JotForm's workflow engine
+    let result: { success: boolean; message: string };
+    try {
+      const wfAction = action === 'approve' ? 'approve' : 'reject';
+      const res = await fetch('/api/workflow-action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          submissionId: submission.id,
+          action: wfAction,
+          comment: comment.trim() || approverNote,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        result = { success: true, message: `${actionLabel} successfully via workflow engine` };
+      } else {
+        result = { success: false, message: data.error || `Workflow action failed: ${res.status}` };
+      }
+    } catch (err) {
+      result = { success: false, message: `Workflow action error: ${(err as Error).message}` };
     }
 
-    const result = await jotformApi.updateSubmission(submission.id, updates, {
-      _action: action,
-      _level: String(lvl),
-      _signatureUrl: signatureUrl,
-    });
+    // Also update form fields as backup (for forms with status fields)
+    try {
+      const updates: Record<string, string> = { [fields.statusField]: actionLabel };
+      if (fields.approverField && fields.approverField !== fields.statusField) {
+        updates[fields.approverField] = approverNote;
+      }
+      if (fields.overallStatusField) {
+        if (action === 'reject') updates[fields.overallStatusField] = 'Rejected';
+        else if (isLastLevel) updates[fields.overallStatusField] = 'Completed';
+        else updates[fields.overallStatusField] = 'In Progress';
+      }
+      await jotformApi.updateSubmission(submission.id, updates, {
+        _action: action,
+        _level: String(lvl),
+        _signatureUrl: signatureUrl,
+      });
+    } catch {} // form field update is best-effort backup
+
     setPushResult(result);
     setApproving(false);
     setRejecting(false);

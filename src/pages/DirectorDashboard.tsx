@@ -302,30 +302,17 @@ export default function DirectorDashboard({ data }: Props) {
 
   const pushToJotForm = async (sub: Submission, decision: 'approved' | 'rejected', reason?: string) => {
     if (typeof sub.currentApprovalLevel !== 'number') return;
-    const lvl = sub.currentApprovalLevel;
-    const lf = sub.levelFieldMap?.find(m => m.level === lvl);
-    if (!lf) throw new Error(`No field map for level ${lvl}. Please open the detail modal to action this submission.`);
-    const maxLevel = sub.levelFieldMap
-      ? Math.max(...sub.levelFieldMap.map(m => m.level))
-      : sub.approvalHistory.length > 0
-        ? Math.max(...sub.approvalHistory.map(h => h.level))
-        : 1;
-    const today = new Date();
-    const dateStr = `${today.getMonth() + 1}-${String(today.getDate()).padStart(2, '0')}-${today.getFullYear()}`;
-    const params = new URLSearchParams();
-    params.set(`submission[${lf.statusFieldId}]`, decision === 'approved' ? 'Approved' : 'Rejected');
-    if (lf.approverFieldId) {
-      params.set(`submission[${lf.approverFieldId}]`, reason ? `${currentUser.name}: ${reason}` : currentUser.name);
-    }
-    if (lf.overallStatusFieldId) {
-      params.set(`submission[${lf.overallStatusFieldId}]`, decision === 'rejected' ? 'Rejected' : lvl >= maxLevel ? 'Completed' : 'In Progress');
-    }
-    const res = await fetch(`/api/jotform-update?submissionId=${sub.id}`, {
+    // Use the workflow action API to approve/reject directly in JotForm's workflow engine
+    const action = decision === 'approved' ? 'approve' : 'reject';
+    const res = await fetch('/api/workflow-action', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: params.toString(),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ submissionId: sub.id, action, comment: reason || '' }),
     });
-    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `Workflow action failed: ${res.status}`);
+    }
   };
 
   const handleReject = async (sub: Submission) => {
