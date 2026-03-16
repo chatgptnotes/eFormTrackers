@@ -102,18 +102,21 @@ function PendingWithCell({ submission, onSyncClick }: { submission: Submission; 
     return <span className="text-gray-600 text-xs">--</span>;
   }
 
+  const isGenericFallback = /^Level \d+ Approver$/.test(pendingEntry.approverName) || pendingEntry.approverName === 'Approver';
   const isEmail = pendingEntry.approverName.includes('@');
   const displayEmail = pendingEntry.approverEmail || (isEmail ? pendingEntry.approverName : '');
-  const displayName = isEmail ? pendingEntry.approverName.split('@')[0] : pendingEntry.approverName;
+  const displayName = isGenericFallback
+    ? 'Pending Review'
+    : isEmail ? pendingEntry.approverName.split('@')[0] : pendingEntry.approverName;
   return (
     <div className="flex items-center gap-2">
-      <div className="w-7 h-7 rounded-full bg-purple-500/20 flex items-center justify-center flex-shrink-0 shrink-0">
+      <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 shrink-0 ${isGenericFallback ? 'bg-amber-500/20' : 'bg-purple-500/20'}`}>
         {isEmail && !pendingEntry.approverEmail
           ? <span className="text-purple-400 text-[10px] font-bold">@</span>
-          : <User className="w-3.5 h-3.5 text-purple-400" />}
+          : <User className={`w-3.5 h-3.5 ${isGenericFallback ? 'text-amber-400' : 'text-purple-400'}`} />}
       </div>
       <div className="min-w-0">
-        <p className="text-sm text-white leading-tight truncate max-w-[160px]" title={pendingEntry.approverName}>
+        <p className={`text-sm leading-tight truncate max-w-[160px] ${isGenericFallback ? 'text-amber-400 italic' : 'text-white'}`} title={pendingEntry.approverName}>
           {displayName}
         </p>
         {displayEmail && !displayName.includes('@') && (

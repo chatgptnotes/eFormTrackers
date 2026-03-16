@@ -132,6 +132,19 @@ function extractText(answer: unknown): string {
   return '';
 }
 
+// ─── Parse approver name/email from JotFlow action text ─────────────────────
+// Action text format: "Action: Approved | By: Murali BK (bk@bettroi.com) | Via: JotFlow | Date: ..."
+function parseApproverFromActionText(text: string): { name: string; email: string } | null {
+  if (!text) return null;
+  // Pattern: "By: Name (email@domain.com)"
+  const match = text.match(/By:\s*([^(|]+?)\s*\(([^)]+@[^)]+)\)/);
+  if (match) return { name: match[1].trim(), email: match[2].trim() };
+  // Pattern: "By: Name |" (no email in parens)
+  const nameOnly = text.match(/By:\s*([^(|]+?)(?:\s*\||$)/);
+  if (nameOnly) return { name: nameOnly[1].trim(), email: '' };
+  return null;
+}
+
 // ─── Map any JotForm submission using heuristically-detected fields ───────────
 function mapGenericSubmission(
   raw: Record<string, unknown>,
@@ -171,10 +184,16 @@ function mapGenericSubmission(
   if (fields.levelFields.length > 0) {
     for (const lf of fields.levelFields) {
       const statusVal = get(lf.statusFieldId).toLowerCase();
-      // Priority: workflow task approver → form field → evaluator email → step assignee → fallback
+      // Read the raw approver field value
+      const rawApproverField = get(lf.approverFieldId);
+      // Try to parse clean name/email from JotFlow action text (e.g. "Action: Approved | By: Name (email)...")
+      const parsed = parseApproverFromActionText(rawApproverField);
+      // Priority: parsed action text → workflow task → evaluator email → step assignee → fallback
       const wfApprover = getWorkflowTaskApprover(workflowTasks, lf.level);
-      const approverName = wfApprover?.name || get(lf.approverFieldId) || getEvaluatorEmail(lf.level) || getStepAssignee(lf.level) || `Level ${lf.level} Approver`;
-      const approverEmail = wfApprover?.email || '';
+      const approverName = parsed?.name || wfApprover?.name || getEvaluatorEmail(lf.level) || getStepAssignee(lf.level)
+        || (rawApproverField && !rawApproverField.includes('Action:') ? rawApproverField : '')
+        || `Level ${lf.level} Approver`;
+      const approverEmail = parsed?.email || wfApprover?.email || '';
       const date = get(lf.dateFieldId) || undefined;
       if (statusVal === 'approved') {
         history.push({ level: lf.level as ApprovalLevel, approverName, approverEmail, status: 'approved', date });
@@ -306,12 +325,16 @@ function mapSupabaseRow(row: Record<string, unknown>): Submission {
   // Fallback: use the pre-mapped fields from Supabase
   const mapped = (raw._mapped as Record<string, unknown>) || {};
   const levels = (mapped.levels as Array<{ id: number; status: string; approver: string; date?: string }>) || [];
-  const history: ApprovalEntry[] = levels.map(l => ({
-    level: l.id as ApprovalLevel,
-    approverName: l.approver || `Level ${l.id} Approver`,
-    status: (l.status?.toLowerCase() === 'approved' ? 'approved' : l.status?.toLowerCase() === 'rejected' ? 'rejected' : 'pending') as 'approved' | 'rejected' | 'pending',
-    date: l.date || undefined,
-  }));
+  const history: ApprovalEntry[] = levels.map(l => {
+    const parsed = parseApproverFromActionText(l.approver);
+    return {
+      level: l.id as ApprovalLevel,
+      approverName: parsed?.name || (l.approver && !l.approver.includes('Action:') ? l.approver : '') || `Level ${l.id} Approver`,
+      approverEmail: parsed?.email || '',
+      status: (l.status?.toLowerCase() === 'approved' ? 'approved' : l.status?.toLowerCase() === 'rejected' ? 'rejected' : 'pending') as 'approved' | 'rejected' | 'pending',
+      date: l.date || undefined,
+    };
+  });
 
   const totalDays = Number(row.total_days) || 0;
   const status = String(row.status || 'pending');

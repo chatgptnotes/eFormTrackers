@@ -259,9 +259,12 @@ export default function WorkflowTracker({ data }: Props) {
                       }
                       const name = entry?.approverName || '-';
                       const email = entry?.approverEmail;
+                      const isGeneric = /^Level \d+ Approver$/.test(name) || name === 'Approver';
                       return (
                         <div>
-                          <p className="text-sm text-white">{name}</p>
+                          <p className={`text-sm ${isGeneric ? 'text-amber-400 italic' : 'text-white'}`}>
+                            {isGeneric ? 'Pending Review' : name}
+                          </p>
                           {email && !name.includes('@') && (
                             <p className="text-xs text-gray-500 truncate max-w-[150px]" title={email}>{email}</p>
                           )}

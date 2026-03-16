@@ -661,12 +661,22 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                       )}
                     </div>
                     <div className="pb-6">
-                      <p className="text-sm font-medium text-white">
-                        Level {entry.level} — {entry.approverName}
-                        {entry.approverEmail && !entry.approverName.includes('@') && (
-                          <span className="text-xs text-gray-400 font-normal ml-1">({entry.approverEmail})</span>
-                        )}
-                      </p>
+                      {(() => {
+                        const isGeneric = /^Level \d+ Approver$/.test(entry.approverName) || entry.approverName === 'Approver';
+                        return (
+                          <p className="text-sm font-medium text-white">
+                            Level {entry.level} — {isGeneric && entry.status === 'pending'
+                              ? <span className="text-amber-400 italic font-normal">Pending Review</span>
+                              : <>
+                                  {entry.approverName}
+                                  {entry.approverEmail && !entry.approverName.includes('@') && (
+                                    <span className="text-xs text-gray-400 font-normal ml-1">({entry.approverEmail})</span>
+                                  )}
+                                </>
+                            }
+                          </p>
+                        );
+                      })()}
                       <p className="text-xs text-gray-500 mt-0.5">
                         {entry.status === 'pending' ? 'Pending approval' : `${entry.status} on ${entry.date}`}
                       </p>
