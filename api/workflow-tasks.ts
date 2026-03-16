@@ -17,7 +17,7 @@ export interface WorkflowTask {
 /**
  * GET /api/workflow-tasks?submissionId=12345
  *
- * Two-step approach:
+ * Two-step approach (v2):
  * 1. Fetch submission with addWorkflowStatus=1 → get workflowInstanceID
  * 2. Fetch /workflow/instance/{instanceId} → get full taskList
  * 3. Return normalized tasks (filtering out initial Form submission step)
