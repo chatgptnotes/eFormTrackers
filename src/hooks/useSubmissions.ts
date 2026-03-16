@@ -265,32 +265,8 @@ function mapGenericSubmission(
   if (overallFinal.includes('complet')) currentLevel = 'completed';
   else if (overallFinal.includes('reject')) currentLevel = 'rejected';
 
-  // Detect native JotForm approval: ALL hidden fields blank but submission was acted upon.
-  // If ANY level field has been filled (e.g. L1 = "Approved"), it means someone already
-  // acted through JotFlow — no sync needed even if later levels are still blank.
-  let needsSync = false;
-  if (typeof currentLevel === 'number') {
-    const allLevelFieldsEmpty = fields.levelFields.length > 0
-      ? fields.levelFields.every(lf => !get(lf.statusFieldId))
-      : !get(fields.overallStatusFieldId);
-
-    if (allLevelFieldsEmpty) {
-      const currentEntry = history.find(h => h.level === currentLevel && h.status === 'pending');
-      if (currentEntry) {
-        const rawCreated = String(raw.created_at || '');
-        const rawUpdated = String(raw.updated_at || '');
-        const isViewed = String((raw as Record<string, unknown>).new) === '0';
-
-        if (rawCreated && rawUpdated && rawCreated !== rawUpdated && isViewed) {
-          const createdMs = new Date(rawCreated.replace(' ', 'T') + 'Z').getTime();
-          const updatedMs = new Date(rawUpdated.replace(' ', 'T') + 'Z').getTime();
-          if ((updatedMs - createdMs) > 60000) {
-            needsSync = true;
-          }
-        }
-      }
-    }
-  }
+  // needsSync is no longer needed — webhooks + real-time subscriptions handle updates automatically
+  const needsSync = false;
 
   const createdAt = (raw.created_at as string) || '';
   const submissionDate = createdAt ? parseUTC(createdAt) : new Date();
