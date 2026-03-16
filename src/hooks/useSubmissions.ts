@@ -67,6 +67,40 @@ function getWorkflowTaskApprover(tasks: WorkflowTaskInfo[], level: number): { na
   return null;
 }
 
+// ─── Approver config cache (from Supabase jf_approver_config table) ────────
+interface ApproverConfig { formId: string; level: number; approverName: string; approverEmail: string; }
+let approverConfigCache: { configs: ApproverConfig[]; at: number } | null = null;
+const APPROVER_CONFIG_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
+
+async function fetchApproverConfigs(): Promise<ApproverConfig[]> {
+  if (approverConfigCache && Date.now() - approverConfigCache.at < APPROVER_CONFIG_CACHE_TTL) {
+    return approverConfigCache.configs;
+  }
+  try {
+    const res = await fetch('/api/approver-config');
+    if (!res.ok) return [];
+    const data = await res.json();
+    const configs: ApproverConfig[] = (data.configs || []).map((c: Record<string, unknown>) => ({
+      formId: String(c.form_id || ''),
+      level: Number(c.level || 0),
+      approverName: String(c.approver_name || ''),
+      approverEmail: String(c.approver_email || ''),
+    }));
+    approverConfigCache = { configs, at: Date.now() };
+    return configs;
+  } catch {
+    return [];
+  }
+}
+
+function getConfiguredApprover(configs: ApproverConfig[], formId: string, level: number): { name: string; email: string } | null {
+  const config = configs.find(c => c.formId === formId && c.level === level);
+  if (config && (config.approverName || config.approverEmail)) {
+    return { name: config.approverName, email: config.approverEmail };
+  }
+  return null;
+}
+
 // ─── Shared utilities ────────────────────────────────────────────────────────
 /** Parse JotForm "YYYY-MM-DD HH:MM:SS" (UTC) or ISO 8601 string into a Date */
 function parseUTC(s: string): Date {
@@ -104,6 +138,8 @@ function clearAllJotFlowCaches() {
   });
   // Clear in-process workflow step cache
   Object.keys(workflowCache).forEach(k => delete workflowCache[k]);
+  // Clear approver config cache
+  approverConfigCache = null;
 }
 
 function getActionType(steps: WorkflowStep[], currentLevel: number | string): WorkflowActionType {
@@ -153,6 +189,7 @@ function mapGenericSubmission(
   fields: DetectedFields,
   workflowSteps: WorkflowStep[] = [],
   workflowTasks: WorkflowTaskInfo[] = [],
+  approverConfigs: ApproverConfig[] = [],
 ): Submission {
   const answers = (raw.answers as Record<string, { answer: unknown; text?: string }>) || {};
   const get = (id: string | null) => id ? extractText(answers[id]?.answer) : '';
@@ -188,12 +225,13 @@ function mapGenericSubmission(
       const rawApproverField = get(lf.approverFieldId);
       // Try to parse clean name/email from JotFlow action text (e.g. "Action: Approved | By: Name (email)...")
       const parsed = parseApproverFromActionText(rawApproverField);
-      // Priority: parsed action text → workflow task → evaluator email → step assignee → fallback
+      // Priority: parsed action text → configured approver → workflow task → evaluator email → step assignee → fallback
       const wfApprover = getWorkflowTaskApprover(workflowTasks, lf.level);
-      const approverName = parsed?.name || wfApprover?.name || getEvaluatorEmail(lf.level) || getStepAssignee(lf.level)
+      const configApprover = getConfiguredApprover(approverConfigs, formId, lf.level);
+      const approverName = parsed?.name || configApprover?.name || wfApprover?.name || getEvaluatorEmail(lf.level) || getStepAssignee(lf.level)
         || (rawApproverField && !rawApproverField.includes('Action:') ? rawApproverField : '')
         || `Level ${lf.level} Approver`;
-      const approverEmail = parsed?.email || wfApprover?.email || '';
+      const approverEmail = parsed?.email || configApprover?.email || wfApprover?.email || '';
       const date = get(lf.dateFieldId) || undefined;
       if (statusVal === 'approved') {
         history.push({ level: lf.level as ApprovalLevel, approverName, approverEmail, status: 'approved', date });
@@ -217,8 +255,9 @@ function mapGenericSubmission(
     else currentLevel = 1 as ApprovalLevel;
 
     const wfApprover = getWorkflowTaskApprover(workflowTasks, 1);
+    const configApprover = getConfiguredApprover(approverConfigs, formId, 1);
     const histStatus = typeof currentLevel === 'number' ? 'pending' : currentLevel === 'completed' ? 'approved' : 'rejected';
-    history.push({ level: 1 as ApprovalLevel, approverName: wfApprover?.name || evaluatorEmail || getStepAssignee(1) || 'Approver', approverEmail: wfApprover?.email || '', status: histStatus });
+    history.push({ level: 1 as ApprovalLevel, approverName: configApprover?.name || wfApprover?.name || evaluatorEmail || getStepAssignee(1) || 'Approver', approverEmail: configApprover?.email || wfApprover?.email || '', status: histStatus });
   }
 
   // Overall status field can override level computation
@@ -475,12 +514,13 @@ export function useSubmissions() {
       if (totalRows > 0) {
         const mapped: Submission[] = [];
         const newStepsByForm: Record<string, WorkflowStep[]> = {};
+        const approverConfigs = await fetchApproverConfigs();
 
         // First pass: map all submissions without workflow tasks
         for (const { form, rows, detectedFields, steps } of formResults) {
           newStepsByForm[form.id] = steps;
           for (const raw of rows) {
-            mapped.push(mapGenericSubmission(raw, form.id, form.title, detectedFields, steps));
+            mapped.push(mapGenericSubmission(raw, form.id, form.title, detectedFields, steps, [], approverConfigs));
           }
         }
 

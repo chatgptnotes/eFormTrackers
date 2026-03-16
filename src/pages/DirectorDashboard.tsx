@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   CheckCircle2, XCircle, MessageSquare, Clock, AlertTriangle, User,
   Search, ArrowUpDown, ChevronDown, ChevronUp, FileText, Loader2,
-  TrendingUp, Shield, ExternalLink, ClipboardList, FileEdit, Lock,
+  TrendingUp, Shield, ExternalLink, ClipboardList, FileEdit, Lock, Users,
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useSubmissions } from '../hooks/useSubmissions';
@@ -13,6 +13,7 @@ import SubmissionModal from '../components/SubmissionModal';
 import { getUserConfig } from '../config/currentUser';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import ApproverConfigModal from '../components/ApproverConfigModal';
 
 interface Props {
   data: ReturnType<typeof useSubmissions>;
@@ -171,6 +172,7 @@ export default function DirectorDashboard({ data }: Props) {
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
   const [syncSubmission, setSyncSubmission] = useState<Submission | null>(null);
   const [syncLoading, setSyncLoading] = useState(false);
+  const [showApproverConfig, setShowApproverConfig] = useState(false);
 
   // When opening the detail modal, clear any inline reject state so the
   // reject input for a different row doesn't stay open in the background.
@@ -454,8 +456,18 @@ export default function DirectorDashboard({ data }: Props) {
               <p className="text-xs text-gray-500 mt-0.5">Filter: {activeSidebarCategory.label}</p>
             )}
           </div>
-          <div className="w-12 h-12 rounded-full bg-gold/20 flex items-center justify-center">
-            <User className="w-6 h-6 text-gold" />
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowApproverConfig(true)}
+              className="px-3 py-2 rounded-lg bg-navy-light/20 border border-navy-light/30 hover:bg-navy-light/40 text-gray-400 hover:text-gold text-xs font-medium flex items-center gap-1.5 transition-colors"
+              title="Configure Approvers"
+            >
+              <Users className="w-4 h-4" />
+              <span className="hidden sm:inline">Approvers</span>
+            </button>
+            <div className="w-12 h-12 rounded-full bg-gold/20 flex items-center justify-center">
+              <User className="w-6 h-6 text-gold" />
+            </div>
           </div>
         </div>
       </motion.div>
@@ -850,6 +862,17 @@ export default function DirectorDashboard({ data }: Props) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {showApproverConfig && (
+        <ApproverConfigModal
+          activeForms={data.activeForms.map(f => ({ id: f.id, title: f.title }))}
+          onClose={() => setShowApproverConfig(false)}
+          onSaved={() => {
+            // Clear approver config cache and refresh
+            setTimeout(() => data.refresh({ force: true }), 500);
+          }}
+        />
+      )}
     </div>
   );
 }

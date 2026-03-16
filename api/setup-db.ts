@@ -142,6 +142,65 @@ DO $$ BEGIN
       TO anon, authenticated USING (true) WITH CHECK (true);
   END IF;
 END $$;
+
+-- 11. Approver configuration per form per level
+CREATE TABLE IF NOT EXISTS public.jf_approver_config (
+  id              uuid         PRIMARY KEY DEFAULT gen_random_uuid(),
+  form_id         TEXT         NOT NULL,
+  level           SMALLINT     NOT NULL,
+  approver_name   TEXT         NOT NULL DEFAULT '',
+  approver_email  TEXT         NOT NULL DEFAULT '',
+  created_at      TIMESTAMPTZ  DEFAULT now(),
+  updated_at      TIMESTAMPTZ  DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_jf_approver_config_form_level
+  ON public.jf_approver_config (form_id, level);
+
+ALTER TABLE public.jf_approver_config ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'jf_approver_config' AND policyname = 'allow_select_all'
+  ) THEN
+    CREATE POLICY "allow_select_all"
+      ON public.jf_approver_config FOR SELECT
+      TO anon, authenticated USING (true);
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'jf_approver_config' AND policyname = 'allow_insert_all'
+  ) THEN
+    CREATE POLICY "allow_insert_all"
+      ON public.jf_approver_config FOR INSERT
+      TO anon, authenticated WITH CHECK (true);
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'jf_approver_config' AND policyname = 'allow_update_all'
+  ) THEN
+    CREATE POLICY "allow_update_all"
+      ON public.jf_approver_config FOR UPDATE
+      TO anon, authenticated USING (true) WITH CHECK (true);
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'jf_approver_config' AND policyname = 'allow_delete_all'
+  ) THEN
+    CREATE POLICY "allow_delete_all"
+      ON public.jf_approver_config FOR DELETE
+      TO anon, authenticated USING (true);
+  END IF;
+END $$;
 `.trim();
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
