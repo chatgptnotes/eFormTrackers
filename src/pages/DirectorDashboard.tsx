@@ -1,9 +1,10 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   CheckCircle2, XCircle, MessageSquare, Clock, AlertTriangle, User,
   Search, ArrowUpDown, ChevronDown, ChevronUp, FileText, Loader2,
   TrendingUp, Shield, ExternalLink, ClipboardList, FileEdit, Lock,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useSubmissions } from '../hooks/useSubmissions';
@@ -205,6 +206,8 @@ export default function DirectorDashboard({ data }: Props) {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [taskUrlLoading, setTaskUrlLoading] = useState<string | null>(null);
   const [formUrlLoading, setFormUrlLoading] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const rowsPerPage = 10;
   const dismissedIds = useMemo(() => new Set([...approvedIds, ...rejectedIds]), [approvedIds, rejectedIds]);
 
   const openTaskUrl = async (sub: Submission) => {
@@ -288,6 +291,19 @@ export default function DirectorDashboard({ data }: Props) {
 
     return subs;
   }, [data.allSubmissions, activeSidebarCategory, activeWorkflowId, search, sortKey, sortDir, dismissedIds, currentUser]);
+
+  // Reset to page 1 when filters/search/sort change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [directorSubmissions.length, search, sortKey, sortDir]);
+
+  // Pagination
+  const totalPages = Math.ceil(directorSubmissions.length / rowsPerPage);
+  const safeCurrentPage = Math.min(currentPage, totalPages || 1);
+  const paginatedSubmissions = directorSubmissions.slice(
+    (safeCurrentPage - 1) * rowsPerPage,
+    safeCurrentPage * rowsPerPage
+  );
 
   // Stats
   const syncNeededCount = directorSubmissions.filter(s => s.needsSync).length;
@@ -547,7 +563,7 @@ export default function DirectorDashboard({ data }: Props) {
                     </td>
                   </tr>
                 )}
-                {directorSubmissions.map((sub) => (
+                {paginatedSubmissions.map((sub) => (
                   <motion.tr
                     key={sub.id}
                     layout
@@ -771,15 +787,62 @@ export default function DirectorDashboard({ data }: Props) {
           </table>
         </div>
 
-        {/* Footer */}
+        {/* Footer with Pagination */}
         <div className="px-4 py-3 border-t border-navy-light/20 flex items-center justify-between">
           <p className="text-xs text-gray-500">
-            Showing {directorSubmissions.length} pending approval{directorSubmissions.length !== 1 ? 's' : ''}
+            {directorSubmissions.length === 0
+              ? 'No submissions'
+              : `Showing ${(safeCurrentPage - 1) * rowsPerPage + 1}–${Math.min(safeCurrentPage * rowsPerPage, directorSubmissions.length)} of ${directorSubmissions.length} submissions`}
           </p>
-          <div className="flex items-center gap-2 text-xs text-gray-500">
-            <TrendingUp className="w-3.5 h-3.5" />
-            Sort: {sortKey === 'daysAtCurrentLevel' ? 'Aging' : sortKey === 'submissionDate' ? 'Date' : 'Level'} ({sortDir})
-          </div>
+          {totalPages > 1 && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={safeCurrentPage <= 1}
+                className="p-1 rounded text-gray-400 hover:text-white hover:bg-navy-light/30 disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              {(() => {
+                const pages: (number | '...')[] = [];
+                if (totalPages <= 5) {
+                  for (let i = 1; i <= totalPages; i++) pages.push(i);
+                } else {
+                  pages.push(1);
+                  if (safeCurrentPage > 3) pages.push('...');
+                  for (let i = Math.max(2, safeCurrentPage - 1); i <= Math.min(totalPages - 1, safeCurrentPage + 1); i++) {
+                    pages.push(i);
+                  }
+                  if (safeCurrentPage < totalPages - 2) pages.push('...');
+                  pages.push(totalPages);
+                }
+                return pages.map((p, idx) =>
+                  p === '...' ? (
+                    <span key={`ellipsis-${idx}`} className="px-1 text-xs text-gray-500">...</span>
+                  ) : (
+                    <button
+                      key={p}
+                      onClick={() => setCurrentPage(p)}
+                      className={`min-w-[28px] h-7 rounded text-xs font-medium ${
+                        p === safeCurrentPage
+                          ? 'bg-gold/90 text-navy-dark'
+                          : 'text-gray-400 hover:text-white hover:bg-navy-light/30'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  )
+                );
+              })()}
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={safeCurrentPage >= totalPages}
+                className="p-1 rounded text-gray-400 hover:text-white hover:bg-navy-light/30 disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
       </motion.div>
 
