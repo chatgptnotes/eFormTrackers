@@ -361,16 +361,20 @@ function mapSupabaseRow(row: Record<string, unknown>): Submission {
   const raw = (row.raw_data as Record<string, unknown>) || {};
 
   // Fallback: use the pre-mapped fields from Supabase
+  // level_history (top-level, written by webhook) takes priority over raw_data._mapped.levels (written by sync-to-supabase)
   const mapped = (raw._mapped as Record<string, unknown>) || {};
-  const levels = (mapped.levels as Array<{ id: number; status: string; approver: string; date?: string }>) || [];
-  const history: ApprovalEntry[] = levels.map(l => {
-    const parsed = parseApproverFromActionText(l.approver);
+  const levelHistory = (row.level_history as Array<Record<string, unknown>>) || (mapped.levels as Array<Record<string, unknown>>) || [];
+  const history: ApprovalEntry[] = levelHistory.map(l => {
+    // Normalize both shapes: webhook writes { id, approver }, sync writes { level, approverName }
+    const levelNum = Number(l.id ?? l.level ?? 0);
+    const approverRaw = String(l.approver ?? l.approverName ?? '');
+    const parsed = parseApproverFromActionText(approverRaw);
     return {
-      level: l.id as ApprovalLevel,
-      approverName: parsed?.name || (l.approver && !l.approver.includes('Action:') ? l.approver : '') || `Level ${l.id} Approver`,
-      approverEmail: parsed?.email || '',
-      status: (l.status?.toLowerCase() === 'approved' ? 'approved' : l.status?.toLowerCase() === 'rejected' ? 'rejected' : 'pending') as 'approved' | 'rejected' | 'pending',
-      date: l.date || undefined,
+      level: levelNum as ApprovalLevel,
+      approverName: parsed?.name || (approverRaw && !approverRaw.includes('Action:') ? approverRaw : '') || `Level ${levelNum} Approver`,
+      approverEmail: parsed?.email || String(l.approverEmail ?? ''),
+      status: (String(l.status ?? '').toLowerCase() === 'approved' ? 'approved' : String(l.status ?? '').toLowerCase() === 'rejected' ? 'rejected' : 'pending') as 'approved' | 'rejected' | 'pending',
+      date: String(l.date ?? '') || undefined,
     };
   });
 
@@ -395,13 +399,17 @@ function mapSupabaseRow(row: Record<string, unknown>): Submission {
     }
   }
 
+  const sbFormTitle = String(row.form_title || row.title || 'Form');
+  const sbPrefix = sbFormTitle.split(/\s+/).filter(Boolean).map((w: string) => w[0]).join('').toUpperCase().slice(0, 3) || 'F';
+
   return {
     id: sbId,
     formId: sbFormId,
-    formTitle: String(row.form_title || row.title || 'Form'),
-    referenceNumber: `F-${sbId.slice(-6)}`,
+    formTitle: sbFormTitle,
+    referenceNumber: `${sbPrefix}-${sbId.slice(-6)}`,
     title: String(row.title || 'Request'),
     description: String(row.description || row.title || 'Request'),
+    editLink: String(row.edit_link || '') || undefined,
     actionType: 'approval' as WorkflowActionType,
     taskUrl: `https://eforms.mediaoffice.ae/inbox/${sbFormId}/${sbId}`,
     formUrl: `https://eforms.mediaoffice.ae/inbox/${sbFormId}/${sbId}`,
@@ -711,37 +719,56 @@ export function useSubmissions() {
     }
   }, []);
 
+  // ─── Lightweight Supabase-only refresh (no JotForm API calls) ───────────────
+  const loadFromSupabase = useCallback(async () => {
+    try {
+      const { data: rows, error: sbError } = await supabase
+        .from('jf_submissions')
+        .select('*')
+        .order('submission_date', { ascending: false });
+      if (sbError || !rows?.length) return;
+      setAllSubmissions(rows.map(r => mapSupabaseRow(r as Record<string, unknown>)));
+      setRefreshConfig(prev => ({ ...prev, lastUpdated: new Date().toISOString() }));
+    } catch { /* silent — don't overwrite working data */ }
+  }, []);
+
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Supabase real-time subscription — re-fetch on ANY change to jf_submissions or jf_approval_history
+  // ─── Auto-register webhooks on mount (cached for 24h) ─────────────────────
   useEffect(() => {
+    const WEBHOOK_CACHE_KEY = 'jotflow_webhooks_registered';
+    const WEBHOOK_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+    try {
+      const cached = localStorage.getItem(WEBHOOK_CACHE_KEY);
+      if (cached && Date.now() - Number(cached) < WEBHOOK_CACHE_TTL) return;
+      fetch('/api/register-webhooks', { method: 'POST' })
+        .then(() => localStorage.setItem(WEBHOOK_CACHE_KEY, String(Date.now())))
+        .catch(() => {});
+    } catch {}
+  }, []);
+
+  // Supabase real-time subscription — lightweight refresh via Supabase query (not full JotForm re-fetch)
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const handle = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(loadFromSupabase, 500);
+    };
     const channel = supabase
       .channel('jf_realtime')
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'jf_submissions',
-      }, () => {
-        loadData();
-      })
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'jf_approval_history',
-      }, () => {
-        loadData();
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'jf_submissions' }, handle)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'jf_approval_history' }, handle)
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
-  }, [loadData]);
+    return () => { if (timer) clearTimeout(timer); supabase.removeChannel(channel); };
+  }, [loadFromSupabase]);
 
-  // Auto-refresh (1 min fallback if webhooks fail)
+  // Auto-refresh (1 min fallback if webhooks fail) — uses lightweight Supabase query, no loading spinner
   useEffect(() => {
     if (!refreshConfig.autoRefresh) return;
-    const interval = setInterval(loadData, refreshConfig.intervalMinutes * 60 * 1000);
+    const interval = setInterval(loadFromSupabase, refreshConfig.intervalMinutes * 60 * 1000);
     return () => clearInterval(interval);
-  }, [refreshConfig.autoRefresh, refreshConfig.intervalMinutes, loadData]);
+  }, [refreshConfig.autoRefresh, refreshConfig.intervalMinutes, loadFromSupabase]);
 
   // ─── Filtering / sorting / pagination ─────────────────────────────────────
   const filteredSubmissions = useMemo(() => {
@@ -860,6 +887,7 @@ export function useSubmissions() {
     pagination, setPagination,
     refreshConfig, setRefreshConfig,
     refresh: loadData,
+    refreshFromSupabase: loadFromSupabase,
     optimisticUpdate,
   };
 }

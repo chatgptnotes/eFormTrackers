@@ -284,7 +284,10 @@ export default function DirectorDashboard({ data }: Props) {
     subs.sort((a, b) => {
       let cmp = 0;
       if (sortKey === 'daysAtCurrentLevel') cmp = a.daysAtCurrentLevel - b.daysAtCurrentLevel;
-      else if (sortKey === 'submissionDate') cmp = a.submissionDate.localeCompare(b.submissionDate);
+      else if (sortKey === 'submissionDate') {
+        cmp = new Date(a.submissionDate).getTime() - new Date(b.submissionDate).getTime();
+        if (cmp === 0) cmp = Number(a.id) - Number(b.id); // tiebreak: higher ID = newer submission
+      }
       else if (sortKey === 'currentApprovalLevel') cmp = Number(a.currentApprovalLevel) - Number(b.currentApprovalLevel);
       return sortDir === 'desc' ? -cmp : cmp;
     });
@@ -346,7 +349,7 @@ export default function DirectorDashboard({ data }: Props) {
       setRejectedIds(prev => new Set([...prev, sub.id]));
       setConfirmRejectId(null);
       // Force refresh after brief delay — gives JotForm time to propagate update
-      setTimeout(() => data.refresh({ force: true }), 3000);
+      setTimeout(() => data.refreshFromSupabase(), 2000);
     } catch (err) {
       alert(`Rejection failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -399,7 +402,7 @@ export default function DirectorDashboard({ data }: Props) {
       addAuditEntry(sub.id, action === 'approve' ? 'approved' : 'rejected', 'JotFlow Sync', `Native JotForm action synced as ${action}`);
 
       setSyncSubmission(null);
-      setTimeout(() => data.refresh({ force: true }), 3000);
+      setTimeout(() => data.refreshFromSupabase(), 2000);
     } catch (err) {
       alert(`Sync failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -857,7 +860,7 @@ export default function DirectorDashboard({ data }: Props) {
               data.optimisticUpdate(updatedId, { newLevel, newJotformStatus: newStatus, approverName: currentUser.name });
             }
             // Delay force refresh by 3s to let JotForm propagate the update
-            setTimeout(() => data.refresh({ force: true }), 3000);
+            setTimeout(() => data.refreshFromSupabase(), 2000);
           }}
         />
       )}
