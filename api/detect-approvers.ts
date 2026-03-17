@@ -3,6 +3,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 const JOTFORM_BASE = 'https://eforms.mediaoffice.ae/API';
 const API_KEY = process.env.JOTFORM_API_KEY;
 const TEAM_ID = process.env.JOTFORM_TEAM_ID || '260541093809054';
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'https://jot-14march.vercel.app';
 
 // Parse "Action: Approved | By: Name (email) | ..." text
 function parseApprover(text: string): { name: string; email: string } | null {
@@ -20,7 +21,7 @@ function parseApprover(text: string): { name: string; email: string } | null {
  * Returns: { detectedApprovers: [{ formId, level, approverName, approverEmail, count }] }
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
   if (!API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
 

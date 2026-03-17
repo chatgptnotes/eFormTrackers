@@ -3,6 +3,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 const JOTFORM_BASE = 'https://eforms.mediaoffice.ae/API';
 const API_KEY = process.env.JOTFORM_API_KEY;
 const TEAM_ID = process.env.JOTFORM_TEAM_ID || '260541093809054';
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'https://jot-14march.vercel.app';
 
 /**
  * POST /api/ensure-fields?formId=XXX
@@ -23,7 +24,7 @@ interface FieldResult {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -54,7 +55,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (lvlMatch) {
         const lvl = parseInt(lvlMatch[1]);
         if (!existing[lvl]) existing[lvl] = {};
-        if (lbl.includes('evaluator') && lbl.includes('email') || lbl.includes('approver') && lbl.includes('email')) {
+        if ((lbl.includes('evaluator') && lbl.includes('email')) || (lbl.includes('approver') && lbl.includes('email'))) {
           if (!existing[lvl].e) existing[lvl].e = qid;
         } else if (lbl.includes('status') || lbl.includes('decision') || lbl.includes('approval')) {
           if (!existing[lvl].s) existing[lvl].s = qid;
@@ -212,7 +213,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (lvlMatch) {
         const lvl = parseInt(lvlMatch[1]);
         if (!finalFields[lvl]) finalFields[lvl] = {};
-        if (lbl.includes('evaluator') && lbl.includes('email') || lbl.includes('approver') && lbl.includes('email')) {
+        if ((lbl.includes('evaluator') && lbl.includes('email')) || (lbl.includes('approver') && lbl.includes('email'))) {
           if (!finalFields[lvl].e) finalFields[lvl].e = qid;
         } else if (lbl.includes('status')) { if (!finalFields[lvl].s) finalFields[lvl].s = qid; }
         else if (lbl.includes('approver')) { if (!finalFields[lvl].a) finalFields[lvl].a = qid; }
