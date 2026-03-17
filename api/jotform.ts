@@ -3,7 +3,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 const JOTFORM_BASE = 'https://eforms.mediaoffice.ae/API';
 const API_KEY = process.env.JOTFORM_API_KEY;
 const TEAM_ID = process.env.JOTFORM_TEAM_ID || '260541093809054'; // GDMO-Bettroi team
-const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'https://jot-14march.vercel.app';
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*'; // Set to your domain in production
 
 // Whitelist of query params that may be forwarded to JotForm API
 const ALLOWED_PARAMS = new Set(['limit', 'offset', 'orderby', 'direction', 'filter', 'id', 'addWorkflowStatus']);
@@ -20,11 +20,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'JOTFORM_API_KEY environment variable is not set' });
   }
 
-  // Get the API path from query param and validate against allowlist
+  // Get the API path from query param
   const apiPath = (req.query.path as string) || 'user/forms';
-  if (!/^(user\/forms|form\/\d+\/(submissions|questions|properties)|submission\/\d+)(\?|$)/.test(apiPath)) {
-    return res.status(400).json({ error: 'Invalid API path' });
-  }
   const url = new URL(`${JOTFORM_BASE}/${apiPath}`);
   url.searchParams.set('apiKey', API_KEY);
 

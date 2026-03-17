@@ -7,7 +7,7 @@ const TEAM_ID = process.env.JOTFORM_TEAM_ID || '260541093809054';
 // All approval levels require a digital signature
 const SIGNATURE_REQUIRED_LEVELS = [1, 2, 3, 4];
 
-const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'https://jot-14march.vercel.app';
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*'; // Set to your domain in production
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);

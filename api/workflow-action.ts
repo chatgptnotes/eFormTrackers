@@ -3,7 +3,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 const JOTFORM_BASE = 'https://eforms.mediaoffice.ae/API';
 const API_KEY = process.env.JOTFORM_API_KEY;
 const TEAM_ID = process.env.JOTFORM_TEAM_ID || '260541093809054';
-const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'https://jot-14march.vercel.app';
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
 
 /**
  * POST /api/workflow-action
@@ -65,9 +65,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const taskId = activeTask.id;
-    if (!taskId) {
-      return res.status(500).json({ error: 'Active task has no ID', ok: false });
-    }
     const element = (activeTask.element || {}) as Record<string, unknown>;
     const taskType = String(element.type || '');
     const taskName = String(element.name || '');

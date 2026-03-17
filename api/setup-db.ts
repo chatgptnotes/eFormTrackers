@@ -12,8 +12,6 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
  *   3. Once the table exists, this endpoint is no longer needed.
  */
 
-const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'https://jot-14march.vercel.app';
-
 const SQL = `
 -- 1. Create jf_signatures table
 CREATE TABLE IF NOT EXISTS public.jf_signatures (
@@ -206,7 +204,7 @@ END $$;
 `.trim();
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
+  res.setHeader('Access-Control-Allow-Origin', '*');
 
   // GET: return the SQL for manual execution
   if (req.method === 'GET') {

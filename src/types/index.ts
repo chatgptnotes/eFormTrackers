@@ -35,6 +35,8 @@ export interface Submission {
   answers: Record<string, string>;
   /** Populated by the generic mapper for dynamically-discovered forms so the modal can approve/reject them */
   levelFieldMap?: { level: number; statusFieldId: string; approverFieldId: string | null; overallStatusFieldId: string | null }[];
+  /** True when a native JotForm approval was detected but hidden fields weren't updated — user must confirm action */
+  needsSync?: boolean;
   /** Actual pending approver name from workflow API */
   pendingApproverName?: string;
   /** Actual pending approver email from workflow API */

@@ -1,15 +1,428 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Submission, ApprovalEntry, ApprovalLevel, WorkflowActionType } from '../types';
+import { Submission, ApprovalEntry, ApprovalLevel, FilterConfig, SortConfig, PaginationConfig, RefreshConfig, WorkflowActionType } from '../types';
 import { getDashboardStats, getApprovalLevelStats, getDepartmentStats, getTrendData, getBottleneckData, getHeatmapData } from '../services/mockData';
 import { supabase } from '../lib/supabase';
-import { fetchUserForms, fetchFormQuestions, detectFields, JFFormMeta } from '../services/formDiscovery';
-import {
-  WorkflowStep, fetchWorkflowSteps, fetchWorkflowTasks,
-  fetchApproverConfigs, ApproverConfig,
-  checkAndClearWorkspaceCaches, clearAllJotFlowCaches,
-} from '../services/workflowCache';
-import { mapGenericSubmission, extractText, parseApproverFromActionText } from '../services/submissionMapper';
-import { useSubmissionFilters } from './useSubmissionFilters';
+import { fetchUserForms, fetchFormQuestions, detectFields, JFFormMeta, DetectedFields } from '../services/formDiscovery';
+
+// ─── Workflow step type cache (per formId) ────────────────────────────────────
+interface WorkflowStep { level: number; type: WorkflowActionType; assigneeEmail?: string; }
+const workflowCache: Record<string, { steps: WorkflowStep[]; at: number }> = {};
+const WORKFLOW_CACHE_TTL = 5 * 60 * 1000; // 5 minutes — re-fetches on each page session
+
+async function fetchWorkflowSteps(formId: string): Promise<WorkflowStep[]> {
+  const cached = workflowCache[formId];
+  if (cached && Date.now() - cached.at < WORKFLOW_CACHE_TTL) return cached.steps;
+  try {
+    const res = await fetch(`/api/form-workflow?formId=${formId}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    const steps: WorkflowStep[] = (data.steps || []).map((s: WorkflowStep & { assigneeEmail?: string }) => ({
+      level: s.level,
+      type: s.type,
+      assigneeEmail: s.assigneeEmail || undefined,
+    }));
+    workflowCache[formId] = { steps, at: Date.now() };
+    return steps;
+  } catch {
+    return [];
+  }
+}
+
+// ─── Workflow task cache (per submissionId) — actual approver from workflow API ─
+interface WorkflowTaskInfo {
+  name: string;
+  type: string;
+  level: number;
+  assigneeName: string;
+  assigneeEmail: string;
+  status: string;
+  updatedAt: string;
+}
+const workflowTaskCache: Record<string, { tasks: WorkflowTaskInfo[]; at: number }> = {};
+const WORKFLOW_TASK_CACHE_TTL = 5 * 60 * 1000;
+
+async function fetchWorkflowTasks(submissionId: string): Promise<WorkflowTaskInfo[]> {
+  const cached = workflowTaskCache[submissionId];
+  if (cached && Date.now() - cached.at < WORKFLOW_TASK_CACHE_TTL) return cached.tasks;
+  try {
+    const res = await fetch(`/api/workflow-tasks?submissionId=${submissionId}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    const tasks: WorkflowTaskInfo[] = (data.tasks || []).map((t: Record<string, unknown>) => ({
+      name: String(t.name || ''),
+      type: String(t.type || ''),
+      level: Number(t.level || 0),
+      assigneeName: String(t.assigneeName || ''),
+      assigneeEmail: String(t.assigneeEmail || ''),
+      status: String(t.status || 'PENDING').toUpperCase(),
+      updatedAt: String(t.updatedAt || ''),
+    }));
+    workflowTaskCache[submissionId] = { tasks, at: Date.now() };
+    return tasks;
+  } catch {
+    return [];
+  }
+}
+
+/** Get the workflow task approver for a given submission + level */
+function getWorkflowTaskApprover(tasks: WorkflowTaskInfo[], level: number): { name: string; email: string } | null {
+  const task = tasks.find(t => t.level === level);
+  if (task && (task.assigneeName || task.assigneeEmail)) {
+    return { name: task.assigneeName, email: task.assigneeEmail };
+  }
+  return null;
+}
+
+// ─── Approver config cache (from Supabase jf_approver_config table) ────────
+interface ApproverConfig { formId: string; level: number; approverName: string; approverEmail: string; }
+let approverConfigCache: { configs: ApproverConfig[]; at: number } | null = null;
+const APPROVER_CONFIG_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
+
+async function fetchApproverConfigs(): Promise<ApproverConfig[]> {
+  if (approverConfigCache && Date.now() - approverConfigCache.at < APPROVER_CONFIG_CACHE_TTL) {
+    return approverConfigCache.configs;
+  }
+  try {
+    const res = await fetch('/api/approver-config');
+    if (!res.ok) return [];
+    const data = await res.json();
+    const configs: ApproverConfig[] = (data.configs || []).map((c: Record<string, unknown>) => ({
+      formId: String(c.form_id || ''),
+      level: Number(c.level || 0),
+      approverName: String(c.approver_name || ''),
+      approverEmail: String(c.approver_email || ''),
+    }));
+    approverConfigCache = { configs, at: Date.now() };
+    return configs;
+  } catch {
+    return [];
+  }
+}
+
+function getConfiguredApprover(configs: ApproverConfig[], formId: string, level: number): { name: string; email: string } | null {
+  const config = configs.find(c => c.formId === formId && c.level === level);
+  if (config && (config.approverName || config.approverEmail)) {
+    return { name: config.approverName, email: config.approverEmail };
+  }
+  return null;
+}
+
+// ─── Shared utilities ────────────────────────────────────────────────────────
+/** Parse JotForm "YYYY-MM-DD HH:MM:SS" (UTC) or ISO 8601 string into a Date */
+function parseUTC(s: string): Date {
+  return new Date(s.includes('T') ? s : s.replace(' ', 'T') + 'Z');
+}
+
+/** Aging thresholds (days) for overallStatus classification */
+const AGING_WARN_DAYS = 3;
+const AGING_CRITICAL_DAYS = 7;
+function agingStatus(days: number): 'on-track' | 'delayed' | 'critical' {
+  return days > AGING_CRITICAL_DAYS ? 'critical' : days > AGING_WARN_DAYS ? 'delayed' : 'on-track';
+}
+
+// ─── Workspace version — bump when switching teams to force full cache clear ──
+const WORKSPACE_VERSION = 'gdmo-bettroi-v3'; // bumped: force cache clear after new Vercel deploy
+const WS_VERSION_KEY = 'jotflow_workspace_version';
+
+function checkAndClearWorkspaceCaches() {
+  const stored = localStorage.getItem(WS_VERSION_KEY);
+  if (stored !== WORKSPACE_VERSION) {
+    // Workspace changed — nuke ALL jotflow_* caches so no stale data shows
+    Object.keys(localStorage).forEach(k => {
+      if (k.startsWith('jotflow_')) localStorage.removeItem(k);
+    });
+    localStorage.setItem(WS_VERSION_KEY, WORKSPACE_VERSION);
+    Object.keys(workflowCache).forEach(k => delete workflowCache[k]);
+  }
+}
+
+// ─── Clear all JotFlow caches (called after any write action) ─────────────────
+function clearAllJotFlowCaches() {
+  // Clear localStorage caches used by formDiscovery
+  Object.keys(localStorage).forEach(k => {
+    if (k.startsWith('jotflow_')) localStorage.removeItem(k);
+  });
+  // Clear in-process workflow step cache
+  Object.keys(workflowCache).forEach(k => delete workflowCache[k]);
+  // Clear workflow task cache (per-submission real workflow data)
+  Object.keys(workflowTaskCache).forEach(k => delete workflowTaskCache[k]);
+  // Clear approver config cache
+  approverConfigCache = null;
+}
+
+function getActionType(steps: WorkflowStep[], currentLevel: number | string): WorkflowActionType {
+  if (typeof currentLevel !== 'number') return 'approval';
+  const step = steps.find(s => s.level === currentLevel);
+  return step?.type ?? 'approval';
+}
+
+// Pure submission forms — no approval status fields; always show "Open in JotForm"
+const FORM_ONLY_IDS = new Set<string>();
+
+// ─── Field extractor ─────────────────────────────────────────────────────────
+function extractText(answer: unknown): string {
+  if (!answer) return '';
+  if (typeof answer === 'string') return answer;
+  if (typeof answer === 'number') return String(answer);
+  if (Array.isArray(answer)) return answer.filter(Boolean).join(', ');
+  if (typeof answer === 'object') {
+    const obj = answer as Record<string, string>;
+    if (obj.first !== undefined || obj.last !== undefined)
+      return [obj.first, obj.last].filter(Boolean).join(' ');
+    if (obj.year && obj.month && obj.day)
+      return `${obj.year}-${String(obj.month).padStart(2, '0')}-${String(obj.day).padStart(2, '0')}`;
+    return Object.values(obj).filter(v => v && typeof v === 'string').join(' ');
+  }
+  return '';
+}
+
+// ─── Parse approver name/email from JotFlow action text ─────────────────────
+// Action text format: "Action: Approved | By: Murali BK (bk@bettroi.com) | Via: JotFlow | Date: ..."
+function parseApproverFromActionText(text: string): { name: string; email: string } | null {
+  if (!text) return null;
+  // Pattern: "By: Name (email@domain.com)"
+  const match = text.match(/By:\s*([^(|]+?)\s*\(([^)]+@[^)]+)\)/);
+  if (match) return { name: match[1].trim(), email: match[2].trim() };
+  // Pattern: "By: Name |" (no email in parens)
+  const nameOnly = text.match(/By:\s*([^(|]+?)(?:\s*\||$)/);
+  if (nameOnly) return { name: nameOnly[1].trim(), email: '' };
+  return null;
+}
+
+// ─── Map any JotForm submission using heuristically-detected fields ───────────
+function mapGenericSubmission(
+  raw: Record<string, unknown>,
+  formId: string,
+  formTitle: string,
+  fields: DetectedFields,
+  workflowSteps: WorkflowStep[] = [],
+  workflowTasks: WorkflowTaskInfo[] = [],
+  approverConfigs: ApproverConfig[] = [],
+): Submission {
+  const answers = (raw.answers as Record<string, { answer: unknown; text?: string }>) || {};
+  const get = (id: string | null) => id ? extractText(answers[id]?.answer) : '';
+
+  const requesterName = get(fields.nameFieldId);
+  const email = get(fields.emailFieldId);
+  const department = get(fields.deptFieldId) || 'General';
+  const description = get(fields.descFieldId) || formTitle;
+  const amount = get(fields.amountFieldId);
+  const priorityRaw = (get(fields.priorityFieldId) || 'medium').toLowerCase();
+  const priority = (['urgent', 'high', 'medium', 'low'].find(p => priorityRaw.includes(p)) || 'medium') as 'low' | 'medium' | 'high' | 'urgent';
+
+  const history: ApprovalEntry[] = [];
+  let currentLevel: ApprovalLevel | 'completed' | 'rejected' = 1 as ApprovalLevel;
+
+  // Evaluator email from submission answers — single or per-level
+  const evaluatorEmail = fields.evaluatorEmailFieldId ? get(fields.evaluatorEmailFieldId) : '';
+  const getEvaluatorEmail = (level: number): string => {
+    const perLevelFieldId = fields.evaluatorEmailsByLevel?.[level];
+    if (perLevelFieldId) return get(perLevelFieldId);
+    return evaluatorEmail; // fallback to single evaluator email
+  };
+  // Assignee email from workflow step configuration (set in form-workflow API)
+  const getStepAssignee = (level: number): string => {
+    const step = workflowSteps.find(s => s.level === level);
+    return step?.assigneeEmail || '';
+  };
+
+  if (fields.levelFields.length > 0) {
+    for (const lf of fields.levelFields) {
+      const statusVal = get(lf.statusFieldId).toLowerCase();
+      const rawApproverField = get(lf.approverFieldId);
+      const parsed = parseApproverFromActionText(rawApproverField);
+      const wfApprover = getWorkflowTaskApprover(workflowTasks, lf.level);
+      const date = get(lf.dateFieldId) || undefined;
+
+      if (statusVal === 'approved') {
+        // APPROVED: use actual data — parsed action text, then raw field, then config as fallback
+        const configApprover = getConfiguredApprover(approverConfigs, formId, lf.level);
+        const approverName = parsed?.name || configApprover?.name || wfApprover?.name || getEvaluatorEmail(lf.level) || getStepAssignee(lf.level)
+          || (rawApproverField && !rawApproverField.includes('Action:') ? rawApproverField : '')
+          || `Level ${lf.level} Approver`;
+        const approverEmail = parsed?.email || configApprover?.email || wfApprover?.email || '';
+        history.push({ level: lf.level as ApprovalLevel, approverName, approverEmail, status: 'approved', date });
+        const isLast = lf.level === fields.levelFields[fields.levelFields.length - 1].level;
+        currentLevel = isLast ? 'completed' : (lf.level + 1) as ApprovalLevel;
+      } else if (statusVal === 'rejected' || statusVal === 'denied') {
+        const configApprover = getConfiguredApprover(approverConfigs, formId, lf.level);
+        const approverName = parsed?.name || configApprover?.name || wfApprover?.name
+          || (rawApproverField && !rawApproverField.includes('Action:') ? rawApproverField : '')
+          || `Level ${lf.level} Approver`;
+        const approverEmail = parsed?.email || configApprover?.email || wfApprover?.email || '';
+        history.push({ level: lf.level as ApprovalLevel, approverName, approverEmail, status: 'rejected', date });
+        currentLevel = 'rejected';
+        break;
+      } else {
+        // PENDING: only use THIS submission's own data — don't inject guessed names from other submissions
+        // Use evaluator email or workflow API if available, otherwise show "Level X Approver" (renders as "Pending Review")
+        const approverName = wfApprover?.name || getEvaluatorEmail(lf.level) || getStepAssignee(lf.level)
+          || (rawApproverField && !rawApproverField.includes('Action:') ? rawApproverField : '')
+          || `Level ${lf.level} Approver`;
+        const approverEmail = wfApprover?.email || '';
+        history.push({ level: lf.level as ApprovalLevel, approverName, approverEmail, status: 'pending' });
+        currentLevel = lf.level as ApprovalLevel;
+        break;
+      }
+    }
+  } else {
+    // Single-level: read overall status field
+    const overall = get(fields.overallStatusFieldId).toLowerCase();
+    if (overall.includes('approved') || overall.includes('complet')) currentLevel = 'completed';
+    else if (overall.includes('reject') || overall.includes('denied')) currentLevel = 'rejected';
+    else currentLevel = 1 as ApprovalLevel;
+
+    const wfApprover = getWorkflowTaskApprover(workflowTasks, 1);
+    const histStatus = typeof currentLevel === 'number' ? 'pending' : currentLevel === 'completed' ? 'approved' : 'rejected';
+    // For acted levels, use config. For pending, only use direct data.
+    if (histStatus !== 'pending') {
+      const configApprover = getConfiguredApprover(approverConfigs, formId, 1);
+      history.push({ level: 1 as ApprovalLevel, approverName: configApprover?.name || wfApprover?.name || evaluatorEmail || getStepAssignee(1) || 'Approver', approverEmail: configApprover?.email || wfApprover?.email || '', status: histStatus });
+    } else {
+      history.push({ level: 1 as ApprovalLevel, approverName: wfApprover?.name || evaluatorEmail || getStepAssignee(1) || 'Approver', approverEmail: wfApprover?.email || '', status: 'pending' });
+    }
+  }
+
+  // Overall status field can override level computation
+  const overallFinal = get(fields.overallStatusFieldId).toLowerCase();
+  if (overallFinal.includes('complet')) currentLevel = 'completed';
+  else if (overallFinal.includes('reject')) currentLevel = 'rejected';
+
+  // needsSync is no longer needed — webhooks + real-time subscriptions handle updates automatically
+  const needsSync = false;
+
+  const createdAt = (raw.created_at as string) || '';
+  const submissionDate = createdAt ? parseUTC(createdAt) : new Date();
+  const totalDays = Math.floor((Date.now() - submissionDate.getTime()) / (1000 * 60 * 60 * 24));
+
+  const lastApproval = [...history].reverse().find(h => h.status === 'approved' && h.date);
+  const levelStartDate = lastApproval?.date ? parseUTC(lastApproval.date) : submissionDate;
+  const daysAtCurrentLevel = typeof currentLevel === 'number'
+    ? Math.floor((Date.now() - levelStartDate.getTime()) / (1000 * 60 * 60 * 24))
+    : 0;
+
+  const id = String(raw.id);
+  const editLink = String(raw.edit_link || '');
+  const actionType = getActionType(workflowSteps, currentLevel);
+  const inboxUrl = `https://eforms.mediaoffice.ae/inbox/${formId}/${id}`;
+  const prefix = formTitle.split(/\s+/).filter(Boolean).map(w => w[0]).join('').toUpperCase().slice(0, 3) || 'WF';
+
+  const rawGenericStatus = get(fields.overallStatusFieldId);
+  const genericJotformStatus = rawGenericStatus ||
+    (currentLevel === 'completed' ? 'Completed' :
+     currentLevel === 'rejected' ? 'Rejected' :
+     history.some(h => h.status === 'approved') ? 'In Progress' : 'Pending');
+
+  return {
+    id,
+    formId,
+    formTitle,
+    referenceNumber: `${prefix}-${id.slice(-6)}`,
+    title: description,
+    description: `${description}${amount ? ' — AED ' + amount : ''}`,
+    editLink: editLink || undefined,
+    actionType,
+    taskUrl: inboxUrl,
+    formUrl: inboxUrl,
+    submittedBy: { name: requesterName || 'Unknown', department, email },
+    submissionDate: submissionDate.toISOString().slice(0, 10),
+    currentApprovalLevel: currentLevel,
+    approvalHistory: history,
+    daysAtCurrentLevel,
+    totalDaysSinceSubmission: totalDays,
+    overallStatus: agingStatus(daysAtCurrentLevel),
+    jotformStatus: genericJotformStatus,
+    priority,
+    answers: { description, amount, department, email, requester: requesterName },
+    levelFieldMap: fields.levelFields.length > 0
+      ? fields.levelFields.map(lf => ({
+          level: lf.level,
+          statusFieldId: lf.statusFieldId,
+          approverFieldId: lf.approverFieldId,
+          overallStatusFieldId: fields.overallStatusFieldId,
+        }))
+      : fields.overallStatusFieldId
+        ? [{ level: 1, statusFieldId: fields.overallStatusFieldId, approverFieldId: null, overallStatusFieldId: fields.overallStatusFieldId }]
+        : undefined,
+    needsSync,
+    pendingApproverName: (() => {
+      const pending = history.find(h => h.status === 'pending');
+      return pending?.approverName || undefined;
+    })(),
+    pendingApproverEmail: (() => {
+      const pending = history.find(h => h.status === 'pending');
+      return pending?.approverEmail || undefined;
+    })(),
+  };
+}
+
+// ─── Map a Supabase row back to a Submission ──────────────────────────────────
+function mapSupabaseRow(row: Record<string, unknown>): Submission {
+  const raw = (row.raw_data as Record<string, unknown>) || {};
+
+  // Fallback: use the pre-mapped fields from Supabase
+  const mapped = (raw._mapped as Record<string, unknown>) || {};
+  const levels = (mapped.levels as Array<{ id: number; status: string; approver: string; date?: string }>) || [];
+  const history: ApprovalEntry[] = levels.map(l => {
+    const parsed = parseApproverFromActionText(l.approver);
+    return {
+      level: l.id as ApprovalLevel,
+      approverName: parsed?.name || (l.approver && !l.approver.includes('Action:') ? l.approver : '') || `Level ${l.id} Approver`,
+      approverEmail: parsed?.email || '',
+      status: (l.status?.toLowerCase() === 'approved' ? 'approved' : l.status?.toLowerCase() === 'rejected' ? 'rejected' : 'pending') as 'approved' | 'rejected' | 'pending',
+      date: l.date || undefined,
+    };
+  });
+
+  const totalDays = Number(row.total_days) || 0;
+  const status = String(row.status || 'pending');
+  const currentLevel: ApprovalLevel | 'completed' | 'rejected' =
+    status === 'completed' ? 'completed' : status === 'rejected' ? 'rejected' : (Number(row.current_level) || 1) as ApprovalLevel;
+
+  const sbId = String(row.jotform_submission_id);
+  const sbFormId = String(row.form_id || '');
+
+  const pendingApproverName = String(row.pending_approver_name || '') || undefined;
+  const pendingApproverEmail = String(row.pending_approver_email || '') || undefined;
+  const submitterEmail = String(row.submitter_email || (mapped.email as string) || '');
+
+  // Enrich history with pending approver from Supabase if available
+  if (pendingApproverName) {
+    const pendingEntry = history.find(h => h.status === 'pending');
+    if (pendingEntry && (pendingEntry.approverName.startsWith('Level ') || !pendingEntry.approverName)) {
+      pendingEntry.approverName = pendingApproverName;
+      pendingEntry.approverEmail = pendingApproverEmail;
+    }
+  }
+
+  return {
+    id: sbId,
+    formId: sbFormId,
+    formTitle: String(row.form_title || row.title || 'Form'),
+    referenceNumber: `F-${sbId.slice(-6)}`,
+    title: String(row.title || 'Request'),
+    description: String(row.description || row.title || 'Request'),
+    actionType: 'approval' as WorkflowActionType,
+    taskUrl: `https://eforms.mediaoffice.ae/inbox/${sbFormId}/${sbId}`,
+    formUrl: `https://eforms.mediaoffice.ae/inbox/${sbFormId}/${sbId}`,
+    submittedBy: {
+      name: String(row.submitter_name || row.submitted_by || 'Unknown'),
+      department: String(row.department || 'General'),
+      email: submitterEmail,
+    },
+    submissionDate: String(row.submission_date || new Date().toISOString()).slice(0, 10),
+    currentApprovalLevel: currentLevel,
+    approvalHistory: history,
+    daysAtCurrentLevel: totalDays,
+    totalDaysSinceSubmission: totalDays,
+    overallStatus: agingStatus(totalDays),
+    jotformStatus: String(row.jotform_status || row.status || (currentLevel === 'completed' ? 'Completed' : currentLevel === 'rejected' ? 'Rejected' : 'Pending')),
+    priority: (String(row.priority || 'medium') as 'low' | 'medium' | 'high' | 'urgent'),
+    answers: (row.answers as Record<string, string>) || { description: String(row.title || ''), amount: String(row.amount || (mapped.amount as string) || ''), department: String(row.department || ''), email: submitterEmail, requester: String(row.submitted_by || '') },
+    pendingApproverName,
+    pendingApproverEmail,
+  } as Submission;
+}
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 export function useSubmissions() {
@@ -17,11 +430,28 @@ export function useSubmissions() {
   const [activeForms, setActiveForms] = useState<JFFormMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [refreshConfig, setRefreshConfig] = useState({
+  const [refreshConfig, setRefreshConfig] = useState<RefreshConfig>({
     autoRefresh: true,
     intervalMinutes: 1,
-    lastUpdated: null as string | null,
+    lastUpdated: null,
   });
+
+  const [filters, setFilters] = useState<FilterConfig>(() => {
+    try {
+      const saved = localStorage.getItem('jotflow_filters');
+      return saved ? { ...{ approvalLevel: '', department: '', status: '', dateFrom: '', dateTo: '', search: '' }, ...JSON.parse(saved) } : { approvalLevel: '', department: '', status: '', dateFrom: '', dateTo: '', search: '' };
+    } catch { return { approvalLevel: '', department: '', status: '', dateFrom: '', dateTo: '', search: '' }; }
+  });
+  const wrappedSetFilters = (updater: FilterConfig | ((prev: FilterConfig) => FilterConfig)) => {
+    setFilters(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      try { localStorage.setItem('jotflow_filters', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+
+  const [sort, setSort] = useState<SortConfig>({ key: 'submissionDate', direction: 'desc' });
+  const [pagination, setPagination] = useState<PaginationConfig>({ page: 1, perPage: 25, total: 0 });
 
   const loadData = useCallback(async (opts?: { force?: boolean }) => {
     const force = opts?.force ?? false;
@@ -33,38 +463,33 @@ export function useSubmissions() {
     setLoading(true);
     setError(null);
 
+    // ── Skip stale Supabase Phase 1 — go straight to fresh JotForm data ──────
+    // Showing stale cached data first causes a visible flicker when workspace
+    // changed or Supabase is out-of-date. We wait for live data instead.
+    const hasCachedData = false;
+
     // ── Fetch all forms + submissions fresh from JotForm ─────────────────────
     try {
+      // Discover all enabled JotForm workflows for this account (no fire-and-forget sync)
       const forms = await fetchUserForms();
+      // Don't setActiveForms yet — wait until submissions are ready to avoid mid-load flicker
 
+      // Fetch submissions + questions for all forms in parallel
       let partialDataWarning = false;
       const formResults = await Promise.all(
         forms.map(async (form) => {
           const questions = await fetchFormQuestions(form.id);
 
-          // Fetch submissions with pagination (JotForm caps at 1000 per request)
-          // Server-side filter: only fetch submissions from last 90 days to reduce data transfer
+          // Fetch ALL submissions with pagination (JotForm caps at 1000 per request)
           const pageLimit = 1000;
-          const maxPages = 10;
+          const maxPages = 10; // Safety cap to prevent runaway loops
           let offset = 0;
           let pageCount = 0;
           const rows: Record<string, unknown>[] = [];
-
-          const cutoffDate = new Date();
-          cutoffDate.setDate(cutoffDate.getDate() - 90);
-          const filterObj = { "created_at:gt": cutoffDate.toISOString().slice(0, 19) };
-          const filterParam = `&filter=${encodeURIComponent(JSON.stringify(filterObj))}`;
-
           while (pageCount < maxPages) {
-            let res = await fetch(
-              `/api/jotform?path=form/${form.id}/submissions&limit=${pageLimit}&offset=${offset}&orderby=created_at&direction=DESC${filterParam}`
+            const res = await fetch(
+              `/api/jotform?path=form/${form.id}/submissions&limit=${pageLimit}&offset=${offset}&orderby=created_at&direction=DESC`
             );
-            // Fallback: if filter causes an error, retry without it
-            if (!res.ok && pageCount === 0 && offset === 0) {
-              res = await fetch(
-                `/api/jotform?path=form/${form.id}/submissions&limit=${pageLimit}&offset=${offset}&orderby=created_at&direction=DESC`
-              );
-            }
             if (!res.ok) {
               console.warn(`[JotFlow] Failed to fetch submissions for form ${form.id} (offset=${offset}, status=${res.status})`);
               if (rows.length > 0) partialDataWarning = true;
@@ -90,8 +515,11 @@ export function useSubmissions() {
         const newStepsByForm: Record<string, WorkflowStep[]> = {};
 
         // ── Dynamic approver detection: scan ALL submissions to build a live approver map ──
+        // For each form+level, find the most recent person who approved, and use their
+        // name for pending submissions at that level. Fully dynamic — no config table needed.
         const dynamicApprovers: ApproverConfig[] = [];
         for (const { form, rows, detectedFields } of formResults) {
+          // For each level field, scan all submissions to find who approved
           for (const lf of detectedFields.levelFields) {
             const approverCounts: Record<string, { name: string; email: string; count: number; latestDate: string }> = {};
             for (const raw of rows) {
@@ -113,6 +541,7 @@ export function useSubmissions() {
                 approverCounts[key].email = parsed.email;
               }
             }
+            // Pick the most recent approver (not most common — reflects latest assignment)
             const best = Object.values(approverCounts).sort((a, b) =>
               b.latestDate.localeCompare(a.latestDate) || b.count - a.count
             )[0];
@@ -131,6 +560,7 @@ export function useSubmissions() {
         const manualConfigs = await fetchApproverConfigs();
         const mergedConfigs = [...dynamicApprovers];
         for (const mc of manualConfigs) {
+          // Manual config overrides dynamic detection
           const idx = mergedConfigs.findIndex(d => d.formId === mc.formId && d.level === mc.level);
           if (idx >= 0) mergedConfigs[idx] = mc;
           else mergedConfigs.push(mc);
@@ -161,11 +591,13 @@ export function useSubmissions() {
             const allCompleted = tasks.length > 0 && tasks.every(t => t.status === 'COMPLETED');
 
             if (allCompleted) {
+              // All workflow tasks are done — mark submission as completed
               sub.currentApprovalLevel = 'completed';
               sub.pendingApproverName = undefined;
               sub.pendingApproverEmail = undefined;
               sub.jotformStatus = 'Completed';
 
+              // Rebuild approval history from workflow tasks
               const newHistory: ApprovalEntry[] = [];
               for (const task of tasks) {
                 newHistory.push({
@@ -180,10 +612,14 @@ export function useSubmissions() {
                 sub.approvalHistory = newHistory;
               }
             } else if (activeTask) {
+              // Override the current level
               sub.currentApprovalLevel = activeTask.level as ApprovalLevel;
+
+              // Override pending approver
               sub.pendingApproverName = activeTask.assigneeName || undefined;
               sub.pendingApproverEmail = activeTask.assigneeEmail || undefined;
 
+              // Detect action type from real workflow element.type
               const taskType = activeTask.type || '';
               if (taskType === 'workflow_assign_task') {
                 sub.actionType = 'task';
@@ -192,12 +628,14 @@ export function useSubmissions() {
               } else if (taskType === 'workflow_approval') {
                 sub.actionType = 'approval';
               } else {
+                // Fallback to name-based detection for unknown types
                 const stepName = activeTask.name.toLowerCase();
                 if (stepName.includes('task')) sub.actionType = 'task';
                 else if (stepName.includes('form')) sub.actionType = 'form';
                 else sub.actionType = 'approval';
               }
 
+              // Rebuild approval history from workflow tasks
               const newHistory: ApprovalEntry[] = [];
               for (const task of tasks) {
                 const isCompleted = task.status === 'COMPLETED';
@@ -213,6 +651,7 @@ export function useSubmissions() {
                 sub.approvalHistory = newHistory;
               }
 
+              // Update jotformStatus based on workflow state
               sub.jotformStatus = `${activeTask.name} Pending`;
             }
           }
@@ -227,6 +666,8 @@ export function useSubmissions() {
         }
 
         // ── Sync enriched data to Supabase (fire-and-forget) ──────────────
+        // Push ALL submissions with workflow-enriched data so Supabase
+        // always mirrors the latest state from JotForm + workflow API.
         try {
           const syncRecords = mapped.map(s => ({
             id: s.id,
@@ -248,20 +689,23 @@ export function useSubmissions() {
             answers: s.answers,
             actionType: s.actionType,
           }));
+          // Fire-and-forget — don't block the UI
           fetch('/api/sync-to-supabase', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ records: syncRecords }),
-          }).catch(() => {});
-        } catch {}
-      } else if (forms.length === 0) {
+          }).catch(() => {}); // silently ignore sync errors
+        } catch {} // ignore sync errors — dashboard still works from JotForm API
+      } else if (forms.length === 0 && !hasCachedData) {
         setError('No JotForm workflows found. Please ensure your JotForm account has enabled forms.');
-      } else if (totalRows === 0) {
+      } else if (totalRows === 0 && !hasCachedData) {
         setError('Live data unavailable — showing cached data');
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
-      setAllSubmissions([]);
+      if (!hasCachedData) {
+        setError(err instanceof Error ? err.message : String(err));
+        setAllSubmissions([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -299,13 +743,47 @@ export function useSubmissions() {
     return () => clearInterval(interval);
   }, [refreshConfig.autoRefresh, refreshConfig.intervalMinutes, loadData]);
 
-  // ─── Filtering / sorting / pagination (delegated) ──────────────────────────
-  const {
-    filters, setFilters,
-    sort, setSort,
-    pagination, setPagination,
-    filteredSubmissions, paginatedSubmissions,
-  } = useSubmissionFilters(allSubmissions);
+  // ─── Filtering / sorting / pagination ─────────────────────────────────────
+  const filteredSubmissions = useMemo(() => {
+    let result = [...allSubmissions];
+    if (filters.approvalLevel) {
+      const level = filters.approvalLevel === 'completed' ? 'completed'
+        : filters.approvalLevel === 'rejected' ? 'rejected'
+        : Number(filters.approvalLevel);
+      result = result.filter(s => s.currentApprovalLevel === level);
+    }
+    if (filters.department) result = result.filter(s => s.submittedBy.department === filters.department);
+    if (filters.status) result = result.filter(s => s.jotformStatus?.toLowerCase().includes(filters.status.toLowerCase()));
+    if (filters.dateFrom) result = result.filter(s => s.submissionDate >= filters.dateFrom);
+    if (filters.dateTo) result = result.filter(s => s.submissionDate <= filters.dateTo);
+    if (filters.search) {
+      const q = filters.search.toLowerCase();
+      result = result.filter(s =>
+        s.title.toLowerCase().includes(q) ||
+        s.referenceNumber.toLowerCase().includes(q) ||
+        s.submittedBy.name.toLowerCase().includes(q) ||
+        s.id.toLowerCase().includes(q) ||
+        s.formId.toLowerCase().includes(q) ||
+        s.formTitle.toLowerCase().includes(q)
+      );
+    }
+    result.sort((a, b) => {
+      const aVal = (a as unknown as Record<string, unknown>)[sort.key];
+      const bVal = (b as unknown as Record<string, unknown>)[sort.key];
+      const cmp = String(aVal || '').localeCompare(String(bVal || ''), undefined, { numeric: true });
+      return sort.direction === 'asc' ? cmp : -cmp;
+    });
+    return result;
+  }, [allSubmissions, filters, sort]);
+
+  useEffect(() => {
+    setPagination(prev => ({ ...prev, total: filteredSubmissions.length, page: 1 }));
+  }, [filteredSubmissions.length]);
+
+  const paginatedSubmissions = useMemo(() => {
+    const start = (pagination.page - 1) * pagination.perPage;
+    return filteredSubmissions.slice(start, start + pagination.perPage);
+  }, [filteredSubmissions, pagination.page, pagination.perPage]);
 
   const stats = useMemo(() => getDashboardStats(allSubmissions), [allSubmissions]);
   const approvalStats = useMemo(() => getApprovalLevelStats(allSubmissions), [allSubmissions]);
@@ -315,9 +793,13 @@ export function useSubmissions() {
   const heatmapData = useMemo(() => getHeatmapData(allSubmissions), [allSubmissions]);
 
   // ─── Workflow step cache (for optimistic updates) ─────────────────────────
+  // Populated during loadData — maps formId → steps so optimistic updates
+  // can resolve the next-level assignee email.
   const [stepsByForm, setStepsByForm] = useState<Record<string, WorkflowStep[]>>({});
 
   // ─── Optimistic update: immediately patch a submission in state ─────────────
+  // Call this right after a successful write to JotForm so the UI reflects
+  // the new status instantly, without waiting for the next full re-fetch.
   const optimisticUpdate = useCallback((
     submissionId: string,
     patch: {
@@ -334,6 +816,7 @@ export function useSubmissions() {
       const currentLvl = sub.currentApprovalLevel;
 
       if (patch.newLevel !== undefined && typeof currentLvl === 'number') {
+        // Mark the current level as approved/rejected in history
         const histIdx = updatedHistory.findIndex(h => h.level === currentLvl);
         const isRejected = patch.newLevel === 'rejected';
         const entry = {
@@ -345,9 +828,11 @@ export function useSubmissions() {
         if (histIdx >= 0) updatedHistory[histIdx] = entry;
         else updatedHistory.push(entry);
 
+        // Add pending entry for next level (if approved and not completed)
         if (!isRejected && patch.newLevel !== 'completed' && typeof patch.newLevel === 'number') {
           const nextLvl = patch.newLevel as ApprovalLevel;
           const nextExists = updatedHistory.findIndex(h => h.level === nextLvl);
+          // Resolve next-level approver from workflow step config
           const formSteps = stepsByForm[sub.formId] || [];
           const nextStep = formSteps.find(s => s.level === nextLvl);
           const nextApprover = nextStep?.assigneeEmail || `Level ${nextLvl} Approver`;
@@ -360,7 +845,7 @@ export function useSubmissions() {
         currentApprovalLevel: patch.newLevel ?? sub.currentApprovalLevel,
         jotformStatus: patch.newJotformStatus ?? sub.jotformStatus,
         approvalHistory: updatedHistory,
-        daysAtCurrentLevel: 0,
+        daysAtCurrentLevel: 0, // reset — just actioned
       };
     }));
   }, [stepsByForm]);
@@ -370,7 +855,7 @@ export function useSubmissions() {
     activeForms,
     loading, error,
     stats, approvalStats, departmentStats, trendData, bottleneckData, heatmapData,
-    filters, setFilters,
+    filters, setFilters: wrappedSetFilters,
     sort, setSort,
     pagination, setPagination,
     refreshConfig, setRefreshConfig,
