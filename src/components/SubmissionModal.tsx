@@ -262,7 +262,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
         newJotformStatus = 'In Progress';
       }
 
-      // Immediately patch Supabase cache
+      // Immediately patch Supabase cache with complete data
       const sbStatus = action === 'reject' ? 'rejected' : (instanceCompleted ? 'completed' : 'in_progress');
       const sbLevel = action === 'reject' ? lvl : (instanceCompleted ? 999 : lvl + 1);
       supabase
@@ -270,14 +270,17 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
         .update({
           current_level: sbLevel,
           status: sbStatus,
+          jotform_status: newJotformStatus,
           approver_name: currentUser.name,
+          pending_approver_name: action === 'reject' || instanceCompleted ? null : undefined,
+          pending_approver_email: action === 'reject' || instanceCompleted ? null : undefined,
           last_synced: new Date().toISOString(),
         })
         .eq('jotform_submission_id', submission.id)
         .then(() => {}); // fire and forget — don't block UI
 
-      // Notify parent for optimistic update, then force refresh to get real workflow state
-      setTimeout(() => onUpdate(submission.id, newLevel, newJotformStatus), 500);
+      // Notify parent immediately for optimistic update + staggered refresh
+      onUpdate(submission.id, newLevel, newJotformStatus);
     }
   };
 

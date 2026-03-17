@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Submission, ApprovalEntry, ApprovalLevel, FilterConfig, SortConfig, PaginationConfig, RefreshConfig, WorkflowActionType } from '../types';
 import { getDashboardStats, getApprovalLevelStats, getDepartmentStats, getTrendData, getBottleneckData, getHeatmapData } from '../services/mockData';
 import { supabase } from '../lib/supabase';
@@ -719,8 +719,19 @@ export function useSubmissions() {
     }
   }, []);
 
+  // ─── Action cooldown: prevent real-time refresh from overwriting optimistic updates ──
+  // After an approve/reject action, we suppress auto-refresh for a few seconds
+  // so the optimistic update isn't overwritten with stale Supabase data.
+  const actionCooldownUntil = React.useRef<number>(0);
+
+  const startActionCooldown = useCallback((durationMs = 4000) => {
+    actionCooldownUntil.current = Date.now() + durationMs;
+  }, []);
+
   // ─── Lightweight Supabase-only refresh (no JotForm API calls) ───────────────
-  const loadFromSupabase = useCallback(async () => {
+  const loadFromSupabase = useCallback(async (opts?: { force?: boolean }) => {
+    // Skip if within action cooldown (optimistic update is showing)
+    if (!opts?.force && Date.now() < actionCooldownUntil.current) return;
     try {
       const { data: rows, error: sbError } = await supabase
         .from('jf_submissions')
@@ -877,6 +888,17 @@ export function useSubmissions() {
     }));
   }, [stepsByForm]);
 
+  // ─── Schedule staggered refresh after an action (catches webhook delay) ─────
+  const scheduleRefreshAfterAction = useCallback(() => {
+    // Start cooldown so real-time doesn't overwrite optimistic update
+    startActionCooldown(4000);
+    // Staggered retries: 3s, 6s, 12s — webhook usually fires within 5-10s
+    const timers = [3000, 6000, 12000].map(ms =>
+      setTimeout(() => loadFromSupabase({ force: true }), ms)
+    );
+    return () => timers.forEach(t => clearTimeout(t));
+  }, [loadFromSupabase, startActionCooldown]);
+
   return {
     allSubmissions, filteredSubmissions, paginatedSubmissions,
     activeForms,
@@ -889,5 +911,6 @@ export function useSubmissions() {
     refresh: loadData,
     refreshFromSupabase: loadFromSupabase,
     optimisticUpdate,
+    scheduleRefreshAfterAction,
   };
 }

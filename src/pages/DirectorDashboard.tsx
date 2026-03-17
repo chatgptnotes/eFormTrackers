@@ -348,8 +348,8 @@ export default function DirectorDashboard({ data }: Props) {
       setRejectingId(null);
       setRejectedIds(prev => new Set([...prev, sub.id]));
       setConfirmRejectId(null);
-      // Force refresh after brief delay — gives JotForm time to propagate update
-      setTimeout(() => data.refreshFromSupabase(), 2000);
+      // Staggered refresh — catches webhook delay (3s, 6s, 12s)
+      data.scheduleRefreshAfterAction();
     } catch (err) {
       alert(`Rejection failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -402,7 +402,7 @@ export default function DirectorDashboard({ data }: Props) {
       addAuditEntry(sub.id, action === 'approve' ? 'approved' : 'rejected', 'JotFlow Sync', `Native JotForm action synced as ${action}`);
 
       setSyncSubmission(null);
-      setTimeout(() => data.refreshFromSupabase(), 2000);
+      data.scheduleRefreshAfterAction();
     } catch (err) {
       alert(`Sync failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -859,8 +859,8 @@ export default function DirectorDashboard({ data }: Props) {
             if (updatedId) {
               data.optimisticUpdate(updatedId, { newLevel, newJotformStatus: newStatus, approverName: currentUser.name });
             }
-            // Delay force refresh by 3s to let JotForm propagate the update
-            setTimeout(() => data.refreshFromSupabase(), 2000);
+            // Staggered refresh — catches webhook delay (3s, 6s, 12s)
+            data.scheduleRefreshAfterAction();
           }}
         />
       )}
