@@ -1,9 +1,8 @@
 import { Submission } from '../types';
-import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 
-export function exportToExcel(submissions: Submission[], filename = 'jotform-submissions') {
+export async function exportToExcel(submissions: Submission[], filename = 'jotform-submissions') {
+  const XLSX = await import('xlsx');
+
   const data = submissions.map(s => ({
     'Reference': s.referenceNumber,
     'Form': s.formTitle,
@@ -22,7 +21,6 @@ export function exportToExcel(submissions: Submission[], filename = 'jotform-sub
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Submissions');
 
-  // Auto-width columns
   const colWidths = Object.keys(data[0] || {}).map(key => ({
     wch: Math.max(key.length, ...data.map(row => String((row as Record<string, unknown>)[key] || '').length)) + 2
   }));
@@ -32,6 +30,8 @@ export function exportToExcel(submissions: Submission[], filename = 'jotform-sub
 }
 
 export async function exportChartAsPng(elementId: string, filename = 'chart') {
+  const { default: html2canvas } = await import('html2canvas');
+
   const element = document.getElementById(elementId);
   if (!element) return;
   const canvas = await html2canvas(element, { backgroundColor: '#1B2A4A', scale: 2 });
@@ -42,6 +42,11 @@ export async function exportChartAsPng(elementId: string, filename = 'chart') {
 }
 
 export async function exportBottleneckPdf(elementId: string, filename = 'bottleneck-report') {
+  const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+    import('html2canvas'),
+    import('jspdf'),
+  ]);
+
   const element = document.getElementById(elementId);
   if (!element) return;
   const canvas = await html2canvas(element, { backgroundColor: '#1B2A4A', scale: 2 });

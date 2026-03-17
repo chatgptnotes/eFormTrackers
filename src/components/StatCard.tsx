@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { motion } from 'framer-motion';
 import { LucideIcon } from 'lucide-react';
 
@@ -20,7 +21,7 @@ const colorMap: Record<string, string> = {
   purple: 'from-purple-500/20 to-purple-500/5 border-purple-500/20 text-purple-400',
 };
 
-export default function StatCard({ title, value, subtitle, icon: Icon, color, delay = 0, onClick }: Props) {
+export default memo(function StatCard({ title, value, subtitle, icon: Icon, color, delay = 0, onClick }: Props) {
   const cls = colorMap[color] || colorMap.gold;
 
   return (
@@ -51,4 +52,4 @@ export default function StatCard({ title, value, subtitle, icon: Icon, color, de
       </div>
     </motion.div>
   );
-}
+})
