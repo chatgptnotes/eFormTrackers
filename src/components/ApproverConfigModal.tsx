@@ -14,11 +14,12 @@ interface ApproverRow {
 
 interface Props {
   activeForms: { id: string; title: string }[];
+  maxLevels?: number;
   onClose: () => void;
   onSaved?: () => void;
 }
 
-export default function ApproverConfigModal({ activeForms, onClose, onSaved }: Props) {
+export default function ApproverConfigModal({ activeForms, maxLevels = 10, onClose, onSaved }: Props) {
   const [rows, setRows] = useState<ApproverRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [detecting, setDetecting] = useState(false);
@@ -31,10 +32,14 @@ export default function ApproverConfigModal({ activeForms, onClose, onSaved }: P
         const data = await res.json();
         const configs = data.configs || [];
 
-        // Build rows: for each form, levels 1-4
+        // Build rows: for each form, up to maxLevels
         const newRows: ApproverRow[] = [];
         for (const form of activeForms) {
-          for (let level = 1; level <= 4; level++) {
+          // Use the highest level from existing configs or maxLevels, whichever is greater
+          const formConfigs = configs.filter((c: Record<string, unknown>) => String(c.form_id) === form.id);
+          const highestExisting = formConfigs.reduce((max: number, c: Record<string, unknown>) => Math.max(max, Number(c.level) || 0), 0);
+          const levels = Math.max(highestExisting, maxLevels);
+          for (let level = 1; level <= levels; level++) {
             const existing = configs.find((c: Record<string, unknown>) => String(c.form_id) === form.id && Number(c.level) === level);
             newRows.push({
               formId: form.id,
@@ -52,7 +57,7 @@ export default function ApproverConfigModal({ activeForms, onClose, onSaved }: P
         // Build empty rows
         const newRows: ApproverRow[] = [];
         for (const form of activeForms) {
-          for (let level = 1; level <= 4; level++) {
+          for (let level = 1; level <= maxLevels; level++) {
             newRows.push({ formId: form.id, formTitle: form.title, level, approverName: '', approverEmail: '', saved: false, saving: false });
           }
         }
@@ -244,10 +249,18 @@ export default function ApproverConfigModal({ activeForms, onClose, onSaved }: P
                   {form.levels.map(row => (
                     <div key={row.level} className="flex items-center gap-3 px-4 py-2.5">
                       <span className={`w-16 text-xs font-bold px-2 py-1 rounded-full text-center ${
-                        row.level === 1 ? 'bg-blue-500/20 text-blue-400' :
-                        row.level === 2 ? 'bg-amber-500/20 text-amber-400' :
-                        row.level === 3 ? 'bg-purple-500/20 text-purple-400' :
-                        'bg-red-500/20 text-red-400'
+                        [
+                          'bg-blue-500/20 text-blue-400',
+                          'bg-amber-500/20 text-amber-400',
+                          'bg-purple-500/20 text-purple-400',
+                          'bg-red-500/20 text-red-400',
+                          'bg-teal-500/20 text-teal-400',
+                          'bg-pink-500/20 text-pink-400',
+                          'bg-indigo-500/20 text-indigo-400',
+                          'bg-orange-500/20 text-orange-400',
+                          'bg-cyan-500/20 text-cyan-400',
+                          'bg-lime-500/20 text-lime-400',
+                        ][(row.level - 1) % 10] || 'bg-gray-500/20 text-gray-400'
                       }`}>L{row.level}</span>
                       <input
                         type="text"

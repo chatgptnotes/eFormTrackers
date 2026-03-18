@@ -51,7 +51,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const approverFields: { qid: string; level: number }[] = [];
       for (const [qid, q] of Object.entries(questions)) {
         const lbl = ((q as Record<string, unknown>).text || (q as Record<string, unknown>).name || '') as string;
-        const lvlMatch = lbl.match(/(?:^|\b)(?:l|level)\s*([1-4])\s*(?:approver|approved\s*by|reviewer)/i);
+        const lvlMatch = lbl.match(/(?:^|\b)(?:l|level)\s*(\d+)\s*(?:approver|approved\s*by|reviewer)/i);
         if (lvlMatch) {
           approverFields.push({ qid, level: parseInt(lvlMatch[1]) });
         }

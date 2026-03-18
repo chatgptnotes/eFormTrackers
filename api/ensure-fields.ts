@@ -50,7 +50,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const lbl = (qObj.text || qObj.name || '').toLowerCase();
 
       // Check for level-specific fields
-      const lvlMatch = lbl.match(/(?:^|\b)(?:l|level)\s*([1-4])(?:\b|$)/);
+      const lvlMatch = lbl.match(/(?:^|\b)(?:l|level)\s*(\d+)(?:\b|$)/);
       if (lvlMatch) {
         const lvl = parseInt(lvlMatch[1]);
         if (!existing[lvl]) existing[lvl] = {};
@@ -68,7 +68,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Detect level count from workflow step dropdowns (e.g. "Level 1 Approval")
       if (qObj.type === 'control_dropdown' && lbl.match(/\b(level|approval|task|step|evaluation)\b/)) {
-        const stepLvlMatch = lbl.match(/(?:level|l)\s*([1-4])/);
+        const stepLvlMatch = lbl.match(/(?:level|l)\s*(\d+)/);
         if (stepLvlMatch) {
           const lvl = parseInt(stepLvlMatch[1]);
           if (lvl > detectedLevelCount) detectedLevelCount = lvl;
@@ -76,7 +76,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Check for overall status
-      const hasLevel = /(?:^|\s)(?:l|level|stage)\s*[1-4](?:\s|$)/.test(lbl);
+      const hasLevel = /(?:^|\s)(?:l|level|stage)\s*\d+(?:\s|$)/.test(lbl);
       if (!hasLevel && (
         lbl === 'status' || lbl === 'overall status' ||
         lbl === 'final status' || lbl === 'approval status' ||
@@ -208,7 +208,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     for (const [qid, q] of Object.entries(updatedQuestions)) {
       const qObj = q as { text?: string; name?: string };
       const lbl = (qObj.text || qObj.name || '').toLowerCase();
-      const lvlMatch = lbl.match(/(?:^|\b)(?:l|level)\s*([1-4])(?:\b|$)/);
+      const lvlMatch = lbl.match(/(?:^|\b)(?:l|level)\s*(\d+)(?:\b|$)/);
       if (lvlMatch) {
         const lvl = parseInt(lvlMatch[1]);
         if (!finalFields[lvl]) finalFields[lvl] = {};
@@ -218,7 +218,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         else if (lbl.includes('approver')) { if (!finalFields[lvl].a) finalFields[lvl].a = qid; }
         else if (lbl.includes('date')) { if (!finalFields[lvl].d) finalFields[lvl].d = qid; }
       }
-      const hasLevel = /(?:^|\s)(?:l|level|stage)\s*[1-4](?:\s|$)/.test(lbl);
+      const hasLevel = /(?:^|\s)(?:l|level|stage)\s*\d+(?:\s|$)/.test(lbl);
       if (!hasLevel && (lbl === 'overall status' || lbl === 'status' || lbl === 'final status')) {
         finalOverall = qid;
       }

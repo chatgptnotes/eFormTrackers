@@ -171,6 +171,12 @@ function LevelBadge({ level }: { level: number | 'completed' | 'rejected' }) {
     2: 'bg-amber-500/20 text-amber-400',
     3: 'bg-purple-500/20 text-purple-400',
     4: 'bg-red-500/20 text-red-400',
+    5: 'bg-teal-500/20 text-teal-400',
+    6: 'bg-pink-500/20 text-pink-400',
+    7: 'bg-indigo-500/20 text-indigo-400',
+    8: 'bg-orange-500/20 text-orange-400',
+    9: 'bg-cyan-500/20 text-cyan-400',
+    10: 'bg-lime-500/20 text-lime-400',
   };
   return (
     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors[level] || 'bg-gray-500/20 text-gray-400'}`}>
@@ -623,7 +629,6 @@ export default function DirectorDashboard({ data }: Props) {
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
                         {sub.currentApprovalLevel === 'completed' ? (
-                          /* ── COMPLETED ── */
                           <div className="flex flex-col items-start gap-1">
                             <span className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 text-xs font-medium flex items-center gap-1 border border-emerald-500/20">
                               <CheckCircle2 className="w-3.5 h-3.5" /> Approved & Completed
@@ -633,7 +638,6 @@ export default function DirectorDashboard({ data }: Props) {
                             </a>
                           </div>
                         ) : sub.currentApprovalLevel === 'rejected' ? (
-                          /* ── REJECTED ── */
                           <div className="flex flex-col items-start gap-1">
                             <span className="px-2.5 py-1.5 rounded-lg bg-red-500/10 text-red-400 text-xs font-medium flex items-center gap-1 border border-red-500/20">
                               <XCircle className="w-3.5 h-3.5" /> Rejected
@@ -643,7 +647,6 @@ export default function DirectorDashboard({ data }: Props) {
                             </a>
                           </div>
                         ) : sub.actionType === 'task' ? (
-                          /* ── TASK step: only show View Task button ── */
                           <button
                             onClick={() => openTaskUrl(sub)}
                             disabled={taskUrlLoading === sub.id}
@@ -653,7 +656,6 @@ export default function DirectorDashboard({ data }: Props) {
                             View Task
                           </button>
                         ) : sub.actionType === 'form' ? (
-                          /* ── FORM step: only show View Form button ── */
                           <button
                             onClick={() => openFormUrl(sub)}
                             disabled={formUrlLoading === sub.id}
@@ -663,7 +665,6 @@ export default function DirectorDashboard({ data }: Props) {
                             Complete Form
                           </button>
                         ) : (
-                          /* ── APPROVAL step: Review + Reject + Comment + secondary links ── */
                           <>
                             <div className="flex items-center justify-center gap-1.5 flex-wrap">
                               {typeof sub.currentApprovalLevel === 'number' && (currentUser.isAdmin || currentUser.approvalLevels.includes(sub.currentApprovalLevel)) ? (

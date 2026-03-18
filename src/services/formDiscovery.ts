@@ -135,7 +135,7 @@ export function detectFields(questions: Record<string, JFQuestion>): DetectedFie
     )) { nameFieldId = id; continue; }
 
     // ── per-level evaluator email (e.g. "L1 Evaluator Email", "L2 Evaluator Email") ──
-    const levelEmailMatch = lbl.match(/^(?:l|level)\s*([1-4])\s+(?:evaluator|approver|reviewer)\s+email$/);
+    const levelEmailMatch = lbl.match(/^(?:l|level)\s*(\d+)\s+(?:evaluator|approver|reviewer)\s+email$/);
     if (levelEmailMatch) {
       evaluatorEmailsByLevel[parseInt(levelEmailMatch[1])] = id;
       continue;
@@ -178,7 +178,7 @@ export function detectFields(questions: Record<string, JFQuestion>): DetectedFie
     )) { amountFieldId = id; continue; }
 
     // ── overall / final status (no level number) ──
-    const hasLevel = /(?:^|\s)(?:l|level|stage)\s*[1-4](?:\s|$)/.test(lbl);
+    const hasLevel = /(?:^|\s)(?:l|level|stage)\s*\d+(?:\s|$)/.test(lbl);
     if (!overallStatusFieldId && !hasLevel && (
       lbl === 'status' || lbl === 'overall status' ||
       lbl === 'final status' || lbl === 'approval status' ||
@@ -186,7 +186,7 @@ export function detectFields(questions: Record<string, JFQuestion>): DetectedFie
     )) { overallStatusFieldId = id; continue; }
 
     // ── level-specific fields ──
-    const lvlMatch = lbl.match(/(?:^|\b)(?:l|level|stage)\s*([1-4])(?:\b|$)/);
+    const lvlMatch = lbl.match(/(?:^|\b)(?:l|level|stage)\s*(\d+)(?:\b|$)/);
     if (lvlMatch) {
       const lvl = parseInt(lvlMatch[1]);
       if (!byLevel[lvl]) byLevel[lvl] = {};

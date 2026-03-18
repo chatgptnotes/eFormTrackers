@@ -32,6 +32,7 @@ interface SLAConfig {
   level2Days: number;
   level3Days: number;
   level4Days: number;
+  [key: string]: number;
 }
 
 interface EscalationRule {
@@ -214,8 +215,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const getSLAStatus = useCallback((level: number, days: number): 'green' | 'yellow' | 'red' => {
-    const limits: Record<number, number> = { 1: slaConfig.level1Days, 2: slaConfig.level2Days, 3: slaConfig.level3Days, 4: slaConfig.level4Days };
-    const limit = limits[level] || 5;
+    const key = `level${level}Days`;
+    const limit = (slaConfig as Record<string, number>)[key] || 5;
     if (days <= limit) return 'green';
     if (days <= limit * 2) return 'yellow';
     return 'red';

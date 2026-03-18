@@ -95,7 +95,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const evaluatorEmails: Record<number, string> = {};
     for (const [, q] of Object.entries(questions)) {
       const lbl = (q.text || q.name || '').toLowerCase();
-      const emailMatch = lbl.match(/^(?:l|level)\s*([1-4])\s+(?:evaluator|approver|reviewer)\s+email$/);
+      const emailMatch = lbl.match(/^(?:l|level)\s*(\d+)\s+(?:evaluator|approver|reviewer)\s+email$/);
       if (emailMatch) {
         // This field exists — we'll read the email from form properties below
         evaluatorEmails[parseInt(emailMatch[1])] = '';
@@ -134,7 +134,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         for (const [key, value] of Object.entries(props)) {
           if (typeof value !== 'string') continue;
           // Look for properties like "approver_1_email", "level1_assignee" etc.
-          const lvlPropMatch = key.match(/(?:approver|assignee|evaluator)[_\s]*([1-4])/i);
+          const lvlPropMatch = key.match(/(?:approver|assignee|evaluator)[_\s]*(\d+)/i);
           if (lvlPropMatch) {
             const lvl = parseInt(lvlPropMatch[1]);
             const step = steps.find(s => s.level === lvl);
