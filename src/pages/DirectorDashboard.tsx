@@ -4,7 +4,7 @@ import {
   CheckCircle2, XCircle, MessageSquare, Clock, AlertTriangle, User,
   Search, ArrowUpDown, ChevronDown, ChevronUp, FileText, Loader2,
   TrendingUp, Shield, ExternalLink, ClipboardList, FileEdit, Lock,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, UserCheck,
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useSubmissions } from '../hooks/useSubmissions';
@@ -212,6 +212,7 @@ export default function DirectorDashboard({ data }: Props) {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [taskUrlLoading, setTaskUrlLoading] = useState<string | null>(null);
   const [formUrlLoading, setFormUrlLoading] = useState<string | null>(null);
+  const [assignedToMe, setAssignedToMe] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 10;
   const dismissedIds = useMemo(() => new Set([...approvedIds, ...rejectedIds]), [approvedIds, rejectedIds]);
@@ -286,6 +287,20 @@ export default function DirectorDashboard({ data }: Props) {
       );
     }
 
+    // Assigned to Me filter
+    if (assignedToMe && user?.email) {
+      const myEmail = user.email.toLowerCase();
+      subs = subs.filter(s => {
+        if (s.pendingApproverEmail?.toLowerCase() === myEmail) return true;
+        const pendingEntry = s.approvalHistory?.find(a => a.status === 'pending');
+        if (pendingEntry?.approverEmail?.toLowerCase() === myEmail) return true;
+        if (pendingEntry?.approverName && currentUser.nameMatches.length > 0) {
+          return currentUser.nameMatches.some(m => pendingEntry.approverName.toLowerCase().includes(m));
+        }
+        return false;
+      });
+    }
+
     // Sort
     subs.sort((a, b) => {
       let cmp = 0;
@@ -299,7 +314,7 @@ export default function DirectorDashboard({ data }: Props) {
     });
 
     return subs;
-  }, [data.allSubmissions, activeSidebarCategory, activeWorkflowId, search, sortKey, sortDir, dismissedIds, currentUser]);
+  }, [data.allSubmissions, activeSidebarCategory, activeWorkflowId, search, sortKey, sortDir, dismissedIds, currentUser, assignedToMe, user?.email]);
 
   // Reset to page 1 when filters/search/sort change
   useEffect(() => {
@@ -520,17 +535,30 @@ export default function DirectorDashboard({ data }: Props) {
         ))}
       </div>
 
-      {/* Search */}
+      {/* Search + Assigned to Me */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search by reference, title, submitter, or form type..."
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-navy-dark border border-navy-light/30 text-sm text-white placeholder-gray-600 focus:border-gold/50 focus:outline-none"
-          />
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search by reference, title, submitter, or form type..."
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-navy-dark border border-navy-light/30 text-sm text-white placeholder-gray-600 focus:border-gold/50 focus:outline-none"
+            />
+          </div>
+          <button
+            onClick={() => setAssignedToMe(!assignedToMe)}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors whitespace-nowrap ${
+              assignedToMe
+                ? 'bg-gold text-navy-dark border border-gold'
+                : 'bg-navy-dark text-gray-400 border border-navy-light/30 hover:border-gold/50 hover:text-white'
+            }`}
+          >
+            <UserCheck className="w-4 h-4" />
+            Assigned to Me
+          </button>
         </div>
       </motion.div>
 
