@@ -27,26 +27,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // ── Strategy 1: Read stored URL from Supabase ──
-    if (SUPABASE_KEY) {
-      const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-      const { data } = await supabase
-        .from('jf_submissions')
-        .select('approval_url')
-        .eq('jotform_submission_id', submissionId)
-        .single();
-
-      if (data?.approval_url) {
-        return res.status(200).json({
-          approvalUrl: data.approval_url,
-          formId,
-          submissionId,
-          source: 'database',
-        });
-      }
-    }
-
-    // ── Strategy 2: Construct from workflow instance ──
+    // Always fetch fresh from workflow instance to get accessLink
     const subUrl = `${JOTFORM_BASE}/submission/${submissionId}?apiKey=${JOTFORM_API_KEY}&teamID=${TEAM_ID}&addWorkflowStatus=1`;
     const subRes = await fetch(subUrl);
     if (!subRes.ok) throw new Error(`Submission API error: ${subRes.status}`);
