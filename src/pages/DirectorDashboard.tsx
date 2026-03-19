@@ -675,23 +675,35 @@ export default function DirectorDashboard({ data }: Props) {
                             </a>
                           </div>
                         ) : sub.actionType === 'task' ? (
-                          <button
-                            onClick={() => openTaskUrl(sub)}
-                            disabled={taskUrlLoading === sub.id}
-                            className="px-2.5 py-1.5 rounded-lg bg-gold/20 text-gold hover:bg-gold/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1 transition-colors"
-                          >
-                            {taskUrlLoading === sub.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ClipboardList className="w-3.5 h-3.5" />}
-                            View Task
-                          </button>
+                          currentUser.isAdmin || (user?.email && sub.pendingApproverEmail?.toLowerCase() === user.email.toLowerCase()) ? (
+                            <button
+                              onClick={() => openTaskUrl(sub)}
+                              disabled={taskUrlLoading === sub.id}
+                              className="px-2.5 py-1.5 rounded-lg bg-gold/20 text-gold hover:bg-gold/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1 transition-colors"
+                            >
+                              {taskUrlLoading === sub.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ClipboardList className="w-3.5 h-3.5" />}
+                              View Task
+                            </button>
+                          ) : (
+                            <span className="px-2.5 py-1.5 rounded-lg bg-gray-500/10 text-gray-600 text-xs font-medium flex items-center gap-1 border border-gray-500/10" title="This task is assigned to someone else">
+                              <Lock className="w-3.5 h-3.5" /> Not assigned to you
+                            </span>
+                          )
                         ) : sub.actionType === 'form' ? (
-                          <button
-                            onClick={() => openFormUrl(sub)}
-                            disabled={formUrlLoading === sub.id}
-                            className="px-2.5 py-1.5 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1 transition-colors"
-                          >
-                            {formUrlLoading === sub.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileEdit className="w-3.5 h-3.5" />}
-                            Complete Form
-                          </button>
+                          currentUser.isAdmin || (user?.email && sub.pendingApproverEmail?.toLowerCase() === user.email.toLowerCase()) ? (
+                            <button
+                              onClick={() => openFormUrl(sub)}
+                              disabled={formUrlLoading === sub.id}
+                              className="px-2.5 py-1.5 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1 transition-colors"
+                            >
+                              {formUrlLoading === sub.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileEdit className="w-3.5 h-3.5" />}
+                              Complete Form
+                            </button>
+                          ) : (
+                            <span className="px-2.5 py-1.5 rounded-lg bg-gray-500/10 text-gray-600 text-xs font-medium flex items-center gap-1 border border-gray-500/10" title="This form is assigned to someone else">
+                              <Lock className="w-3.5 h-3.5" /> Not assigned to you
+                            </span>
+                          )
                         ) : (
                           <>
                             <div className="flex items-center justify-center gap-1.5 flex-wrap">
