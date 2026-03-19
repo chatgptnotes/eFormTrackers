@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  CheckCircle2, XCircle, MessageSquare, Clock, AlertTriangle, User,
+  CheckCircle2, XCircle, Clock, AlertTriangle, User,
   Search, ArrowUpDown, ChevronDown, ChevronUp, FileText, Loader2,
   TrendingUp, Shield, ExternalLink, ClipboardList, FileEdit, Lock,
   ChevronLeft, ChevronRight, UserCheck,
@@ -9,7 +9,6 @@ import {
 import { useApp } from '../contexts/AppContext';
 import { useSubmissions } from '../hooks/useSubmissions';
 import { Submission } from '../types';
-import CommentPanel from '../components/CommentPanel';
 import SubmissionModal from '../components/SubmissionModal';
 import { getUserConfig } from '../config/currentUser';
 import { useAuth } from '../contexts/AuthContext';
@@ -192,7 +191,8 @@ export default function DirectorDashboard({ data }: Props) {
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<'daysAtCurrentLevel' | 'submissionDate' | 'currentApprovalLevel'>('submissionDate');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-  const [commentingId, setCommentingId] = useState<string | null>(null);
+  const [taskUrlLoading, setTaskUrlLoading] = useState<string | null>(null);
+  const [formUrlLoading, setFormUrlLoading] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [confirmRejectId, setConfirmRejectId] = useState<string | null>(null);
@@ -207,15 +207,6 @@ export default function DirectorDashboard({ data }: Props) {
     setRejectReason('');
     setSelectedSubmission(sub);
   };
-  const [approvedIds, setApprovedIds] = useState<Set<string>>(new Set());
-  const [rejectedIds, setRejectedIds] = useState<Set<string>>(new Set());
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [taskUrlLoading, setTaskUrlLoading] = useState<string | null>(null);
-  const [formUrlLoading, setFormUrlLoading] = useState<string | null>(null);
-  const [assignedToMe, setAssignedToMe] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const rowsPerPage = 10;
-  const dismissedIds = useMemo(() => new Set([...approvedIds, ...rejectedIds]), [approvedIds, rejectedIds]);
 
   const openTaskUrl = async (sub: Submission) => {
     setTaskUrlLoading(sub.id);
@@ -245,6 +236,15 @@ export default function DirectorDashboard({ data }: Props) {
       setFormUrlLoading(null);
     }
   };
+
+  const [approvedIds, setApprovedIds] = useState<Set<string>>(new Set());
+  const [rejectedIds, setRejectedIds] = useState<Set<string>>(new Set());
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [assignedToMe, setAssignedToMe] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const rowsPerPage = 10;
+  const dismissedIds = useMemo(() => new Set([...approvedIds, ...rejectedIds]), [approvedIds, rejectedIds]);
+
 
   // Show all submissions — pending, completed, and rejected
   const directorSubmissions = useMemo(() => {
@@ -674,28 +674,28 @@ export default function DirectorDashboard({ data }: Props) {
                               <ExternalLink className="w-3 h-3" /> View in JotForm
                             </a>
                           </div>
-                        ) : sub.actionType === 'task' ? (
-                          <button
-                            onClick={() => openTaskUrl(sub)}
-                            disabled={taskUrlLoading === sub.id}
-                            className="px-2.5 py-1.5 rounded-lg bg-gold/20 text-gold hover:bg-gold/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1 transition-colors"
-                          >
-                            {taskUrlLoading === sub.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ClipboardList className="w-3.5 h-3.5" />}
-                            View Task
-                          </button>
-                        ) : sub.actionType === 'form' ? (
-                          <button
-                            onClick={() => openFormUrl(sub)}
-                            disabled={formUrlLoading === sub.id}
-                            className="px-2.5 py-1.5 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1 transition-colors"
-                          >
-                            {formUrlLoading === sub.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileEdit className="w-3.5 h-3.5" />}
-                            Complete Form
-                          </button>
                         ) : (
                           <>
                             <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                              {typeof sub.currentApprovalLevel === 'number' && (currentUser.isAdmin || currentUser.approvalLevels.includes(sub.currentApprovalLevel)) ? (
+                              {sub.actionType === 'task' ? (
+                                <button
+                                  onClick={() => openTaskUrl(sub)}
+                                  disabled={taskUrlLoading === sub.id}
+                                  className="px-2.5 py-1.5 rounded-lg bg-gold/20 text-gold hover:bg-gold/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1 transition-colors"
+                                >
+                                  {taskUrlLoading === sub.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ClipboardList className="w-3.5 h-3.5" />}
+                                  View Task
+                                </button>
+                              ) : sub.actionType === 'form' ? (
+                                <button
+                                  onClick={() => openFormUrl(sub)}
+                                  disabled={formUrlLoading === sub.id}
+                                  className="px-2.5 py-1.5 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1 transition-colors"
+                                >
+                                  {formUrlLoading === sub.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileEdit className="w-3.5 h-3.5" />}
+                                  Complete Form
+                                </button>
+                              ) : typeof sub.currentApprovalLevel === 'number' && (currentUser.isAdmin || currentUser.approvalLevels.includes(sub.currentApprovalLevel)) ? (
                                 <button
                                   onClick={() => openModal(sub)}
                                   disabled={actionLoading === sub.id}
@@ -703,7 +703,7 @@ export default function DirectorDashboard({ data }: Props) {
                                   title={"Review & Approve"}
                                 >
                                   <CheckCircle2 className="w-3.5 h-3.5" />
-                                  {"Review & Approve"}
+                                  Review & Approve
                                 </button>
                               ) : typeof sub.currentApprovalLevel === 'number' ? (
                                 <span className="px-2.5 py-1.5 rounded-lg bg-gray-500/10 text-gray-600 text-xs font-medium flex items-center gap-1 border border-gray-500/10" title={`Your role cannot approve Level ${sub.currentApprovalLevel}`}>
@@ -756,61 +756,11 @@ export default function DirectorDashboard({ data }: Props) {
                                 </button>
                               )}
 
-                              <button
-                                onClick={() => setCommentingId(commentingId === sub.id ? null : sub.id)}
-                                className={`px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1 border transition-colors ${
-                                  commentingId === sub.id
-                                    ? 'bg-blue-500/30 text-blue-300 border-blue-500/30'
-                                    : 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border-blue-500/20'
-                                }`}
-                              >
-                                <MessageSquare className="w-3.5 h-3.5" /> Comment
-                              </button>
-                            </div>
-
-                            {/* Secondary: View Task / View Form reference links */}
-                            <div className="flex items-center justify-center gap-3">
-                              {sub.taskUrl && (
-                                <button
-                                  onClick={() => openTaskUrl(sub)}
-                                  disabled={taskUrlLoading === sub.id}
-                                  className="flex items-center gap-1 text-xs text-slate-400 hover:text-gold transition-colors disabled:opacity-50"
-                                >
-                                  {taskUrlLoading === sub.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <ClipboardList className="w-3 h-3" />}
-                                  {taskUrlLoading === sub.id ? 'Loading...' : 'View Task'}
-                                </button>
-                              )}
-                              {sub.formUrl && (
-                                <button
-                                  onClick={() => openFormUrl(sub)}
-                                  disabled={formUrlLoading === sub.id}
-                                  className="flex items-center gap-1 text-xs text-slate-400 hover:text-blue-400 transition-colors disabled:opacity-50"
-                                >
-                                  {formUrlLoading === sub.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileEdit className="w-3 h-3" />}
-                                  {formUrlLoading === sub.id ? 'Loading...' : 'Complete Form'}
-                                </button>
-                              )}
                             </div>
                           </>
                         )}
                       </div>
 
-                      {/* Inline Comment Panel */}
-                      <AnimatePresence>
-                        {commentingId === sub.id && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            exit={{ opacity: 0, height: 0 }}
-                            className="mt-2"
-                          >
-                            <CommentPanel
-                              submissionId={sub.id}
-                              onClose={() => setCommentingId(null)}
-                            />
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
                     </td>
                   </motion.tr>
                 ))}
