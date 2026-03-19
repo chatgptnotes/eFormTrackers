@@ -218,6 +218,11 @@ export default function DirectorDashboard({ data }: Props) {
   const dismissedIds = useMemo(() => new Set([...approvedIds, ...rejectedIds]), [approvedIds, rejectedIds]);
 
   const openTaskUrl = async (sub: Submission) => {
+    // Prefer workflow-aware approvalUrl (has taskID param)
+    if (sub.approvalUrl) {
+      window.open(sub.approvalUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
     setTaskUrlLoading(sub.id);
     try {
       const res = await fetch(`/api/task-url?formId=${sub.formId}&submissionId=${sub.id}`);
@@ -232,6 +237,11 @@ export default function DirectorDashboard({ data }: Props) {
   };
 
   const openFormUrl = async (sub: Submission) => {
+    // Prefer workflow-aware approvalUrl (has taskID param)
+    if (sub.approvalUrl) {
+      window.open(sub.approvalUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
     setFormUrlLoading(sub.id);
     try {
       const res = await fetch(`/api/form-url?formId=${sub.formId}&submissionId=${sub.id}`);

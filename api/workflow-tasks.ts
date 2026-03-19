@@ -13,6 +13,8 @@ export interface WorkflowTask {
   assigneeEmail: string;
   level: number;          // sequential position (1, 2, 3, ...)
   updatedAt: string;
+  taskId: string;          // workflow task ID (used to build approval/form URLs)
+  internalFormID: string;  // internal form ID for workflow-aware URLs
 }
 
 /**
@@ -86,8 +88,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const assigneeEmail = String(props.assigneeEmail || assigneeUser.email || firstRecipient.email || t.assignee || '');
       const status = String(t.status || 'PENDING').toUpperCase();
       const updatedAt = String(t.updated_at || '');
+      const taskId = String(t.id || '');
+      const internalFormID = String(element.internalFormID || element.resourceID || '');
 
-      return { name, type, status, assigneeName, assigneeEmail, updatedAt };
+      return { name, type, status, assigneeName, assigneeEmail, updatedAt, taskId, internalFormID };
     };
 
     // Filter out the initial "Form" submission step (COMPLETED with no assignee)
@@ -99,8 +103,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Normalize and number sequentially
     const tasks: WorkflowTask[] = filteredTasks.map((t, index) => {
-      const { name, type, status, assigneeName, assigneeEmail, updatedAt } = extractTask(t);
-      return { name, type, status, assigneeName, assigneeEmail, level: index + 1, updatedAt };
+      const { name, type, status, assigneeName, assigneeEmail, updatedAt, taskId, internalFormID } = extractTask(t);
+      return { name, type, status, assigneeName, assigneeEmail, level: index + 1, updatedAt, taskId, internalFormID };
     });
 
     return res.status(200).json({ tasks });

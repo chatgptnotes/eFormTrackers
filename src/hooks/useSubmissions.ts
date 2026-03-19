@@ -37,6 +37,8 @@ interface WorkflowTaskInfo {
   assigneeEmail: string;
   status: string;
   updatedAt: string;
+  taskId: string;
+  internalFormID: string;
 }
 const workflowTaskCache: Record<string, { tasks: WorkflowTaskInfo[]; at: number }> = {};
 const WORKFLOW_TASK_CACHE_TTL = 5 * 60 * 1000;
@@ -56,6 +58,8 @@ async function fetchWorkflowTasks(submissionId: string): Promise<WorkflowTaskInf
       assigneeEmail: String(t.assigneeEmail || ''),
       status: String(t.status || 'PENDING').toUpperCase(),
       updatedAt: String(t.updatedAt || ''),
+      taskId: String(t.taskId || ''),
+      internalFormID: String(t.internalFormID || ''),
     }));
     workflowTaskCache[submissionId] = { tasks, at: Date.now() };
     return tasks;
@@ -429,6 +433,7 @@ function mapSupabaseRow(row: Record<string, unknown>): Submission {
     answers: (row.answers as Record<string, string>) || { description: String(row.title || ''), amount: String(row.amount || (mapped.amount as string) || ''), department: String(row.department || ''), email: submitterEmail, requester: String(row.submitted_by || '') },
     pendingApproverName,
     pendingApproverEmail,
+    approvalUrl: String(row.approval_url || '') || undefined,
   } as Submission;
 }
 
@@ -643,6 +648,15 @@ export function useSubmissions() {
                 else sub.actionType = 'approval';
               }
 
+              // Build workflow-aware approval URL from taskId + internalFormID
+              if (activeTask.taskId && activeTask.internalFormID) {
+                const host = 'https://eforms.mediaoffice.ae';
+                const qp = taskType === 'workflow_assign_form' ? 'workflowAssignFormTask'
+                  : taskType === 'workflow_assign_task' ? 'workflowAssignTask'
+                  : 'workflowApprovalTask';
+                sub.approvalUrl = `${host}/${activeTask.internalFormID}?${qp}=1&taskID=${activeTask.taskId}`;
+              }
+
               // Rebuild approval history from workflow tasks
               const newHistory: ApprovalEntry[] = [];
               for (const task of tasks) {
@@ -702,7 +716,7 @@ export function useSubmissions() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ records: syncRecords }),
-          }).catch(() => {}); // silently ignore sync errors
+          }).catch(err => console.warn('[JotFlow] Sync to Supabase failed:', err));
         } catch {} // ignore sync errors — dashboard still works from JotForm API
       } else if (forms.length === 0 && !hasCachedData) {
         setError('No JotForm workflows found. Please ensure your JotForm account has enabled forms.');
@@ -754,7 +768,7 @@ export function useSubmissions() {
       if (cached && Date.now() - Number(cached) < WEBHOOK_CACHE_TTL) return;
       fetch('/api/register-webhooks', { method: 'POST' })
         .then(() => localStorage.setItem(WEBHOOK_CACHE_KEY, String(Date.now())))
-        .catch(() => {});
+        .catch(err => console.warn('[JotFlow] Webhook registration failed:', err));
     } catch {}
   }, []);
 
