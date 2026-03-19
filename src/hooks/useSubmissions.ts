@@ -714,6 +714,7 @@ export function useSubmissions() {
             approvalHistory: s.approvalHistory,
             answers: s.answers,
             actionType: s.actionType,
+            approvalUrl: s.approvalUrl,
           }));
           // Fire-and-forget — don't block the UI
           fetch('/api/sync-to-supabase', {
