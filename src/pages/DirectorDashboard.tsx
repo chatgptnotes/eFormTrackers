@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  CheckCircle2, XCircle, MessageSquare, Clock, AlertTriangle, User,
+  CheckCircle2, XCircle, MessageSquare, Clock, AlertTriangle, User, UserCheck,
   Search, ArrowUpDown, ChevronDown, ChevronUp, FileText, Loader2,
   TrendingUp, Shield, ExternalLink, ClipboardList, FileEdit, Lock,
   ChevronLeft, ChevronRight,
@@ -199,6 +199,7 @@ export default function DirectorDashboard({ data }: Props) {
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
   const [syncSubmission, setSyncSubmission] = useState<Submission | null>(null);
   const [syncLoading, setSyncLoading] = useState(false);
+  const [assignedToMe, setAssignedToMe] = useState(false);
   // When opening the detail modal, clear any inline reject state so the
   // reject input for a different row doesn't stay open in the background.
   const openModal = (sub: Submission) => {
@@ -212,16 +213,23 @@ export default function DirectorDashboard({ data }: Props) {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [taskUrlLoading, setTaskUrlLoading] = useState<string | null>(null);
   const [formUrlLoading, setFormUrlLoading] = useState<string | null>(null);
+
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 10;
   const dismissedIds = useMemo(() => new Set([...approvedIds, ...rejectedIds]), [approvedIds, rejectedIds]);
 
   const openTaskUrl = async (sub: Submission) => {
+    // Use stored approvalUrl if available (direct link), skip API call
+    if (sub.approvalUrl) {
+      window.open(sub.approvalUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
     setTaskUrlLoading(sub.id);
     try {
-      const res = await fetch(`/api/task-url?formId=${sub.formId}&submissionId=${sub.id}`);
+      // Use email-url endpoint which constructs the direct approval link
+      const res = await fetch(`/api/email-url?formId=${sub.formId}&submissionId=${sub.id}`);
       const data = await res.json();
-      const url = data.taskUrl || sub.taskUrl;
+      const url = data.approvalUrl || sub.taskUrl;
       if (url) window.open(url, '_blank', 'noopener,noreferrer');
     } catch {
       if (sub.taskUrl) window.open(sub.taskUrl, '_blank', 'noopener,noreferrer');
@@ -231,11 +239,17 @@ export default function DirectorDashboard({ data }: Props) {
   };
 
   const openFormUrl = async (sub: Submission) => {
+    // Use stored approvalUrl if available (direct link), skip API call
+    if (sub.approvalUrl) {
+      window.open(sub.approvalUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
     setFormUrlLoading(sub.id);
     try {
-      const res = await fetch(`/api/form-url?formId=${sub.formId}&submissionId=${sub.id}`);
+      // Use email-url endpoint which constructs the direct approval link
+      const res = await fetch(`/api/email-url?formId=${sub.formId}&submissionId=${sub.id}`);
       const data = await res.json();
-      const url = data.formUrl || sub.formUrl || sub.editLink;
+      const url = data.approvalUrl || sub.formUrl || sub.editLink;
       if (url) window.open(url, '_blank', 'noopener,noreferrer');
     } catch {
       const url = sub.formUrl || sub.editLink;
@@ -286,6 +300,16 @@ export default function DirectorDashboard({ data }: Props) {
       );
     }
 
+    // Assigned to me filter
+    if (assignedToMe && user?.email) {
+      const myEmail = user.email.toLowerCase();
+      subs = subs.filter(s => {
+        const pendingEntry = s.approvalHistory?.find(a => a.status === 'pending');
+        const approverEmail = (pendingEntry?.approverEmail || s.pendingApproverEmail || '').toLowerCase();
+        return approverEmail === myEmail;
+      });
+    }
+
     // Sort
     subs.sort((a, b) => {
       let cmp = 0;
@@ -299,7 +323,7 @@ export default function DirectorDashboard({ data }: Props) {
     });
 
     return subs;
-  }, [data.allSubmissions, activeSidebarCategory, activeWorkflowId, search, sortKey, sortDir, dismissedIds, currentUser]);
+  }, [data.allSubmissions, activeSidebarCategory, activeWorkflowId, search, sortKey, sortDir, dismissedIds, currentUser, assignedToMe]);
 
   // Reset to page 1 when filters/search/sort change
   useEffect(() => {
@@ -460,6 +484,21 @@ export default function DirectorDashboard({ data }: Props) {
 
   return (
     <div className="space-y-6">
+      {/* Error Banner */}
+      {data.error && (
+        <div className="flex items-center justify-between px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+            <span className="text-sm font-medium">{data.error} — please refresh</span>
+          </div>
+          <button
+            onClick={() => data.refresh({ force: true })}
+            className="text-xs px-3 py-1 rounded bg-red-500/20 hover:bg-red-500/30 text-red-200 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
       {/* Welcome Banner */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -486,8 +525,21 @@ export default function DirectorDashboard({ data }: Props) {
               <p className="text-xs text-gray-500 mt-0.5">Filter: {activeSidebarCategory.label}</p>
             )}
           </div>
-          <div className="w-12 h-12 rounded-full bg-gold/20 flex items-center justify-center">
-            <User className="w-6 h-6 text-gold" />
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setAssignedToMe(v => !v)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                assignedToMe
+                  ? 'bg-gold text-navy-dark'
+                  : 'bg-navy-dark border border-navy-light/30 text-gray-400 hover:border-gold/50 hover:text-white'
+              }`}
+            >
+              <UserCheck className="w-4 h-4" />
+              Assigned to Me
+            </button>
+            <div className="w-12 h-12 rounded-full bg-gold/20 flex items-center justify-center">
+              <User className="w-6 h-6 text-gold" />
+            </div>
           </div>
         </div>
       </motion.div>
@@ -646,24 +698,6 @@ export default function DirectorDashboard({ data }: Props) {
                               <ExternalLink className="w-3 h-3" /> View in JotForm
                             </a>
                           </div>
-                        ) : sub.actionType === 'task' ? (
-                          <button
-                            onClick={() => openTaskUrl(sub)}
-                            disabled={taskUrlLoading === sub.id}
-                            className="px-2.5 py-1.5 rounded-lg bg-gold/20 text-gold hover:bg-gold/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1 transition-colors"
-                          >
-                            {taskUrlLoading === sub.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ClipboardList className="w-3.5 h-3.5" />}
-                            View Task
-                          </button>
-                        ) : sub.actionType === 'form' ? (
-                          <button
-                            onClick={() => openFormUrl(sub)}
-                            disabled={formUrlLoading === sub.id}
-                            className="px-2.5 py-1.5 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1 transition-colors"
-                          >
-                            {formUrlLoading === sub.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileEdit className="w-3.5 h-3.5" />}
-                            Complete Form
-                          </button>
                         ) : (
                           <>
                             <div className="flex items-center justify-center gap-1.5 flex-wrap">
@@ -728,40 +762,6 @@ export default function DirectorDashboard({ data }: Props) {
                                 </button>
                               )}
 
-                              <button
-                                onClick={() => setCommentingId(commentingId === sub.id ? null : sub.id)}
-                                className={`px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1 border transition-colors ${
-                                  commentingId === sub.id
-                                    ? 'bg-blue-500/30 text-blue-300 border-blue-500/30'
-                                    : 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border-blue-500/20'
-                                }`}
-                              >
-                                <MessageSquare className="w-3.5 h-3.5" /> Comment
-                              </button>
-                            </div>
-
-                            {/* Secondary: View Task / View Form reference links */}
-                            <div className="flex items-center justify-center gap-3">
-                              {sub.taskUrl && (
-                                <button
-                                  onClick={() => openTaskUrl(sub)}
-                                  disabled={taskUrlLoading === sub.id}
-                                  className="flex items-center gap-1 text-xs text-slate-400 hover:text-gold transition-colors disabled:opacity-50"
-                                >
-                                  {taskUrlLoading === sub.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <ClipboardList className="w-3 h-3" />}
-                                  {taskUrlLoading === sub.id ? 'Loading...' : 'View Task'}
-                                </button>
-                              )}
-                              {sub.formUrl && (
-                                <button
-                                  onClick={() => openFormUrl(sub)}
-                                  disabled={formUrlLoading === sub.id}
-                                  className="flex items-center gap-1 text-xs text-slate-400 hover:text-blue-400 transition-colors disabled:opacity-50"
-                                >
-                                  {formUrlLoading === sub.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileEdit className="w-3 h-3" />}
-                                  {formUrlLoading === sub.id ? 'Loading...' : 'Complete Form'}
-                                </button>
-                              )}
                             </div>
                           </>
                         )}
