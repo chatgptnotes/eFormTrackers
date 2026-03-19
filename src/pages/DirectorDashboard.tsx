@@ -675,7 +675,7 @@ export default function DirectorDashboard({ data }: Props) {
                             </a>
                           </div>
                         ) : sub.actionType === 'task' ? (
-                          currentUser.isAdmin || (user?.email && sub.pendingApproverEmail?.toLowerCase() === user.email.toLowerCase()) ? (
+                          (user?.email && sub.pendingApproverEmail?.toLowerCase() === user.email.toLowerCase()) ? (
                             <button
                               onClick={() => openTaskUrl(sub)}
                               disabled={taskUrlLoading === sub.id}
@@ -690,7 +690,7 @@ export default function DirectorDashboard({ data }: Props) {
                             </span>
                           )
                         ) : sub.actionType === 'form' ? (
-                          currentUser.isAdmin || (user?.email && sub.pendingApproverEmail?.toLowerCase() === user.email.toLowerCase()) ? (
+                          (user?.email && sub.pendingApproverEmail?.toLowerCase() === user.email.toLowerCase()) ? (
                             <button
                               onClick={() => openFormUrl(sub)}
                               disabled={formUrlLoading === sub.id}
@@ -707,7 +707,7 @@ export default function DirectorDashboard({ data }: Props) {
                         ) : (
                           <>
                             <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                              {typeof sub.currentApprovalLevel === 'number' && (currentUser.isAdmin || currentUser.approvalLevels.includes(sub.currentApprovalLevel)) ? (
+                              {typeof sub.currentApprovalLevel === 'number' && (user?.email && sub.pendingApproverEmail?.toLowerCase() === user.email.toLowerCase()) ? (
                                 <button
                                   onClick={() => openModal(sub)}
                                   disabled={actionLoading === sub.id}
