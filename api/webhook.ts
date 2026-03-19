@@ -1,8 +1,84 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
-import { detectLevelFields, type DetectedLevelFields } from './detect-fields';
+// ── Inlined detect-fields (Vercel serverless can't resolve cross-dir imports) ──
+
+interface LevelFieldGroup {
+  level: number;
+  statusFieldId: string;
+  approverFieldId: string | null;
+  dateFieldId: string | null;
+}
+
+interface DetectedLevelFields {
+  overallStatusFieldId: string | null;
+  evaluatorEmailsByLevel: Record<number, string>;
+  levelFields: LevelFieldGroup[];
+  nameFieldId: string | null;
+  emailFieldId: string | null;
+  descFieldId: string | null;
+  deptFieldId: string | null;
+  priorityFieldId: string | null;
+  amountFieldId: string | null;
+}
+
+interface Question { qid?: string; text?: string; name?: string; type?: string; }
+
+function detectLevelFields(questions: Record<string, Question>): DetectedLevelFields {
+  const list = Object.entries(questions).map(([qid, q]) => ({ qid, ...q })).sort((a, b) => parseInt(a.qid) - parseInt(b.qid));
+  let overallStatusFieldId: string | null = null;
+  let nameFieldId: string | null = null;
+  let emailFieldId: string | null = null;
+  let descFieldId: string | null = null;
+  let deptFieldId: string | null = null;
+  let priorityFieldId: string | null = null;
+  let amountFieldId: string | null = null;
+  const evaluatorEmailsByLevel: Record<number, string> = {};
+  const byLevel: Record<number, { s?: string; a?: string; d?: string }> = {};
+
+  for (const q of list) {
+    const raw = (q.text || q.name || '').trim();
+    const lbl = raw.toLowerCase();
+    const id = q.qid;
+    if (!nameFieldId && (q.type === 'control_fullname' || lbl === 'name' || lbl.includes('full name') || lbl.includes('requester') || lbl.includes('submitted by') || lbl.includes('applicant') || lbl.includes('employee name'))) { nameFieldId = id; continue; }
+    if (!emailFieldId && (q.type === 'control_email' || lbl.includes('email') || lbl.includes('e-mail'))) { emailFieldId = id; continue; }
+    const levelEmailMatch = lbl.match(/^(?:l|level)\s*(\d+)\s+(?:evaluator|approver|reviewer)\s+email$/);
+    if (levelEmailMatch) { evaluatorEmailsByLevel[parseInt(levelEmailMatch[1])] = id!; continue; }
+    if (!deptFieldId && (lbl.includes('department') || lbl.includes('dept') || lbl.includes('division') || lbl.includes('section'))) { deptFieldId = id; continue; }
+    if (!descFieldId && (lbl.includes('description') || lbl.includes('subject') || lbl.includes('purpose') || lbl.includes('request detail') || lbl.includes('justification') || lbl.includes('title') || (lbl.includes('detail') && !lbl.includes('date')))) { descFieldId = id; continue; }
+    if (!priorityFieldId && lbl.includes('priority')) { priorityFieldId = id; continue; }
+    if (!amountFieldId && (lbl.includes('amount') || lbl.includes('budget') || lbl.includes('cost') || lbl.includes('total') || lbl.includes('value') || lbl.includes('price'))) { amountFieldId = id; continue; }
+    const hasLevel = /(?:^|\s)(?:l|level|stage)\s*\d+(?:\s|$)/.test(lbl);
+    if (!overallStatusFieldId && !hasLevel && (lbl === 'status' || lbl === 'overall status' || lbl === 'final status' || lbl === 'approval status' || (lbl.includes('overall') && lbl.includes('status')))) { overallStatusFieldId = id; continue; }
+    const lvlMatch = lbl.match(/(?:^|\b)(?:l|level|stage)\s*(\d+)(?:\b|$)/);
+    if (lvlMatch) {
+      const lvl = parseInt(lvlMatch[1]);
+      if (!byLevel[lvl]) byLevel[lvl] = {};
+      if (lbl.includes('status') || lbl.includes('decision') || lbl.includes('approval')) { if (!byLevel[lvl].s) byLevel[lvl].s = id; }
+      else if (lbl.includes('approver') || lbl.includes('approved by') || lbl.includes('reviewer')) { if (!byLevel[lvl].a) byLevel[lvl].a = id; }
+      else if (lbl.includes('date') || lbl.includes('time')) { if (!byLevel[lvl].d) byLevel[lvl].d = id; }
+      else { if (!byLevel[lvl].s) byLevel[lvl].s = id; }
+    }
+    if (!overallStatusFieldId && !hasLevel && lbl.includes('approval') && lbl.includes('status')) { overallStatusFieldId = id; }
+  }
+  const levelFields: LevelFieldGroup[] = Object.entries(byLevel).filter(([, f]) => !!f.s).map(([lvl, f]) => ({ level: parseInt(lvl), statusFieldId: f.s!, approverFieldId: f.a || null, dateFieldId: f.d || null })).sort((a, b) => a.level - b.level);
+  return { overallStatusFieldId, evaluatorEmailsByLevel, levelFields, nameFieldId, emailFieldId, descFieldId, deptFieldId, priorityFieldId, amountFieldId };
+}
+// ── End inlined detect-fields ──
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function insertNotification(supabaseClient: any, params: {
+  userEmail: string; type: string; title: string; message: string;
+  submissionId?: string; formId?: string; data?: Record<string, unknown>;
+}) {
+  const { error } = await supabaseClient.from('notifications').insert({
+    user_email: params.userEmail, type: params.type, title: params.title,
+    message: params.message, submission_id: params.submissionId || null,
+    form_id: params.formId || null, data: params.data || {},
+  });
+  if (error) console.warn('[JotFlow] Notification insert error:', error.message);
+}
 
 const JOTFORM_BASE = 'https://eforms.mediaoffice.ae/API';
+const JOTFORM_HOST = 'https://eforms.mediaoffice.ae';
 const API_KEY = process.env.JOTFORM_API_KEY;
 const TEAM_ID = process.env.JOTFORM_TEAM_ID || '260541093809054';
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://eekudqlzzklhyhwkqvme.supabase.co';
@@ -83,7 +159,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     // Fetch this specific submission from JotForm
-    const url = `${JOTFORM_BASE}/submission/${submissionId}?apiKey=${API_KEY}`;
+    const url = `${JOTFORM_BASE}/submission/${submissionId}?apiKey=${API_KEY}&teamID=${TEAM_ID}&addWorkflowStatus=1`;
     const jfRes = await fetch(url);
     if (!jfRes.ok) throw new Error(`JotForm error: ${jfRes.status}`);
     const jfData = await jfRes.json();
@@ -169,29 +245,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let pendingApproverName = '';
     let pendingApproverEmail = '';
     let workflowTasks: unknown[] = [];
+    let approvalUrl = '';
     try {
-      const wfRes = await fetch(
-        `${JOTFORM_BASE}/workflow/submission/${submissionId}/tasks?apiKey=${API_KEY}&teamID=${TEAM_ID}`
-      );
-      if (wfRes.ok) {
-        const wfData = await wfRes.json();
-        const rawTasks = Array.isArray(wfData.content) ? wfData.content : [];
-        workflowTasks = rawTasks;
-        // Find the pending task to get the current approver
-        const pendingTask = rawTasks.find(
-          (t: Record<string, unknown>) => String(t.status || '').toLowerCase() === 'pending'
-        );
-        if (pendingTask) {
-          pendingApproverName = String(
-            (pendingTask as Record<string, unknown>).assignee_name ||
-            (pendingTask as Record<string, unknown>).assigneeName ||
-            (pendingTask as Record<string, unknown>).name || ''
+      const workflowInstanceID = raw.workflowInstanceID || raw.workflow_instance_id;
+      if (workflowInstanceID) {
+        const instUrl = `${JOTFORM_BASE}/workflow/instance/${workflowInstanceID}?apiKey=${API_KEY}&teamID=${TEAM_ID}`;
+        const instRes = await fetch(instUrl);
+        if (instRes.ok) {
+          const instData = await instRes.json();
+          const taskList = instData?.content?.taskList || [];
+          workflowTasks = taskList;
+
+          // Find ACTIVE task (same field extraction as workflow-tasks.ts)
+          const activeTask = taskList.find((t: any) =>
+            String(t.status || '').toUpperCase() === 'ACTIVE'
           );
-          pendingApproverEmail = String(
-            (pendingTask as Record<string, unknown>).assignee_email ||
-            (pendingTask as Record<string, unknown>).assigneeEmail ||
-            (pendingTask as Record<string, unknown>).email || ''
-          );
+          if (activeTask) {
+            const props = (activeTask.properties || {}) as Record<string, unknown>;
+            const assigneeUser = (props.assigneeUser || {}) as Record<string, unknown>;
+            const recipients = Array.isArray(props.recipients) ? props.recipients : [];
+            const firstRecipient = (recipients[0] || {}) as Record<string, unknown>;
+
+            pendingApproverName = String(assigneeUser.name || firstRecipient.name || '');
+            const candidateEmail = String(props.assigneeEmail || assigneeUser.email || firstRecipient.email || '');
+            pendingApproverEmail = candidateEmail.includes('@') ? candidateEmail : '';
+
+            // Construct direct approval URL from ACTIVE task
+            const element = (activeTask.element || {}) as Record<string, unknown>;
+            const wProps = (activeTask.properties || {}) as Record<string, unknown>;
+            const internalFormID = element.internalFormID || element.resourceID || element.formID || wProps.formID;
+            const taskType = String(element.type || '');
+            const taskId = String(activeTask.id || '');
+            if (internalFormID && taskId) {
+              let queryParam = 'workflowApprovalTask';
+              if (taskType === 'workflow_assign_form') queryParam = 'workflowAssignFormTask';
+              else if (taskType === 'workflow_assign_task') queryParam = 'workflowAssignTask';
+              approvalUrl = `${JOTFORM_HOST}/${internalFormID}?${queryParam}=1&taskID=${taskId}`;
+            }
+          }
         }
       }
     } catch (wfErr) {
@@ -242,6 +333,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       total_days: totalDays,
       last_synced: new Date().toISOString(),
       needs_sync: needsSync,
+      approval_url: approvalUrl || null,
     };
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -250,6 +342,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .upsert(record, { onConflict: 'jotform_submission_id' });
 
     if (error) throw new Error(error.message);
+
+    // Notify the pending approver (if known)
+    if (pendingApproverEmail && status === 'pending') {
+      await insertNotification(supabase, {
+        userEmail: pendingApproverEmail,
+        type: 'approval_needed',
+        title: 'New approval request',
+        message: `${title} from ${submittedBy || 'Unknown'} (${department}) needs your approval`,
+        submissionId,
+        formId,
+        data: { level: currentLevel, submittedBy, department },
+      }).catch(err => console.warn('[JotFlow] Notification insert failed:', err));
+    }
 
     // Upsert approval history rows for each level that has been actioned
     for (const lvl of levels) {

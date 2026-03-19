@@ -89,7 +89,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const status = String(t.status || 'PENDING').toUpperCase();
       const updatedAt = String(t.updated_at || '');
       const taskId = String(t.id || '');
-      const internalFormID = String(element.internalFormID || element.resourceID || '');
+      const internalFormID = String(element.internalFormID || element.resourceID || element.formID || props.formID || '');
 
       return { name, type, status, assigneeName, assigneeEmail, updatedAt, taskId, internalFormID };
     };

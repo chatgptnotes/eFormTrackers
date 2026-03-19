@@ -71,7 +71,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const taskId = String(activeTask.id);
     const element = (activeTask.element || {}) as Record<string, unknown>;
-    const internalFormID = element.internalFormID || element.resourceID;
+    const props = (activeTask.properties || {}) as Record<string, unknown>;
+    const internalFormID = element.internalFormID || element.resourceID || element.formID || props.formID;
     const taskType = String(element.type || '');
 
     if (!internalFormID) {
