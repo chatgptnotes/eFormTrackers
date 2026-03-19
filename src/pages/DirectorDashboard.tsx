@@ -218,16 +218,12 @@ export default function DirectorDashboard({ data }: Props) {
   const dismissedIds = useMemo(() => new Set([...approvedIds, ...rejectedIds]), [approvedIds, rejectedIds]);
 
   const openTaskUrl = async (sub: Submission) => {
-    // Prefer workflow-aware approvalUrl (has taskID param)
-    if (sub.approvalUrl) {
-      window.open(sub.approvalUrl, '_blank', 'noopener,noreferrer');
-      return;
-    }
     setTaskUrlLoading(sub.id);
     try {
-      const res = await fetch(`/api/task-url?formId=${sub.formId}&submissionId=${sub.id}`);
+      // Use email-url endpoint which builds the correct workflow-aware URL with taskID
+      const res = await fetch(`/api/email-url?formId=${sub.formId}&submissionId=${sub.id}`);
       const data = await res.json();
-      const url = data.taskUrl || sub.taskUrl;
+      const url = data.approvalUrl || sub.approvalUrl || sub.taskUrl;
       if (url) window.open(url, '_blank', 'noopener,noreferrer');
     } catch {
       if (sub.taskUrl) window.open(sub.taskUrl, '_blank', 'noopener,noreferrer');
@@ -237,16 +233,12 @@ export default function DirectorDashboard({ data }: Props) {
   };
 
   const openFormUrl = async (sub: Submission) => {
-    // Prefer workflow-aware approvalUrl (has taskID param)
-    if (sub.approvalUrl) {
-      window.open(sub.approvalUrl, '_blank', 'noopener,noreferrer');
-      return;
-    }
     setFormUrlLoading(sub.id);
     try {
-      const res = await fetch(`/api/form-url?formId=${sub.formId}&submissionId=${sub.id}`);
+      // Use email-url endpoint which builds the correct workflow-aware URL with taskID
+      const res = await fetch(`/api/email-url?formId=${sub.formId}&submissionId=${sub.id}`);
       const data = await res.json();
-      const url = data.formUrl || sub.formUrl || sub.editLink;
+      const url = data.approvalUrl || sub.approvalUrl || sub.formUrl || sub.editLink;
       if (url) window.open(url, '_blank', 'noopener,noreferrer');
     } catch {
       const url = sub.formUrl || sub.editLink;
