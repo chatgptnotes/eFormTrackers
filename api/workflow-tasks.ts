@@ -15,6 +15,7 @@ export interface WorkflowTask {
   updatedAt: string;
   taskId: string;          // workflow task ID (used to build approval/form URLs)
   internalFormID: string;  // internal form ID for workflow-aware URLs
+  accessLink: string;      // direct URL with access token from JotForm
 }
 
 /**
@@ -90,8 +91,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const updatedAt = String(t.updated_at || '');
       const taskId = String(t.id || '');
       const internalFormID = String(element.internalFormID || element.resourceID || element.formID || props.formID || '');
+      const accessLink = String(t.accessLink || '');
 
-      return { name, type, status, assigneeName, assigneeEmail, updatedAt, taskId, internalFormID };
+      return { name, type, status, assigneeName, assigneeEmail, updatedAt, taskId, internalFormID, accessLink };
     };
 
     // Filter out the initial "Form" submission step (COMPLETED with no assignee)
@@ -103,8 +105,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Normalize and number sequentially
     const tasks: WorkflowTask[] = filteredTasks.map((t, index) => {
-      const { name, type, status, assigneeName, assigneeEmail, updatedAt, taskId, internalFormID } = extractTask(t);
-      return { name, type, status, assigneeName, assigneeEmail, level: index + 1, updatedAt, taskId, internalFormID };
+      const { name, type, status, assigneeName, assigneeEmail, updatedAt, taskId, internalFormID, accessLink } = extractTask(t);
+      return { name, type, status, assigneeName, assigneeEmail, level: index + 1, updatedAt, taskId, internalFormID, accessLink };
     });
 
     return res.status(200).json({ tasks });

@@ -69,6 +69,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ approvalUrl: null, formId, submissionId, reason: 'no active task' });
     }
 
+    // Prefer accessLink (direct URL with access token from JotForm email)
+    const accessLink = activeTask.accessLink ? String(activeTask.accessLink) : '';
+    if (accessLink) {
+      // Store in Supabase and return immediately
+      if (SUPABASE_KEY) {
+        const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+        await supabase
+          .from('jf_submissions')
+          .update({ approval_url: accessLink })
+          .eq('jotform_submission_id', submissionId)
+          .then(() => {});
+      }
+      return res.status(200).json({ approvalUrl: accessLink, formId, submissionId, source: 'accessLink' });
+    }
+
+    // Fallback: construct URL from taskId + internalFormID
     const taskId = String(activeTask.id);
     const element = (activeTask.element || {}) as Record<string, unknown>;
     const props = (activeTask.properties || {}) as Record<string, unknown>;
@@ -76,7 +92,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const taskType = String(element.type || '');
 
     if (!internalFormID) {
-      return res.status(200).json({ approvalUrl: null, formId, submissionId, reason: 'no internalFormID' });
+      return res.status(200).json({ approvalUrl: null, formId, submissionId, reason: 'no internalFormID or accessLink' });
     }
 
     let queryParam = 'workflowApprovalTask';

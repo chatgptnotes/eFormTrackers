@@ -39,6 +39,7 @@ interface WorkflowTaskInfo {
   updatedAt: string;
   taskId: string;
   internalFormID: string;
+  accessLink: string;
 }
 const workflowTaskCache: Record<string, { tasks: WorkflowTaskInfo[]; at: number }> = {};
 const WORKFLOW_TASK_CACHE_TTL = 5 * 60 * 1000;
@@ -60,6 +61,7 @@ async function fetchWorkflowTasks(submissionId: string): Promise<WorkflowTaskInf
       updatedAt: String(t.updatedAt || ''),
       taskId: String(t.taskId || ''),
       internalFormID: String(t.internalFormID || ''),
+      accessLink: String(t.accessLink || ''),
     }));
     workflowTaskCache[submissionId] = { tasks, at: Date.now() };
     return tasks;
@@ -648,8 +650,10 @@ export function useSubmissions() {
                 else sub.actionType = 'approval';
               }
 
-              // Build workflow-aware approval URL from taskId + internalFormID
-              if (activeTask.taskId && activeTask.internalFormID) {
+              // Prefer accessLink (direct URL with access token from JotForm)
+              if (activeTask.accessLink) {
+                sub.approvalUrl = activeTask.accessLink;
+              } else if (activeTask.taskId && activeTask.internalFormID) {
                 const host = 'https://eforms.mediaoffice.ae';
                 const qp = taskType === 'workflow_assign_form' ? 'workflowAssignFormTask'
                   : taskType === 'workflow_assign_task' ? 'workflowAssignTask'
