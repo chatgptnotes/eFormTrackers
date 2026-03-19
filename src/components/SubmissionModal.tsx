@@ -63,9 +63,7 @@ async function ensureFields(formId: string): Promise<{
   }
 }
 
-// Director-level approvals require signature
 // All approval levels require signature — every Approve action must be signed
-const SIGNATURE_REQUIRED_LEVELS = [1, 2, 3, 4];
 
 export default function SubmissionModal({ submission, onClose, onUpdate }: Props) {
   const { user } = useAuth();
@@ -89,7 +87,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
   const isSubmitting = approving || rejecting || uploadingSignature || ensuringFields;
 
   const level = typeof submission?.currentApprovalLevel === 'number' ? submission.currentApprovalLevel : null;
-  const signatureRequired = level !== null && SIGNATURE_REQUIRED_LEVELS.includes(level);
+  const signatureRequired = level !== null;
 
   // Check if this form supports direct approval (has known field map or dynamic one)
   const hasStaticFieldMap = submission !== null && level !== null && getFieldMap(submission, level) !== null;
