@@ -967,7 +967,7 @@ export default function DirectorDashboard({ data }: Props) {
                   {/* Expanded workflow steps timeline */}
                   {expandedRowId === sub.id && (
                     <tr className="bg-navy-dark/30">
-                      <td colSpan={9} className="px-4 py-4 pl-10">
+                      <td colSpan={10} className="px-4 py-4 pl-10">
                         {expandedTasks.length === 0 ? (
                           <span className="text-xs text-gray-500 italic">No workflow steps found</span>
                         ) : (
@@ -1230,6 +1230,36 @@ export default function DirectorDashboard({ data }: Props) {
                             </div>
                           );
                         })()}
+                        {/* Form Submission Data (JotForm Tables) */}
+                        {sub.formTableData && sub.formTableData.length > 0 && (
+                          <div className="mt-4 border-t border-navy-light/20 pt-3">
+                            <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-2">
+                              Form Submission Data
+                            </p>
+                            <div className="rounded-lg border border-navy-light/20 overflow-x-auto">
+                              <table className="w-full">
+                                <thead>
+                                  <tr className="bg-navy-dark/40 border-b border-navy-light/20">
+                                    {sub.formTableData.map((field, i) => (
+                                      <th key={i} className="px-3 py-2 text-left text-[10px] font-bold text-gray-500 uppercase whitespace-nowrap">
+                                        {field.label}
+                                      </th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  <tr className="border-b border-navy-light/10">
+                                    {sub.formTableData.map((field, i) => (
+                                      <td key={i} className="px-3 py-2 text-xs text-gray-300 whitespace-nowrap">
+                                        {field.value}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   )}

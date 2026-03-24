@@ -33,6 +33,7 @@ export interface Submission {
   jotformStatus: string;
   priority: 'low' | 'medium' | 'high' | 'urgent';
   answers: Record<string, string>;
+  formTableData?: Array<{ label: string; value: string }>;
   /** Populated by the generic mapper for dynamically-discovered forms so the modal can approve/reject them */
   levelFieldMap?: { level: number; statusFieldId: string; approverFieldId: string | null; overallStatusFieldId: string | null }[];
   /** True when a native JotForm approval was detected but hidden fields weren't updated — user must confirm action */

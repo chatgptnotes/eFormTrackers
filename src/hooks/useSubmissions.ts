@@ -216,6 +216,20 @@ function mapGenericSubmission(
   const answers = (raw.answers as Record<string, { answer: unknown; text?: string }>) || {};
   const get = (id: string | null) => id ? extractText(answers[id]?.answer) : '';
 
+  // Build dynamic form table data from all answers
+  const skipTypes = new Set(['control_button', 'control_head', 'control_pagebreak', 'control_divider', 'control_text', 'control_image', 'control_collapse', 'control_captcha']);
+  const formTableData: Array<{ label: string; value: string }> = [];
+  for (const [, field] of Object.entries(answers)) {
+    const f = field as Record<string, unknown>;
+    const fieldType = String(f.type || '');
+    if (skipTypes.has(fieldType)) continue;
+    const label = String(f.text || f.name || '');
+    const value = extractText(f.answer);
+    if (label && value) {
+      formTableData.push({ label, value });
+    }
+  }
+
   const requesterName = get(fields.nameFieldId);
   const email = get(fields.emailFieldId);
   const department = get(fields.deptFieldId) || 'General';
@@ -348,6 +362,7 @@ function mapGenericSubmission(
     jotformStatus: genericJotformStatus,
     priority,
     answers: { description, amount, department, email, requester: requesterName },
+    formTableData,
     levelFieldMap: fields.levelFields.length > 0
       ? fields.levelFields.map(lf => ({
           level: lf.level,
