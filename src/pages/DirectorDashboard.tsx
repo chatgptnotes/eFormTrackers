@@ -1251,7 +1251,7 @@ export default function DirectorDashboard({ data }: Props) {
                                   <tr className="border-b border-navy-light/10">
                                     {sub.formTableData.map((field, i) => (
                                       <td key={i} className="px-3 py-2 text-xs text-gray-300 whitespace-nowrap">
-                                        {field.value}
+                                        {field.value || '—'}
                                       </td>
                                     ))}
                                   </tr>

@@ -225,7 +225,7 @@ function mapGenericSubmission(
     if (skipTypes.has(fieldType)) continue;
     const label = String(f.text || f.name || '');
     const value = extractText(f.answer);
-    if (label && value) {
+    if (label) {
       formTableData.push({ label, value });
     }
   }
