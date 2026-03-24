@@ -96,7 +96,7 @@ export default function Dashboard({ data }: Props) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ submissionID: id }),
-      }).catch(() => {});
+      }).catch(err => console.warn('[JotFlow] Approval action failed:', err));
     } catch (err) {
       console.error('Approval error:', err);
       alert(`Failed to submit decision: ${err instanceof Error ? err.message : String(err)}`);

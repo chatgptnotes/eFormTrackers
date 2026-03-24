@@ -41,15 +41,19 @@ interface WorkflowTaskInfo {
   internalFormID: string;
   accessLink: string;
 }
-const workflowTaskCache: Record<string, { tasks: WorkflowTaskInfo[]; at: number }> = {};
+interface WorkflowTaskResult {
+  tasks: WorkflowTaskInfo[];
+  workflowInstanceId?: string;
+}
+const workflowTaskCache: Record<string, { result: WorkflowTaskResult; at: number }> = {};
 const WORKFLOW_TASK_CACHE_TTL = 5 * 60 * 1000;
 
-async function fetchWorkflowTasks(submissionId: string): Promise<WorkflowTaskInfo[]> {
+async function fetchWorkflowTasks(submissionId: string): Promise<WorkflowTaskResult> {
   const cached = workflowTaskCache[submissionId];
-  if (cached && Date.now() - cached.at < WORKFLOW_TASK_CACHE_TTL) return cached.tasks;
+  if (cached && Date.now() - cached.at < WORKFLOW_TASK_CACHE_TTL) return cached.result;
   try {
     const res = await fetch(`/api/workflow-tasks?submissionId=${submissionId}`);
-    if (!res.ok) return [];
+    if (!res.ok) return { tasks: [] };
     const data = await res.json();
     const tasks: WorkflowTaskInfo[] = (data.tasks || []).map((t: Record<string, unknown>) => ({
       name: String(t.name || ''),
@@ -63,10 +67,14 @@ async function fetchWorkflowTasks(submissionId: string): Promise<WorkflowTaskInf
       internalFormID: String(t.internalFormID || ''),
       accessLink: String(t.accessLink || ''),
     }));
-    workflowTaskCache[submissionId] = { tasks, at: Date.now() };
-    return tasks;
+    const result: WorkflowTaskResult = {
+      tasks,
+      workflowInstanceId: String(data.workflowInstanceId || '') || undefined,
+    };
+    workflowTaskCache[submissionId] = { result, at: Date.now() };
+    return result;
   } catch {
-    return [];
+    return { tasks: [] };
   }
 }
 
@@ -350,6 +358,7 @@ function mapGenericSubmission(
       : fields.overallStatusFieldId
         ? [{ level: 1, statusFieldId: fields.overallStatusFieldId, approverFieldId: null, overallStatusFieldId: fields.overallStatusFieldId }]
         : undefined,
+    workflowInstanceId: String(raw.workflowInstanceID || raw.workflow_instance_id || '') || undefined,
     needsSync,
     pendingApproverName: (() => {
       const pending = history.find(h => h.status === 'pending');
@@ -436,6 +445,7 @@ function mapSupabaseRow(row: Record<string, unknown>): Submission {
     pendingApproverName,
     pendingApproverEmail,
     approvalUrl: String(row.approval_url || '') || undefined,
+    workflowInstanceId: String(row.workflow_instance_id || '') || undefined,
   } as Submission;
 }
 
@@ -503,7 +513,7 @@ export function useSubmissions() {
           const rows: Record<string, unknown>[] = [];
           while (pageCount < maxPages) {
             const res = await fetch(
-              `/api/jotform?path=form/${form.id}/submissions&limit=${pageLimit}&offset=${offset}&orderby=created_at&direction=DESC`
+              `/api/jotform?path=form/${form.id}/submissions&limit=${pageLimit}&offset=${offset}&orderby=created_at&direction=DESC&addWorkflowStatus=1`
             );
             if (!res.ok) {
               console.warn(`[JotFlow] Failed to fetch submissions for form ${form.id} (offset=${offset}, status=${res.status})`);
@@ -589,17 +599,25 @@ export function useSubmissions() {
           }
         }
 
-        // Second pass: batch-fetch REAL workflow tasks for pending submissions (up to 50)
-        const pendingSubs = mapped.filter(s => typeof s.currentApprovalLevel === 'number').slice(0, 50);
+        // Second pass: batch-fetch REAL workflow tasks for all submissions (up to 50)
+        // Prioritize pending subs (need real approver data), then completed/rejected (need workflowInstanceId for grouping)
+        const pendingSubs = [
+          ...mapped.filter(s => typeof s.currentApprovalLevel === 'number'),
+          ...mapped.filter(s => typeof s.currentApprovalLevel !== 'number' && !s.workflowInstanceId),
+        ].slice(0, 50);
         if (pendingSubs.length > 0) {
           const taskResults = await Promise.allSettled(
             pendingSubs.map(sub => fetchWorkflowTasks(sub.id))
           );
           for (let i = 0; i < pendingSubs.length; i++) {
             const result = taskResults[i];
-            if (result.status !== 'fulfilled' || result.value.length === 0) continue;
-            const tasks = result.value;
+            if (result.status !== 'fulfilled') continue;
+            const { tasks, workflowInstanceId: wfInstanceId } = result.value;
             const sub = pendingSubs[i];
+
+            // Capture workflowInstanceId from the workflow API
+            if (wfInstanceId) sub.workflowInstanceId = wfInstanceId;
+            if (tasks.length === 0) continue;
 
             // Find the currently ACTIVE task
             const activeTask = tasks.find(t => t.status === 'ACTIVE');
@@ -715,6 +733,7 @@ export function useSubmissions() {
             answers: s.answers,
             actionType: s.actionType,
             approvalUrl: s.approvalUrl,
+            workflowInstanceId: s.workflowInstanceId,
           }));
           // Fire-and-forget — don't block the UI
           fetch('/api/sync-to-supabase', {
@@ -747,19 +766,12 @@ export function useSubmissions() {
     actionCooldownUntil.current = Date.now() + durationMs;
   }, []);
 
-  // ─── Lightweight Supabase-only refresh (no JotForm API calls) ───────────────
-  const loadFromSupabase = useCallback(async (opts?: { force?: boolean }) => {
-    // Skip if within action cooldown (optimistic update is showing)
-    if (!opts?.force && Date.now() < actionCooldownUntil.current) return;
-    try {
-      const { data: rows, error: sbError } = await supabase
-        .from('jf_submissions')
-        .select('*')
-        .order('submission_date', { ascending: false });
-      if (sbError || !rows?.length) return;
-      setAllSubmissions(rows.map(r => mapSupabaseRow(r as Record<string, unknown>)));
-      setRefreshConfig(prev => ({ ...prev, lastUpdated: new Date().toISOString() }));
-    } catch { /* silent — don't overwrite working data */ }
+  // ─── Supabase read disabled — dashboard data comes only from JotForm API ───
+  // We no longer read from Supabase jf_submissions table in the dashboard.
+  // Real-time and auto-refresh rely on loadData() (JotForm API) triggered by manual refresh.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const loadFromSupabase = useCallback(async (_opts?: { force?: boolean }) => {
+    // No-op: Supabase reads removed per project requirements
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);

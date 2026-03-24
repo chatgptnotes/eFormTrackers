@@ -1,5 +1,13 @@
 {
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
-  ]
+  ],
+  "functions": {
+    "api/webhook.ts": {
+      "maxDuration": 30
+    },
+    "api/workflow-action.ts": {
+      "maxDuration": 30
+    }
+  }
 }

@@ -31,6 +31,7 @@ interface SyncRecord {
   answers?: Record<string, string>;
   actionType?: string;
   approvalUrl?: string;
+  workflowInstanceId?: string;
 }
 
 /**
@@ -95,6 +96,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         level_history: r.approvalHistory || [],
         raw_data: { _mapped: { levels: r.approvalHistory } },
         approval_url: r.approvalUrl || null,
+        workflow_instance_id: r.workflowInstanceId || null,
         last_synced: new Date().toISOString(),
       };
     });

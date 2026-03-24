@@ -1,9 +1,24 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { createClient } from '@supabase/supabase-js';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function insertNotification(supabaseClient: any, params: {
+  userEmail: string; type: string; title: string; message: string;
+  submissionId?: string; formId?: string; data?: Record<string, unknown>;
+}) {
+  const { error } = await supabaseClient.from('notifications').insert({
+    user_email: params.userEmail, type: params.type, title: params.title,
+    message: params.message, submission_id: params.submissionId || null,
+    form_id: params.formId || null, data: params.data || {},
+  });
+  if (error) console.warn('[JotFlow] Notification insert error:', error.message);
+}
 
 const JOTFORM_BASE = 'https://eforms.mediaoffice.ae/API';
 const API_KEY = process.env.JOTFORM_API_KEY;
 const TEAM_ID = process.env.JOTFORM_TEAM_ID || '260541093809054';
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://eekudqlzzklhyhwkqvme.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 /**
  * POST /api/workflow-action
@@ -120,6 +135,80 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const result = await completeRes.json();
+
+    // Send notifications to the submitter on final approval or rejection
+    try {
+      const supa = createClient(SUPABASE_URL, SUPABASE_KEY);
+      const { data: subRow } = await supa.from('jf_submissions')
+        .select('submitter_email, title, form_title')
+        .eq('jotform_submission_id', submissionId)
+        .single();
+      const submitterEmail = subRow?.submitter_email || '';
+      const submissionTitle = subRow?.title || subRow?.form_title || 'Request';
+
+      if (action === 'approve' && submitterEmail) {
+        const isFinal = result?.content?.instanceCompleted || false;
+        await insertNotification(supa, {
+          userEmail: submitterEmail,
+          type: 'submission',
+          title: isFinal ? 'Request fully approved' : 'Request approved at current level',
+          message: isFinal
+            ? `Your request "${submissionTitle}" has been fully approved`
+            : `Your request "${submissionTitle}" was approved and moved to the next level`,
+          submissionId,
+          data: { action: 'approved', final: isFinal },
+        }).catch(err => console.warn('[JotFlow] Notification failed:', err));
+
+        // Notify the NEXT approver if workflow moved to a new task
+        if (!isFinal) {
+          try {
+            // Re-fetch workflow instance to find the newly ACTIVE task
+            const updatedInstRes = await fetch(
+              `${JOTFORM_BASE}/workflow/instance/${instanceId}?apiKey=${API_KEY}&teamID=${TEAM_ID}`
+            );
+            if (updatedInstRes.ok) {
+              const updatedInstData = await updatedInstRes.json();
+              const updatedTaskList: Array<Record<string, unknown>> = updatedInstData?.content?.taskList || [];
+              const nextActiveTask = updatedTaskList.find(t => t.status === 'ACTIVE');
+              if (nextActiveTask) {
+                const props = (nextActiveTask.properties || {}) as Record<string, unknown>;
+                const assigneeUser = (props.assigneeUser || {}) as Record<string, unknown>;
+                const recipients = Array.isArray(props.recipients) ? props.recipients : [];
+                const firstRecipient = (recipients[0] || {}) as Record<string, unknown>;
+                // Only use fields that are actual email addresses (must contain @)
+                const candidateEmail = String(props.assigneeEmail || assigneeUser.email || firstRecipient.email || '');
+                const nextApproverEmail = candidateEmail.includes('@') ? candidateEmail : '';
+                const nextApproverName = String(assigneeUser.name || firstRecipient.name || '');
+
+                if (nextApproverEmail) {
+                  await insertNotification(supa, {
+                    userEmail: nextApproverEmail,
+                    type: 'approval_needed',
+                    title: 'New approval request',
+                    message: `"${submissionTitle}" needs your approval`,
+                    submissionId,
+                    data: { assignee: nextApproverName },
+                  }).catch(err => console.warn('[JotFlow] Next-approver notification failed:', err));
+                }
+              }
+            }
+          } catch (nextErr) {
+            console.warn('[JotFlow] Next-approver lookup failed:', nextErr);
+          }
+        }
+      } else if (action === 'reject' && submitterEmail) {
+        await insertNotification(supa, {
+          userEmail: submitterEmail,
+          type: 'submission',
+          title: 'Request rejected',
+          message: `Your request "${submissionTitle}" was rejected${comment ? ': ' + comment : ''}`,
+          submissionId,
+          data: { action: 'rejected', reason: comment || '' },
+        }).catch(err => console.warn('[JotFlow] Notification failed:', err));
+      }
+    } catch (notifErr) {
+      console.warn('[JotFlow] Notification logic failed:', notifErr);
+    }
 
     return res.status(200).json({
       ok: true,

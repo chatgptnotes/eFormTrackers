@@ -304,6 +304,25 @@ Match criteria (any one = included):
 
 ---
 
+## CRITICAL: Never Use Inbox URLs for "View in JotForm" Links
+
+**Rule:** All "View in JotForm" links MUST use `sub.approvalUrl` — the email-style direct URL format:
+```
+https://eforms.mediaoffice.ae/{internalFormID}?workflowAssignFormTask=1&taskID={taskId}
+```
+
+**Never** use the inbox URL format:
+```
+https://eforms.mediaoffice.ae/inbox/{formId}/{submissionId}
+```
+
+- `sub.approvalUrl` is computed in `useSubmissions.ts` from the workflow instance's `accessLink` or constructed from `internalFormID + taskID`
+- If `sub.approvalUrl` is not available (workflow not yet fetched), use `'#'` as fallback — do NOT fall back to the inbox URL
+- This applies to ALL link locations: REF# column, Title column, Action column (completed/rejected status links), and any future "View in JotForm" links
+- The Action column buttons for completed/rejected submissions should use `sub.approvalUrl || '#'`
+
+---
+
 ### CORS Note for Deployment
 All 14 API files now default to `ALLOWED_ORIGIN = 'https://jot-14march.vercel.app'`.
 - Production: works as-is
@@ -318,3 +337,50 @@ Creating a new JotForm workflow is fully compatible. The `/api/jotform` path all
 - `submission/{id}` — submission details
 
 Workflow operations (`/api/workflow-action`, `/api/workflow-tasks`, `/api/form-workflow`, `/api/ensure-fields`) use separate endpoints unaffected by Fix 9.
+
+---
+
+## URL Format Rules (per Task Type)
+
+JotForm uses **two different URL formats** in email notifications depending on the task type:
+
+| `element.type` | URL Format | Access Token? |
+|---|---|---|
+| `workflow_assign_form` | `/{formID}?workflowAssignFormTask=1&taskID={taskID}` | No |
+| `workflow_approval` | `/approval-form/{formID}/task/{taskID}/access-token/{token}` | Yes (from accessLink `/share/` URL) |
+| `workflow_assign_task` | `/approval-form/{formID}/task/{taskID}/access-token/{token}` | Yes (from accessLink `/share/` URL) |
+
+**Implementation:** Type-aware URL construction is applied in three places:
+- `api/email-url.ts` — on-demand URL resolution
+- `src/hooks/useSubmissions.ts` — second-pass enrichment (~line 657)
+- `api/webhook.ts` — webhook handler (~line 273)
+
+---
+
+## Bulk Submission Cleanup Endpoint
+
+### API: `/api/cleanup-submissions`
+
+**File:** `api/cleanup-submissions.ts`
+
+One-time cleanup endpoint to bulk-delete JotForm submissions. Keeps only submissions where the active workflow task assignee matches a specified email.
+
+### Usage
+```
+GET /api/cleanup-submissions              → Dry run (default) — lists what would be deleted
+GET /api/cleanup-submissions?dryRun=false → Actually deletes submissions from JotForm
+```
+
+### How It Works
+1. Fetches all forms via `GET /user/forms`
+2. Fetches all submissions per form with `addWorkflowStatus=1`
+3. For each submission with a `workflowInstanceID`, fetches `GET /workflow/instance/{id}` to find the ACTIVE task's assignee email
+4. Submissions where `pendingEmail !== KEEP_EMAIL` → deleted via `DELETE /submission/{id}`
+5. Returns summary JSON with kept/deleted counts and details
+
+### Configuration
+- `KEEP_EMAIL` constant at top of file (currently `huzaifa.dawasaz@mediaoffice.ae`)
+- Change this value to keep different submissions in future cleanups
+
+### History
+- **2026-03-23:** Executed cleanup — deleted 73 of 83 submissions, kept 10 (all pending with `huzaifa.dawasaz@mediaoffice.ae`). Zero failures. JotForm DELETE API (`DELETE /submission/{id}`) confirmed working on enterprise instance.

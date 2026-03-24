@@ -1,19 +1,17 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createClient } from '@supabase/supabase-js';
 
 const JOTFORM_BASE = process.env.JOTFORM_BASE || 'https://eforms.mediaoffice.ae/API';
 const JOTFORM_HOST = process.env.JOTFORM_HOST || 'https://eforms.mediaoffice.ae';
 const JOTFORM_API_KEY = process.env.JOTFORM_API_KEY || '';
 const TEAM_ID = process.env.JOTFORM_TEAM_ID || '260541093809054';
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://eekudqlzzklhyhwkqvme.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 /**
  * GET /api/email-url?formId={id}&submissionId={id}
  *
- * Returns the direct approval/form URL.
- * 1. Check Supabase for a stored approval_url
- * 2. Fallback: fetch workflow instance and construct the URL
+ * Returns the direct task URL in the same path-based format JotForm uses in email notifications:
+ *   /approval-form/{formID}/task/{taskID}/access-token/{token}
+ *
+ * The access token is extracted from the accessLink (/share/ URL) returned by the workflow API.
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -27,7 +25,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // Always fetch fresh from workflow instance to get accessLink
     const subUrl = `${JOTFORM_BASE}/submission/${submissionId}?apiKey=${JOTFORM_API_KEY}&teamID=${TEAM_ID}&addWorkflowStatus=1`;
     const subRes = await fetch(subUrl);
     if (!subRes.ok) throw new Error(`Submission API error: ${subRes.status}`);
@@ -50,56 +47,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ approvalUrl: null, formId, submissionId, reason: 'no active task' });
     }
 
-    // Prefer accessLink (direct URL with access token from JotForm email)
-    const accessLink = activeTask.accessLink ? String(activeTask.accessLink) : '';
-    if (accessLink) {
-      // Store in Supabase and return immediately
-      if (SUPABASE_KEY) {
-        const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-        await supabase
-          .from('jf_submissions')
-          .update({ approval_url: accessLink })
-          .eq('jotform_submission_id', submissionId)
-          .then(() => {});
-      }
-      return res.status(200).json({ approvalUrl: accessLink, formId, submissionId, source: 'accessLink' });
-    }
-
-    // Fallback: construct URL from taskId + internalFormID
-    const taskId = String(activeTask.id);
+    // Extract formID and taskId
     const element = (activeTask.element || {}) as Record<string, unknown>;
     const props = (activeTask.properties || {}) as Record<string, unknown>;
-    const internalFormID = element.internalFormID || element.resourceID || element.formID || props.formID;
+    const taskFormID = element.internalFormID || element.resourceID || element.formID || props.formID;
+    const taskId = String(activeTask.id || '');
+
+    // Extract access token from accessLink (/share/ URL)
+    const accessLink = String(
+      activeTask.accessLink ||
+      (props as any)?.accessLink ||
+      (element as any)?.accessLink ||
+      ''
+    );
+    const shareMatch = accessLink.match(/\/share\/(.+)$/);
+    const accessToken = shareMatch ? shareMatch[1] : '';
+
     const taskType = String(element.type || '');
 
-    if (!internalFormID) {
-      return res.status(200).json({ approvalUrl: null, formId, submissionId, reason: 'no internalFormID or accessLink' });
+    if (taskType === 'workflow_assign_form') {
+      // Form tasks use simple query-param format (no access token needed)
+      const constructedUrl = `${JOTFORM_HOST}/${taskFormID}?workflowAssignFormTask=1&taskID=${taskId}`;
+      return res.status(200).json({ approvalUrl: constructedUrl, formId, submissionId, source: 'constructed-form' });
+    } else {
+      // Approval/task types use path-based format with access token
+      if (taskFormID && taskId && accessToken) {
+        const encodedToken = encodeURIComponent(accessToken);
+        const constructedUrl = `${JOTFORM_HOST}/approval-form/${taskFormID}/task/${taskId}/access-token/${encodedToken}`;
+        return res.status(200).json({ approvalUrl: constructedUrl, formId, submissionId, source: 'constructed-path' });
+      }
+
+      // Fallback: use accessLink directly
+      if (accessLink) {
+        return res.status(200).json({ approvalUrl: accessLink, formId, submissionId, source: 'accessLink-fallback' });
+      }
     }
 
-    let queryParam = 'workflowApprovalTask';
-    if (taskType === 'workflow_assign_form') queryParam = 'workflowAssignFormTask';
-    else if (taskType === 'workflow_assign_task') queryParam = 'workflowAssignTask';
-
-    const approvalUrl = `${JOTFORM_HOST}/${internalFormID}?${queryParam}=1&taskID=${taskId}`;
-
-    // Store it in Supabase for next time
-    if (SUPABASE_KEY) {
-      const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-      await supabase
-        .from('jf_submissions')
-        .update({ approval_url: approvalUrl })
-        .eq('jotform_submission_id', submissionId)
-        .then(() => {}); // best-effort
-    }
-
-    return res.status(200).json({
-      approvalUrl,
-      formId,
-      submissionId,
-      taskId,
-      taskType,
-      source: 'constructed',
-    });
+    return res.status(200).json({ approvalUrl: null, formId, submissionId, reason: 'no accessLink or token available' });
   } catch (err) {
     console.error('email-url error:', err);
     return res.status(200).json({ approvalUrl: null, formId, submissionId, error: String(err) });

@@ -4,3 +4,4 @@ dist
 *.local
 .vercel
 .env*.local
+everything-claude-code/

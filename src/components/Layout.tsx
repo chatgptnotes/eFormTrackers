@@ -6,7 +6,7 @@ import {
   Users, FileText, CreditCard, HelpCircle, Building2, BarChart3, Kanban,
   FolderOpen, Folder, ChevronRight, ChevronDown, LayoutGrid, Package,
   DollarSign, Monitor, Scale, Briefcase, Megaphone, ShieldCheck, PlusCircle,
-  ClipboardList, Layers, Sun, Moon,
+  ClipboardList, Layers, Sun, Moon, ExternalLink,
 } from 'lucide-react';
 import { RefreshConfig, SidebarCategory } from '../types';
 import { JFFormMeta } from '../services/formDiscovery';
@@ -342,6 +342,15 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
               </div>
             </div>
             <div className="flex items-center gap-3">
+              <a
+                href="https://eforms.mediaoffice.ae/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-navy-light/30 hover:bg-navy-light/50 text-gray-400 hover:text-gold transition-all text-sm font-semibold"
+              >
+                <ExternalLink className="w-4 h-4" />
+                Workspace
+              </a>
               <Link
                 to="/app/submit-request"
                 className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gold/20 hover:bg-gold/30 text-gold text-sm font-semibold transition-all border border-gold/20"

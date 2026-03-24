@@ -201,6 +201,59 @@ DO $$ BEGIN
       TO anon, authenticated USING (true);
   END IF;
 END $$;
+
+-- 12. Notifications table for in-app notification bell
+CREATE TABLE IF NOT EXISTS public.notifications (
+  id              uuid         PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         uuid,
+  user_email      text         NOT NULL,
+  type            text         NOT NULL,
+  title           text         NOT NULL,
+  message         text         NOT NULL DEFAULT '',
+  submission_id   text,
+  form_id         text,
+  read            boolean      DEFAULT false,
+  data            jsonb        DEFAULT '{}',
+  created_at      timestamptz  DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user_email ON public.notifications (user_email);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON public.notifications (user_id);
+
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'notifications' AND policyname = 'allow_select_all'
+  ) THEN
+    CREATE POLICY "allow_select_all"
+      ON public.notifications FOR SELECT
+      TO anon, authenticated USING (true);
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'notifications' AND policyname = 'allow_insert_all'
+  ) THEN
+    CREATE POLICY "allow_insert_all"
+      ON public.notifications FOR INSERT
+      TO anon, authenticated WITH CHECK (true);
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'notifications' AND policyname = 'allow_update_all'
+  ) THEN
+    CREATE POLICY "allow_update_all"
+      ON public.notifications FOR UPDATE
+      TO anon, authenticated USING (true) WITH CHECK (true);
+  END IF;
+END $$;
 `.trim();
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

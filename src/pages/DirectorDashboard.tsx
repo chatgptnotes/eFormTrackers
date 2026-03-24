@@ -1,14 +1,14 @@
-import { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   CheckCircle2, XCircle, MessageSquare, Clock, AlertTriangle, User,
   Search, ArrowUpDown, ChevronDown, ChevronUp, FileText, Loader2,
   TrendingUp, Shield, ExternalLink, ClipboardList, FileEdit, Lock,
-  ChevronLeft, ChevronRight, UserCheck,
+  ChevronLeft, ChevronRight, UserCheck, Eye,
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useSubmissions } from '../hooks/useSubmissions';
-import { Submission } from '../types';
+import { Submission, WorkflowTask } from '../types';
 import CommentPanel from '../components/CommentPanel';
 import SubmissionModal from '../components/SubmissionModal';
 import { getUserConfig } from '../config/currentUser';
@@ -213,8 +213,99 @@ export default function DirectorDashboard({ data }: Props) {
   const [taskUrlLoading, setTaskUrlLoading] = useState<string | null>(null);
   const [formUrlLoading, setFormUrlLoading] = useState<string | null>(null);
   const [assignedToMe, setAssignedToMe] = useState(false);
+  const [viewOnly, setViewOnly] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 10;
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+  const [expandedTasks, setExpandedTasks] = useState<WorkflowTask[]>([]);
+  const [expandLoading, setExpandLoading] = useState<string | null>(null);
+  const [taskActionLoading, setTaskActionLoading] = useState<string | null>(null);
+  const [taskRejectingId, setTaskRejectingId] = useState<string | null>(null);
+  const [taskRejectReason, setTaskRejectReason] = useState('');
+  const [taskConfirmRejectId, setTaskConfirmRejectId] = useState<string | null>(null);
+
+  const toggleRowExpand = async (sub: Submission) => {
+    if (expandedRowId === sub.id) {
+      setExpandedRowId(null);
+      setExpandedTasks([]);
+      return;
+    }
+    setExpandLoading(sub.id);
+    try {
+      const res = await fetch(`/api/workflow-tasks?submissionId=${sub.id}`);
+      if (!res.ok) { setExpandLoading(null); return; }
+      const json = await res.json();
+      setExpandedRowId(sub.id);
+      setExpandedTasks(json.tasks || []);
+    } catch {
+      setExpandedRowId(sub.id);
+      setExpandedTasks([]);
+    } finally {
+      setExpandLoading(null);
+    }
+  };
+
+  const refreshExpandedTasks = async (submissionId: string) => {
+    try {
+      const res = await fetch(`/api/workflow-tasks?submissionId=${submissionId}`);
+      if (res.ok) {
+        const json = await res.json();
+        setExpandedTasks(json.tasks || []);
+      }
+    } catch { /* ignore */ }
+  };
+
+  const handleTaskApprove = async (submissionId: string) => {
+    setTaskActionLoading(submissionId);
+    try {
+      const res = await fetch('/api/workflow-action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submissionId, action: 'approve' }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Approve failed: ${res.status}`);
+      }
+      if (expandedRowId) await refreshExpandedTasks(expandedRowId);
+      data.scheduleRefreshAfterAction();
+    } catch (err) {
+      alert(`Approve failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setTaskActionLoading(null);
+    }
+  };
+
+  const handleTaskReject = async (submissionId: string, reason: string) => {
+    setTaskActionLoading(submissionId);
+    try {
+      const res = await fetch('/api/workflow-action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submissionId, action: 'reject', comment: reason }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Reject failed: ${res.status}`);
+      }
+      setTaskRejectingId(null);
+      setTaskRejectReason('');
+      setTaskConfirmRejectId(null);
+      if (expandedRowId) await refreshExpandedTasks(expandedRowId);
+      data.scheduleRefreshAfterAction();
+    } catch (err) {
+      alert(`Reject failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setTaskActionLoading(null);
+    }
+  };
+
+  const openTaskLink = (task: WorkflowTask) => {
+    if (task.accessLink) {
+      window.open(task.accessLink, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   const dismissedIds = useMemo(() => new Set([...approvedIds, ...rejectedIds]), [approvedIds, rejectedIds]);
 
   const openTaskUrl = async (sub: Submission) => {
@@ -318,27 +409,56 @@ export default function DirectorDashboard({ data }: Props) {
     return subs;
   }, [data.allSubmissions, activeSidebarCategory, activeWorkflowId, search, sortKey, sortDir, dismissedIds, currentUser, assignedToMe, user?.email]);
 
+  // Group parent + child submissions by workflowInstanceId
+  const { parentSubmissions } = useMemo(() => {
+    const byInstance = new Map<string, Submission[]>();
+    for (const sub of directorSubmissions) {
+      const wfId = sub.workflowInstanceId;
+      if (wfId) {
+        if (!byInstance.has(wfId)) byInstance.set(wfId, []);
+        byInstance.get(wfId)!.push(sub);
+      }
+    }
+
+    const childrenMap = new Map<string, Submission[]>();
+    const childIds = new Set<string>();
+
+    for (const [, subs] of byInstance) {
+      if (subs.length <= 1) continue;
+      // Earliest submission = parent, rest = children
+      subs.sort((a, b) => new Date(a.submissionDate).getTime() - new Date(b.submissionDate).getTime()
+        || Number(a.id) - Number(b.id));
+      const parent = subs[0];
+      const children = subs.slice(1);
+      childrenMap.set(parent.id, children);
+      children.forEach(c => childIds.add(c.id));
+    }
+
+    const parents = directorSubmissions.filter(s => !childIds.has(s.id));
+    return { parentSubmissions: parents, childrenByParentId: childrenMap };
+  }, [directorSubmissions]);
+
   // Reset to page 1 when filters/search/sort change
   useEffect(() => {
     setCurrentPage(1);
-  }, [directorSubmissions.length, search, sortKey, sortDir]);
+  }, [parentSubmissions.length, search, sortKey, sortDir]);
 
   // Pagination
-  const totalPages = Math.ceil(directorSubmissions.length / rowsPerPage);
+  const totalPages = Math.ceil(parentSubmissions.length / rowsPerPage);
   const safeCurrentPage = Math.min(currentPage, totalPages || 1);
-  const paginatedSubmissions = directorSubmissions.slice(
+  const paginatedSubmissions = parentSubmissions.slice(
     (safeCurrentPage - 1) * rowsPerPage,
     safeCurrentPage * rowsPerPage
   );
 
   // Stats
-  const syncNeededCount = directorSubmissions.filter(s => s.needsSync).length;
-  const pendingCount = directorSubmissions.filter(s => typeof s.currentApprovalLevel === 'number').length;
-  const completedCount = directorSubmissions.filter(s => s.currentApprovalLevel === 'completed').length;
-  const rejectedCount = directorSubmissions.filter(s => s.currentApprovalLevel === 'rejected').length;
-  const criticalCount = directorSubmissions.filter(s => s.daysAtCurrentLevel > 7 && typeof s.currentApprovalLevel === 'number').length;
+  const syncNeededCount = parentSubmissions.filter(s => s.needsSync).length;
+  const pendingCount = parentSubmissions.filter(s => typeof s.currentApprovalLevel === 'number').length;
+  const completedCount = parentSubmissions.filter(s => s.currentApprovalLevel === 'completed').length;
+  const rejectedCount = parentSubmissions.filter(s => s.currentApprovalLevel === 'rejected').length;
+  const criticalCount = parentSubmissions.filter(s => s.daysAtCurrentLevel > 7 && typeof s.currentApprovalLevel === 'number').length;
   const avgWait = pendingCount > 0
-    ? Math.round(directorSubmissions.filter(s => typeof s.currentApprovalLevel === 'number').reduce((sum, s) => sum + s.daysAtCurrentLevel, 0) / pendingCount)
+    ? Math.round(parentSubmissions.filter(s => typeof s.currentApprovalLevel === 'number').reduce((sum, s) => sum + s.daysAtCurrentLevel, 0) / pendingCount)
     : 0;
   const approvedToday = approvedIds.size;
 
@@ -489,8 +609,8 @@ export default function DirectorDashboard({ data }: Props) {
               Welcome, {currentUser.name} — <span className="text-gold capitalize">{currentUser.role}</span>
             </h2>
             <p className="text-sm text-gray-400 mt-1">
-              {directorSubmissions.length > 0
-                ? `${directorSubmissions.length} submission${directorSubmissions.length !== 1 ? 's' : ''} — ${pendingCount} pending, ${completedCount} completed, ${rejectedCount} rejected`
+              {parentSubmissions.length > 0
+                ? `${parentSubmissions.length} submission${parentSubmissions.length !== 1 ? 's' : ''} — ${pendingCount} pending, ${completedCount} completed, ${rejectedCount} rejected`
                 : 'No submissions found'}
             </p>
             {activeWorkflowId && (
@@ -510,8 +630,9 @@ export default function DirectorDashboard({ data }: Props) {
       </motion.div>
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {[
+          { label: 'Total Requests', value: parentSubmissions.length, icon: TrendingUp, color: 'text-indigo-400', bg: 'bg-indigo-500/10' },
           { label: syncNeededCount > 0 ? `Pending (${syncNeededCount} sync)` : 'Pending Approval', value: pendingCount, icon: FileText, color: 'text-blue-400', bg: 'bg-blue-500/10' },
           { label: 'Completed', value: completedCount + approvedToday, icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
           { label: 'Rejected', value: rejectedCount, icon: XCircle, color: 'text-red-400', bg: 'bg-red-500/10' },
@@ -561,6 +682,17 @@ export default function DirectorDashboard({ data }: Props) {
             <UserCheck className="w-4 h-4" />
             Assigned to Me
           </button>
+          <button
+            onClick={() => setViewOnly(!viewOnly)}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors whitespace-nowrap ${
+              viewOnly
+                ? 'bg-gold text-navy-dark border border-gold'
+                : 'bg-navy-dark text-gray-400 border border-navy-light/30 hover:border-gold/50 hover:text-white'
+            }`}
+          >
+            <Eye className="w-4 h-4" />
+            View Only
+          </button>
         </div>
       </motion.div>
 
@@ -575,25 +707,26 @@ export default function DirectorDashboard({ data }: Props) {
           <table className="w-full">
             <thead>
               <tr className="border-b border-navy-light/20">
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ref#</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Title / Form</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Submitted By</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer select-none" onClick={() => toggleSort('currentApprovalLevel')}>
+                <th className="px-4 py-3 text-left text-sm font-bold text-gray-300 uppercase w-12">S.No</th>
+                <th className="px-4 py-3 text-left text-sm font-bold text-gray-300 uppercase">Ref#</th>
+                <th className="px-4 py-3 text-left text-sm font-bold text-gray-300 uppercase">Title / Form</th>
+                <th className="px-4 py-3 text-left text-sm font-bold text-gray-300 uppercase">Submitted By</th>
+                <th className="px-4 py-3 text-left text-sm font-bold text-gray-300 uppercase cursor-pointer select-none" onClick={() => toggleSort('currentApprovalLevel')}>
                   <div className="flex items-center gap-1">Level <SortIcon field="currentApprovalLevel" /></div>
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pending With</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer select-none" onClick={() => toggleSort('daysAtCurrentLevel')}>
+                <th className="px-4 py-3 text-left text-sm font-bold text-gray-300 uppercase">Pending With</th>
+                <th className="px-4 py-3 text-left text-sm font-bold text-gray-300 uppercase cursor-pointer select-none" onClick={() => toggleSort('daysAtCurrentLevel')}>
                   <div className="flex items-center gap-1">Aging <SortIcon field="daysAtCurrentLevel" /></div>
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
+                <th className="px-4 py-3 text-left text-sm font-bold text-gray-300 uppercase">Status</th>
+                <th className="px-4 py-3 text-center text-sm font-bold text-gray-300 uppercase">Actions</th>
               </tr>
             </thead>
             <tbody>
               <AnimatePresence>
-                {directorSubmissions.length === 0 && (
+                {parentSubmissions.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-4 py-12 text-center">
+                    <td colSpan={9} className="px-4 py-12 text-center">
                       <div className="flex flex-col items-center gap-2">
                         <Shield className="w-10 h-10 text-emerald-400/50" />
                         <p className="text-gray-400">No submissions found</p>
@@ -602,9 +735,9 @@ export default function DirectorDashboard({ data }: Props) {
                     </td>
                   </tr>
                 )}
-                {paginatedSubmissions.map((sub) => (
+                {paginatedSubmissions.map((sub, idx) => (
+                  <React.Fragment key={sub.id}>
                   <motion.tr
-                    key={sub.id}
                     layout
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -612,21 +745,25 @@ export default function DirectorDashboard({ data }: Props) {
                     transition={{ duration: 0.3 }}
                     className="border-b border-navy-light/10 hover:bg-navy-light/5"
                   >
+                    <td className="px-4 py-3 text-sm text-gray-400 font-mono">{(safeCurrentPage - 1) * rowsPerPage + idx + 1}</td>
                     <td className="px-4 py-3">
-                      <button
-                        onClick={() => openModal(sub)}
-                        className="text-sm font-mono text-gold hover:underline block"
-                      >
-                        {sub.referenceNumber.split('-').pop()}
-                      </button>
-                      <a
-                        href={`https://eforms.mediaoffice.ae/inbox/${sub.formId}/${sub.id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[10px] text-gray-600 hover:text-gold flex items-center gap-0.5 mt-0.5"
-                      >
-                        <ExternalLink className="w-2.5 h-2.5" /> View in JotForm
-                      </a>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => toggleRowExpand(sub)}
+                          className="p-0.5 rounded hover:bg-navy-light/20 text-gray-500 hover:text-gold transition-colors flex-shrink-0"
+                          title={expandedRowId === sub.id ? 'Collapse' : 'Show workflow steps'}
+                        >
+                          {expandLoading === sub.id
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <ChevronRight className={`w-3.5 h-3.5 transition-transform ${expandedRowId === sub.id ? 'rotate-90' : ''}`} />}
+                        </button>
+                        <button
+                          onClick={() => openModal(sub)}
+                          className="text-sm font-mono text-gold hover:underline"
+                        >
+                          {sub.referenceNumber.split('-').pop()}
+                        </button>
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <a
@@ -659,23 +796,17 @@ export default function DirectorDashboard({ data }: Props) {
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
                         {sub.currentApprovalLevel === 'completed' ? (
-                          <div className="flex flex-col items-start gap-1">
-                            <span className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 text-xs font-medium flex items-center gap-1 border border-emerald-500/20">
-                              <CheckCircle2 className="w-3.5 h-3.5" /> Approved & Completed
-                            </span>
-                            <a href={`https://eforms.mediaoffice.ae/inbox/${sub.formId}/${sub.id}`} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 hover:text-gold flex items-center gap-1 transition-colors">
-                              <ExternalLink className="w-3 h-3" /> View in JotForm
-                            </a>
-                          </div>
+                          <span className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 text-xs font-medium inline-flex items-center gap-1 border border-emerald-500/20">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Approved & Completed
+                          </span>
                         ) : sub.currentApprovalLevel === 'rejected' ? (
-                          <div className="flex flex-col items-start gap-1">
-                            <span className="px-2.5 py-1.5 rounded-lg bg-red-500/10 text-red-400 text-xs font-medium flex items-center gap-1 border border-red-500/20">
-                              <XCircle className="w-3.5 h-3.5" /> Rejected
-                            </span>
-                            <a href={`https://eforms.mediaoffice.ae/inbox/${sub.formId}/${sub.id}`} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 hover:text-gold flex items-center gap-1 transition-colors">
-                              <ExternalLink className="w-3 h-3" /> View in JotForm
-                            </a>
-                          </div>
+                          <span className="px-2.5 py-1.5 rounded-lg bg-red-500/10 text-red-400 text-xs font-medium inline-flex items-center gap-1 border border-red-500/20">
+                            <XCircle className="w-3.5 h-3.5" /> Rejected
+                          </span>
+                        ) : viewOnly ? (
+                          <span className="px-2.5 py-1.5 rounded-lg bg-gray-500/10 text-gray-400 text-xs font-medium inline-flex items-center gap-1 border border-gray-500/20">
+                            <Eye className="w-3.5 h-3.5" /> View Only Mode
+                          </span>
                         ) : sub.actionType === 'task' ? (
                           (user?.email && sub.pendingApproverEmail?.toLowerCase() === user.email.toLowerCase()) ? (
                             <button
@@ -827,6 +958,276 @@ export default function DirectorDashboard({ data }: Props) {
                       </AnimatePresence>
                     </td>
                   </motion.tr>
+                  {/* Expanded workflow steps timeline */}
+                  {expandedRowId === sub.id && (
+                    <tr className="bg-navy-dark/30">
+                      <td colSpan={9} className="px-4 py-4 pl-10">
+                        {expandedTasks.length === 0 ? (
+                          <span className="text-xs text-gray-500 italic">No workflow steps found</span>
+                        ) : (
+                          <div>
+                            <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-3">Workflow Steps</p>
+                            <div className="space-y-0">
+                              {expandedTasks.map((task, idx) => {
+                                const isCompleted = task.status === 'COMPLETED';
+                                const isActive = task.status === 'ACTIVE';
+                                const isPending = task.status === 'PENDING';
+                                const isLast = idx === expandedTasks.length - 1;
+                                const emailMatch = user?.email && task.assigneeEmail?.toLowerCase() === user.email.toLowerCase();
+                                const typeBadge = task.type === 'workflow_approval' ? 'Approval'
+                                  : task.type === 'workflow_assign_task' ? 'Task'
+                                  : task.type === 'workflow_assign_form' ? 'Form' : task.type;
+
+                                return (
+                                  <div key={task.taskId || idx} className="flex items-start gap-3">
+                                    {/* Timeline dot + connector */}
+                                    <div className="flex flex-col items-center flex-shrink-0" style={{ minWidth: '16px' }}>
+                                      {isCompleted ? (
+                                        <div className="w-3 h-3 rounded-full bg-emerald-500 mt-1.5" />
+                                      ) : isActive ? (
+                                        <div className="w-3 h-3 rounded-full bg-gold mt-1.5 animate-pulse" />
+                                      ) : (
+                                        <div className="w-3 h-3 rounded-full border-2 border-gray-600 mt-1.5" />
+                                      )}
+                                      {!isLast && (
+                                        <div className={`w-0.5 flex-1 min-h-[24px] ${isCompleted ? 'bg-emerald-500/40' : 'bg-gray-700'}`} />
+                                      )}
+                                    </div>
+
+                                    {/* Step info */}
+                                    <div className="flex-1 flex items-start justify-between pb-3 min-w-0">
+                                      <div className="min-w-0">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <span className={`text-sm font-medium ${isCompleted ? 'text-gray-400' : isActive ? 'text-white' : 'text-gray-500'}`}>
+                                            {task.name}
+                                          </span>
+                                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                                            task.type === 'workflow_approval' ? 'bg-purple-500/20 text-purple-400' :
+                                            task.type === 'workflow_assign_form' ? 'bg-blue-500/20 text-blue-400' :
+                                            'bg-amber-500/20 text-amber-400'
+                                          }`}>
+                                            {typeBadge}
+                                          </span>
+                                        </div>
+                                        {task.assigneeName && (
+                                          <p className="text-xs text-gray-500 mt-0.5">{task.assigneeName}{task.assigneeEmail ? ` (${task.assigneeEmail})` : ''}</p>
+                                        )}
+                                      </div>
+
+                                      {/* Action area */}
+                                      <div className="flex items-center gap-1.5 flex-shrink-0 ml-3">
+                                        {isCompleted ? (
+                                          <span className="px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-400 text-xs font-medium flex items-center gap-1 border border-emerald-500/20">
+                                            <CheckCircle2 className="w-3 h-3" /> Completed
+                                          </span>
+                                        ) : isPending ? (
+                                          <span className="px-2 py-1 rounded-md bg-gray-500/10 text-gray-500 text-xs font-medium flex items-center gap-1 border border-gray-500/10">
+                                            <Clock className="w-3 h-3" /> Waiting
+                                          </span>
+                                        ) : isActive && task.type === 'workflow_approval' ? (
+                                          emailMatch ? (
+                                            <div className="flex items-center gap-1.5">
+                                              {taskConfirmRejectId === task.taskId ? (
+                                                <div className="flex items-center gap-1 rounded-lg bg-red-500/10 border border-red-500/30 px-2 py-1">
+                                                  <span className="text-[11px] text-red-400">Confirm reject?</span>
+                                                  <button
+                                                    onClick={() => { if (expandedRowId) handleTaskReject(expandedRowId, taskRejectReason.trim()); }}
+                                                    disabled={taskActionLoading === expandedRowId}
+                                                    className="px-2 py-0.5 rounded bg-red-600 text-white text-xs hover:bg-red-500 disabled:opacity-50 flex items-center gap-1"
+                                                  >
+                                                    {taskActionLoading === expandedRowId ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                                                    Yes
+                                                  </button>
+                                                  <button onClick={() => { setTaskConfirmRejectId(null); setTaskRejectReason(''); setTaskRejectingId(null); }} className="px-2 py-0.5 rounded bg-gray-700 text-gray-300 text-xs hover:bg-gray-600">No</button>
+                                                </div>
+                                              ) : taskRejectingId === task.taskId ? (
+                                                <div className="flex items-center gap-1">
+                                                  <input
+                                                    type="text"
+                                                    value={taskRejectReason}
+                                                    onChange={e => setTaskRejectReason(e.target.value)}
+                                                    placeholder="Reason (optional)"
+                                                    className="bg-navy-dark/50 border border-red-500/30 rounded px-2 py-0.5 text-xs text-gray-300 w-36 focus:outline-none focus:border-red-500/60"
+                                                    onKeyDown={e => { if (e.key === 'Enter') setTaskConfirmRejectId(task.taskId); }}
+                                                  />
+                                                  <button onClick={() => setTaskConfirmRejectId(task.taskId)} className="px-2 py-0.5 rounded bg-red-600/80 text-white text-xs hover:bg-red-500">OK</button>
+                                                  <button onClick={() => { setTaskRejectingId(null); setTaskRejectReason(''); }} className="text-xs text-gray-500 hover:text-gray-300">Cancel</button>
+                                                </div>
+                                              ) : (
+                                                <>
+                                                  <button
+                                                    onClick={() => { if (expandedRowId) handleTaskApprove(expandedRowId); }}
+                                                    disabled={taskActionLoading === expandedRowId}
+                                                    className="px-2.5 py-1 rounded-md bg-gold/20 text-gold hover:bg-gold/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1 transition-colors"
+                                                  >
+                                                    {taskActionLoading === expandedRowId ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+                                                    Approve
+                                                  </button>
+                                                  <button
+                                                    onClick={() => setTaskRejectingId(task.taskId)}
+                                                    disabled={taskActionLoading === expandedRowId}
+                                                    className="px-2.5 py-1 rounded-md bg-red-500/20 text-red-400 hover:bg-red-500/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1 transition-colors"
+                                                  >
+                                                    <XCircle className="w-3 h-3" /> Reject
+                                                  </button>
+                                                </>
+                                              )}
+                                            </div>
+                                          ) : (
+                                            <span className="px-2 py-1 rounded-md bg-gray-500/10 text-gray-600 text-xs font-medium flex items-center gap-1 border border-gray-500/10" title="This step is assigned to someone else">
+                                              <Lock className="w-3 h-3" /> Not assigned to you
+                                            </span>
+                                          )
+                                        ) : isActive && task.type === 'workflow_assign_task' ? (
+                                          emailMatch ? (
+                                            <button
+                                              onClick={() => openTaskLink(task)}
+                                              disabled={!task.accessLink}
+                                              className="px-2.5 py-1 rounded-md bg-gold/20 text-gold hover:bg-gold/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1 transition-colors"
+                                              title={!task.accessLink ? 'Link unavailable' : ''}
+                                            >
+                                              <ClipboardList className="w-3 h-3" /> View Task
+                                            </button>
+                                          ) : (
+                                            <span className="px-2 py-1 rounded-md bg-gray-500/10 text-gray-600 text-xs font-medium flex items-center gap-1 border border-gray-500/10" title="This step is assigned to someone else">
+                                              <Lock className="w-3 h-3" /> Not assigned to you
+                                            </span>
+                                          )
+                                        ) : isActive && task.type === 'workflow_assign_form' ? (
+                                          emailMatch ? (
+                                            <button
+                                              onClick={() => openTaskLink(task)}
+                                              disabled={!task.accessLink}
+                                              className="px-2.5 py-1 rounded-md bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1 transition-colors"
+                                              title={!task.accessLink ? 'Link unavailable' : ''}
+                                            >
+                                              <FileEdit className="w-3 h-3" /> Complete Form
+                                            </button>
+                                          ) : (
+                                            <span className="px-2 py-1 rounded-md bg-gray-500/10 text-gray-600 text-xs font-medium flex items-center gap-1 border border-gray-500/10" title="This step is assigned to someone else">
+                                              <Lock className="w-3 h-3" /> Not assigned to you
+                                            </span>
+                                          )
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                        {/* Child form submissions derived from workflow tasks */}
+                        {(() => {
+                          const childTasks = expandedTasks.filter(t =>
+                            t.type === 'workflow_assign_task' || t.type === 'workflow_assign_form'
+                          );
+                          if (childTasks.length === 0) return null;
+                          return (
+                            <div className="mt-4 border-t border-navy-light/20 pt-3">
+                              <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-2">
+                                Child Forms in this Workflow
+                              </p>
+                              <div className="rounded-lg border border-navy-light/20 overflow-hidden">
+                                <table className="w-full">
+                                  <thead>
+                                    <tr className="bg-navy-dark/40 border-b border-navy-light/20">
+                                      <th className="px-3 py-2 text-left text-[10px] font-bold text-gray-500 uppercase w-10">#</th>
+                                      <th className="px-3 py-2 text-left text-[10px] font-bold text-gray-500 uppercase">Form Name</th>
+                                      <th className="px-3 py-2 text-left text-[10px] font-bold text-gray-500 uppercase">Type</th>
+                                      <th className="px-3 py-2 text-left text-[10px] font-bold text-gray-500 uppercase">Assigned To</th>
+                                      <th className="px-3 py-2 text-left text-[10px] font-bold text-gray-500 uppercase">Submission Data</th>
+                                      <th className="px-3 py-2 text-left text-[10px] font-bold text-gray-500 uppercase">Level</th>
+                                      <th className="px-3 py-2 text-left text-[10px] font-bold text-gray-500 uppercase">Status</th>
+                                      <th className="px-3 py-2 text-center text-[10px] font-bold text-gray-500 uppercase">Actions</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {childTasks.map((task, childIdx) => {
+                                      const isCompleted = task.status === 'COMPLETED';
+                                      const isActive = task.status === 'ACTIVE';
+                                      const typeBadge = task.type === 'workflow_assign_task' ? 'Task' : 'Form';
+                                      const emailMatch = user?.email && task.assigneeEmail?.toLowerCase() === user.email.toLowerCase();
+                                      return (
+                                        <tr key={task.taskId || childIdx} className="border-b border-navy-light/10 last:border-b-0 bg-navy-dark/20 hover:bg-navy-light/5 border-l-2 border-l-gold/30">
+                                          <td className="px-3 py-2 text-xs text-gray-500 font-mono">{childIdx + 1}</td>
+                                          <td className="px-3 py-2">
+                                            <p className="text-xs text-gray-300">{task.name}</p>
+                                          </td>
+                                          <td className="px-3 py-2">
+                                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                              typeBadge === 'Task'
+                                                ? 'bg-orange-500/15 text-orange-400 border border-orange-500/20'
+                                                : 'bg-blue-500/15 text-blue-400 border border-blue-500/20'
+                                            }`}>{typeBadge}</span>
+                                          </td>
+                                          <td className="px-3 py-2">
+                                            <p className="text-xs text-gray-300">{task.assigneeName}</p>
+                                            <p className="text-[10px] text-gray-500">{task.assigneeEmail}</p>
+                                          </td>
+                                          <td className="px-3 py-2">
+                                            {task.formData && Object.keys(task.formData).length > 0 ? (
+                                              <div className="space-y-0.5 max-h-24 overflow-y-auto">
+                                                {Object.values(task.formData).map((field, fi) => (
+                                                  <p key={fi} className="text-[10px] text-gray-300 truncate max-w-[200px]" title={`${field.label}: ${field.value}`}>
+                                                    <span className="text-gray-500">{field.label}:</span> {field.value}
+                                                  </p>
+                                                ))}
+                                              </div>
+                                            ) : task.submittedBy ? (
+                                              <>
+                                                <p className="text-[10px] text-gray-300">{task.submittedBy}</p>
+                                                {task.submittedByEmail && <p className="text-[10px] text-gray-500">{task.submittedByEmail}</p>}
+                                              </>
+                                            ) : (
+                                              <span className="text-[10px] text-gray-500 italic">—</span>
+                                            )}
+                                          </td>
+                                          <td className="px-3 py-2">
+                                            <LevelBadge level={task.level} />
+                                          </td>
+                                          <td className="px-3 py-2">
+                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                              isCompleted ? 'bg-emerald-500/15 text-emerald-400' :
+                                              isActive ? 'bg-amber-500/15 text-amber-400' :
+                                              'bg-gray-500/15 text-gray-400'
+                                            }`}>
+                                              {task.status === 'COMPLETED' ? 'Completed' : task.status === 'ACTIVE' ? 'Active' : 'Pending'}
+                                            </span>
+                                          </td>
+                                          <td className="px-3 py-2 text-center">
+                                            {isActive && emailMatch && task.accessLink ? (
+                                              <a
+                                                href={task.accessLink}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-xs text-gold hover:underline inline-flex items-center gap-1"
+                                              >
+                                                {typeBadge === 'Task' ? (
+                                                  <><ClipboardList className="w-3 h-3" /> View Task</>
+                                                ) : (
+                                                  <><FileEdit className="w-3 h-3" /> Complete Form</>
+                                                )}
+                                              </a>
+                                            ) : isCompleted ? (
+                                              <span className="text-[10px] text-gray-500">Done</span>
+                                            ) : (
+                                              <span className="text-[10px] text-gray-500">—</span>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 ))}
               </AnimatePresence>
             </tbody>
@@ -836,9 +1237,9 @@ export default function DirectorDashboard({ data }: Props) {
         {/* Footer with Pagination */}
         <div className="px-4 py-3 border-t border-navy-light/20 flex items-center justify-between">
           <p className="text-xs text-gray-500">
-            {directorSubmissions.length === 0
+            {parentSubmissions.length === 0
               ? 'No submissions'
-              : `Showing ${(safeCurrentPage - 1) * rowsPerPage + 1}–${Math.min(safeCurrentPage * rowsPerPage, directorSubmissions.length)} of ${directorSubmissions.length} submissions`}
+              : `Showing ${(safeCurrentPage - 1) * rowsPerPage + 1}–${Math.min(safeCurrentPage * rowsPerPage, parentSubmissions.length)} of ${parentSubmissions.length} submissions`}
           </p>
           {totalPages > 1 && (
             <div className="flex items-center gap-1">

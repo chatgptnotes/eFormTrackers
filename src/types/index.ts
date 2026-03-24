@@ -41,6 +41,10 @@ export interface Submission {
   pendingApproverName?: string;
   /** Actual pending approver email from workflow API */
   pendingApproverEmail?: string;
+  /** Direct approval/form URL constructed from workflow task data */
+  approvalUrl?: string;
+  /** Workflow instance ID — used to group parent + child form submissions */
+  workflowInstanceId?: string;
 }
 
 export interface ApprovalEntry {
@@ -119,6 +123,22 @@ export interface RefreshConfig {
   autoRefresh: boolean;
   intervalMinutes: number;
   lastUpdated: string | null;
+}
+
+export interface WorkflowTask {
+  name: string;
+  type: string;           // "workflow_approval", "workflow_assign_task", "workflow_assign_form"
+  status: string;         // "COMPLETED", "ACTIVE", "PENDING"
+  assigneeName: string;
+  assigneeEmail: string;
+  level: number;
+  updatedAt: string;
+  taskId: string;
+  internalFormID: string;
+  accessLink: string;
+  submittedBy: string;
+  submittedByEmail: string;
+  formData?: Record<string, { label: string; value: string }>;
 }
 
 export type SortDirection = 'asc' | 'desc';

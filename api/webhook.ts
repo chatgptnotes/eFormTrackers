@@ -270,17 +270,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const candidateEmail = String(props.assigneeEmail || assigneeUser.email || firstRecipient.email || '');
             pendingApproverEmail = candidateEmail.includes('@') ? candidateEmail : '';
 
-            // Construct direct approval URL from ACTIVE task
+            // Type-aware URL construction: different formats per task type
             const element = (activeTask.element || {}) as Record<string, unknown>;
             const wProps = (activeTask.properties || {}) as Record<string, unknown>;
             const internalFormID = element.internalFormID || element.resourceID || element.formID || wProps.formID;
-            const taskType = String(element.type || '');
             const taskId = String(activeTask.id || '');
-            if (internalFormID && taskId) {
-              let queryParam = 'workflowApprovalTask';
-              if (taskType === 'workflow_assign_form') queryParam = 'workflowAssignFormTask';
-              else if (taskType === 'workflow_assign_task') queryParam = 'workflowAssignTask';
-              approvalUrl = `${JOTFORM_HOST}/${internalFormID}?${queryParam}=1&taskID=${taskId}`;
+            const taskType = String(element.type || '');
+
+            if (taskType === 'workflow_assign_form') {
+              // Form tasks use simple query-param format (no access token needed)
+              approvalUrl = `${JOTFORM_HOST}/${internalFormID}?workflowAssignFormTask=1&taskID=${taskId}`;
+            } else {
+              // Approval/task types use path-based format with access token
+              const rawAccessLink = String(activeTask.accessLink || (wProps as any)?.accessLink || '');
+              const shareMatch = rawAccessLink.match(/\/share\/(.+)$/);
+              const accessToken = shareMatch ? shareMatch[1] : '';
+              if (internalFormID && taskId && accessToken) {
+                const encodedToken = encodeURIComponent(accessToken);
+                approvalUrl = `${JOTFORM_HOST}/approval-form/${internalFormID}/task/${taskId}/access-token/${encodedToken}`;
+              } else if (rawAccessLink) {
+                approvalUrl = rawAccessLink;
+              }
             }
           }
         }
