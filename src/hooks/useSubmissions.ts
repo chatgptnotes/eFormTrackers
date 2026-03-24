@@ -341,6 +341,12 @@ function mapGenericSubmission(
      currentLevel === 'rejected' ? 'Rejected' :
      history.some(h => h.status === 'approved') ? 'In Progress' : 'Pending');
 
+  // Prepend metadata columns to match JotForm Tables view
+  formTableData.unshift(
+    { label: 'Submission Date', value: createdAt ? submissionDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '' },
+    { label: 'Flow Status', value: genericJotformStatus }
+  );
+
   return {
     id,
     formId,
