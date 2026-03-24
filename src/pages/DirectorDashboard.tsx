@@ -711,6 +711,7 @@ export default function DirectorDashboard({ data }: Props) {
                 <th className="px-4 py-3 text-left text-sm font-bold text-gray-300 uppercase">Ref#</th>
                 <th className="px-4 py-3 text-left text-sm font-bold text-gray-300 uppercase">Title / Form</th>
                 <th className="px-4 py-3 text-left text-sm font-bold text-gray-300 uppercase">Submitted By</th>
+                <th className="px-4 py-3 text-left text-sm font-bold text-gray-300 uppercase">Submission Date</th>
                 <th className="px-4 py-3 text-left text-sm font-bold text-gray-300 uppercase cursor-pointer select-none" onClick={() => toggleSort('currentApprovalLevel')}>
                   <div className="flex items-center gap-1">Level <SortIcon field="currentApprovalLevel" /></div>
                 </th>
@@ -726,7 +727,7 @@ export default function DirectorDashboard({ data }: Props) {
               <AnimatePresence>
                 {parentSubmissions.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="px-4 py-12 text-center">
+                    <td colSpan={10} className="px-4 py-12 text-center">
                       <div className="flex flex-col items-center gap-2">
                         <Shield className="w-10 h-10 text-emerald-400/50" />
                         <p className="text-gray-400">No submissions found</p>
@@ -780,6 +781,11 @@ export default function DirectorDashboard({ data }: Props) {
                     <td className="px-4 py-3">
                       <p className="text-sm text-gray-300">{sub.submittedBy.name}</p>
                       <p className="text-xs text-gray-500">{sub.submittedBy.department}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="text-sm text-gray-300">
+                        {new Date(sub.submissionDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </p>
                     </td>
                     <td className="px-4 py-3">
                       <LevelBadge level={sub.currentApprovalLevel} />

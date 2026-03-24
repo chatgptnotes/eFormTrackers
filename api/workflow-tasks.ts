@@ -227,6 +227,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (Object.keys(formData).length > 0) {
         task.formData = formData;
       }
+      const createdAt = String(matched.created_at || matched.timestamp || '');
+      if (createdAt) {
+        task.submissionDate = createdAt;
+      }
     }
 
     return res.status(200).json({ tasks, workflowInstanceId: workflowInstanceID });
