@@ -4,7 +4,7 @@ import {
   CheckCircle2, XCircle, MessageSquare, Clock, AlertTriangle, User,
   Search, ArrowUpDown, ChevronDown, ChevronUp, FileText, Loader2,
   TrendingUp, Shield, ExternalLink, ClipboardList, FileEdit, Lock,
-  ChevronLeft, ChevronRight, UserCheck, Eye,
+  ChevronLeft, ChevronRight, UserCheck, Eye, Trash2,
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useSubmissions } from '../hooks/useSubmissions';
@@ -223,6 +223,8 @@ export default function DirectorDashboard({ data }: Props) {
   const [taskRejectingId, setTaskRejectingId] = useState<string | null>(null);
   const [taskRejectReason, setTaskRejectReason] = useState('');
   const [taskConfirmRejectId, setTaskConfirmRejectId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const toggleRowExpand = async (sub: Submission) => {
     if (expandedRowId === sub.id) {
@@ -253,6 +255,23 @@ export default function DirectorDashboard({ data }: Props) {
         setExpandedTasks(json.tasks || []);
       }
     } catch { /* ignore */ }
+  };
+
+  const handleDelete = async (submissionId: string) => {
+    setDeletingId(submissionId);
+    try {
+      const res = await fetch(`/api/delete-submission?submissionId=${submissionId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Delete failed: ${res.status}`);
+      }
+      setDeleteConfirmId(null);
+      data.scheduleRefreshAfterAction();
+    } catch (e) {
+      alert(`Failed to delete: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const handleTaskApprove = async (submissionId: string) => {
@@ -939,6 +958,27 @@ export default function DirectorDashboard({ data }: Props) {
                                 >
                                   {formUrlLoading === sub.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileEdit className="w-3 h-3" />}
                                   {formUrlLoading === sub.id ? 'Loading...' : 'Complete Form'}
+                                </button>
+                              )}
+                              {deleteConfirmId === sub.id ? (
+                                <div className="flex items-center gap-1 rounded-lg bg-red-500/10 border border-red-500/30 px-2 py-1">
+                                  <span className="text-[11px] text-red-400">Delete?</span>
+                                  <button
+                                    onClick={() => handleDelete(sub.id)}
+                                    disabled={deletingId === sub.id}
+                                    className="px-2 py-0.5 rounded bg-red-600 text-white text-xs hover:bg-red-500 disabled:opacity-50 flex items-center gap-1"
+                                  >
+                                    {deletingId === sub.id ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                                    Yes
+                                  </button>
+                                  <button onClick={() => setDeleteConfirmId(null)} className="px-2 py-0.5 rounded bg-gray-700 text-gray-300 text-xs hover:bg-gray-600">No</button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => setDeleteConfirmId(sub.id)}
+                                  className="flex items-center gap-1 text-xs text-slate-400 hover:text-red-400 transition-colors"
+                                >
+                                  <Trash2 className="w-3 h-3" /> Delete
                                 </button>
                               )}
                             </div>
