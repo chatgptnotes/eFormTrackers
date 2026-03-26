@@ -4,7 +4,7 @@ import {
   CheckCircle2, XCircle, MessageSquare, Clock, AlertTriangle, User,
   Search, ArrowUpDown, ChevronDown, ChevronUp, FileText, Loader2,
   TrendingUp, Shield, ExternalLink, ClipboardList, FileEdit, Lock,
-  ChevronLeft, ChevronRight, UserCheck, Eye, Trash2,
+  ChevronLeft, ChevronRight, UserCheck, Eye, Trash2, Filter, Download, X,
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useSubmissions } from '../hooks/useSubmissions';
@@ -14,6 +14,7 @@ import SubmissionModal from '../components/SubmissionModal';
 import { getUserConfig } from '../config/currentUser';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { exportToExcel } from '../services/exportService';
 
 interface Props {
   data: ReturnType<typeof useSubmissions>;
@@ -225,6 +226,12 @@ export default function DirectorDashboard({ data }: Props) {
   const [taskConfirmRejectId, setTaskConfirmRejectId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterLevel, setFilterLevel] = useState('');
+  const [filterDepartment, setFilterDepartment] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
 
   const toggleRowExpand = async (sub: Submission) => {
     if (expandedRowId === sub.id) {
@@ -416,6 +423,41 @@ export default function DirectorDashboard({ data }: Props) {
       });
     }
 
+    // Level filter
+    if (filterLevel) {
+      if (filterLevel === 'completed') {
+        subs = subs.filter(s => s.currentApprovalLevel === 'completed');
+      } else if (filterLevel === 'rejected') {
+        subs = subs.filter(s => s.currentApprovalLevel === 'rejected');
+      } else {
+        subs = subs.filter(s => String(s.currentApprovalLevel) === filterLevel);
+      }
+    }
+
+    // Department filter
+    if (filterDepartment) {
+      subs = subs.filter(s => s.submittedBy.department === filterDepartment);
+    }
+
+    // Status filter
+    if (filterStatus) {
+      const st = filterStatus.toLowerCase();
+      if (st === 'pending') subs = subs.filter(s => typeof s.currentApprovalLevel === 'number');
+      else if (st === 'completed') subs = subs.filter(s => s.currentApprovalLevel === 'completed');
+      else if (st === 'rejected') subs = subs.filter(s => s.currentApprovalLevel === 'rejected');
+    }
+
+    // Date range filter
+    if (filterDateFrom) {
+      const from = new Date(filterDateFrom);
+      subs = subs.filter(s => new Date(s.submissionDate) >= from);
+    }
+    if (filterDateTo) {
+      const to = new Date(filterDateTo);
+      to.setHours(23, 59, 59, 999);
+      subs = subs.filter(s => new Date(s.submissionDate) <= to);
+    }
+
     // Sort
     subs.sort((a, b) => {
       let cmp = 0;
@@ -429,7 +471,7 @@ export default function DirectorDashboard({ data }: Props) {
     });
 
     return subs;
-  }, [data.allSubmissions, activeSidebarCategory, activeWorkflowId, search, sortKey, sortDir, dismissedIds, currentUser, assignedToMe, user?.email]);
+  }, [data.allSubmissions, activeSidebarCategory, activeWorkflowId, search, sortKey, sortDir, dismissedIds, currentUser, assignedToMe, user?.email, filterLevel, filterDepartment, filterStatus, filterDateFrom, filterDateTo]);
 
   // Group parent + child submissions by workflowInstanceId
   const { parentSubmissions } = useMemo(() => {
@@ -460,10 +502,34 @@ export default function DirectorDashboard({ data }: Props) {
     return { parentSubmissions: parents, childrenByParentId: childrenMap };
   }, [directorSubmissions]);
 
+  // Unique filter options derived from all submissions
+  const uniqueDepartments = useMemo(() => {
+    const deps = new Set(data.allSubmissions.map(s => s.submittedBy.department).filter(Boolean));
+    return Array.from(deps).sort();
+  }, [data.allSubmissions]);
+
+  const uniqueLevels = useMemo(() => {
+    const lvls = new Set<string>();
+    data.allSubmissions.forEach(s => {
+      lvls.add(String(s.currentApprovalLevel));
+    });
+    return Array.from(lvls).sort();
+  }, [data.allSubmissions]);
+
+  const activeFilterCount = [filterLevel, filterDepartment, filterStatus, filterDateFrom, filterDateTo].filter(Boolean).length;
+
+  const clearAllFilters = () => {
+    setFilterLevel('');
+    setFilterDepartment('');
+    setFilterStatus('');
+    setFilterDateFrom('');
+    setFilterDateTo('');
+  };
+
   // Reset to page 1 when filters/search/sort change
   useEffect(() => {
     setCurrentPage(1);
-  }, [parentSubmissions.length, search, sortKey, sortDir]);
+  }, [parentSubmissions.length, search, sortKey, sortDir, filterLevel, filterDepartment, filterStatus, filterDateFrom, filterDateTo]);
 
   // Pagination
   const totalPages = Math.ceil(parentSubmissions.length / rowsPerPage);
@@ -715,6 +781,25 @@ export default function DirectorDashboard({ data }: Props) {
             <Eye className="w-4 h-4" />
             View Only
           </button>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors whitespace-nowrap ${
+              showFilters || activeFilterCount > 0
+                ? 'bg-gold text-navy-dark border border-gold'
+                : 'bg-navy-dark text-gray-400 border border-navy-light/30 hover:border-gold/50 hover:text-white'
+            }`}
+          >
+            <Filter className="w-4 h-4" />
+            Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+          </button>
+          <button
+            onClick={() => exportToExcel(parentSubmissions, 'jotflow-submissions')}
+            disabled={parentSubmissions.length === 0}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors whitespace-nowrap bg-navy-dark text-emerald-400 border border-emerald-500/30 hover:border-emerald-500/60 hover:bg-emerald-500/10 disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <Download className="w-4 h-4" />
+            Export to Excel
+          </button>
           {deleteConfirmId === 'all' ? (
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/10 border border-red-500/30">
               <span className="text-xs text-red-400 whitespace-nowrap">Delete all {parentSubmissions.length} submissions?</span>
@@ -740,6 +825,104 @@ export default function DirectorDashboard({ data }: Props) {
           )}
         </div>
       </motion.div>
+
+      {/* Filter Panel */}
+      <AnimatePresence>
+        {showFilters && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="glass-card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-white">Filters</h3>
+                <div className="flex items-center gap-2">
+                  {activeFilterCount > 0 && (
+                    <button
+                      onClick={clearAllFilters}
+                      className="text-xs text-gold hover:text-gold/80 transition-colors"
+                    >
+                      Clear All
+                    </button>
+                  )}
+                  <button onClick={() => setShowFilters(false)} className="text-gray-500 hover:text-white transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                {/* Level */}
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Level</label>
+                  <select
+                    value={filterLevel}
+                    onChange={e => setFilterLevel(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 text-sm text-white focus:border-gold/50 focus:outline-none"
+                  >
+                    <option value="">All Levels</option>
+                    {uniqueLevels.map(l => (
+                      <option key={l} value={l}>
+                        {l === 'completed' ? 'Completed' : l === 'rejected' ? 'Rejected' : `Level ${l}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {/* Department */}
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Department</label>
+                  <select
+                    value={filterDepartment}
+                    onChange={e => setFilterDepartment(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 text-sm text-white focus:border-gold/50 focus:outline-none"
+                  >
+                    <option value="">All Departments</option>
+                    {uniqueDepartments.map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+                {/* Status */}
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Status</label>
+                  <select
+                    value={filterStatus}
+                    onChange={e => setFilterStatus(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 text-sm text-white focus:border-gold/50 focus:outline-none"
+                  >
+                    <option value="">All Statuses</option>
+                    <option value="pending">Pending</option>
+                    <option value="completed">Completed</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
+                </div>
+                {/* Date From */}
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Date From</label>
+                  <input
+                    type="date"
+                    value={filterDateFrom}
+                    onChange={e => setFilterDateFrom(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 text-sm text-white focus:border-gold/50 focus:outline-none"
+                  />
+                </div>
+                {/* Date To */}
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Date To</label>
+                  <input
+                    type="date"
+                    value={filterDateTo}
+                    onChange={e => setFilterDateTo(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 text-sm text-white focus:border-gold/50 focus:outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Table */}
       <motion.div
