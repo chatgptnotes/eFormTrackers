@@ -232,6 +232,7 @@ export default function DirectorDashboard({ data }: Props) {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
+  const [filterSubmittedBy, setFilterSubmittedBy] = useState('');
 
   const toggleRowExpand = async (sub: Submission) => {
     if (expandedRowId === sub.id) {
@@ -458,6 +459,11 @@ export default function DirectorDashboard({ data }: Props) {
       subs = subs.filter(s => new Date(s.submissionDate) <= to);
     }
 
+    // Submitted By filter
+    if (filterSubmittedBy) {
+      subs = subs.filter(s => s.submittedBy.name === filterSubmittedBy);
+    }
+
     // Sort
     subs.sort((a, b) => {
       let cmp = 0;
@@ -471,7 +477,7 @@ export default function DirectorDashboard({ data }: Props) {
     });
 
     return subs;
-  }, [data.allSubmissions, activeSidebarCategory, activeWorkflowId, search, sortKey, sortDir, dismissedIds, currentUser, assignedToMe, user?.email, filterLevel, filterDepartment, filterStatus, filterDateFrom, filterDateTo]);
+  }, [data.allSubmissions, activeSidebarCategory, activeWorkflowId, search, sortKey, sortDir, dismissedIds, currentUser, assignedToMe, user?.email, filterLevel, filterDepartment, filterStatus, filterDateFrom, filterDateTo, filterSubmittedBy]);
 
   // Group parent + child submissions by workflowInstanceId
   const { parentSubmissions } = useMemo(() => {
@@ -516,7 +522,12 @@ export default function DirectorDashboard({ data }: Props) {
     return Array.from(lvls).sort();
   }, [data.allSubmissions]);
 
-  const activeFilterCount = [filterLevel, filterDepartment, filterStatus, filterDateFrom, filterDateTo].filter(Boolean).length;
+  const uniqueSubmitters = useMemo(() => {
+    const names = new Set(data.allSubmissions.map(s => s.submittedBy.name).filter(Boolean));
+    return Array.from(names).sort();
+  }, [data.allSubmissions]);
+
+  const activeFilterCount = [filterLevel, filterDepartment, filterStatus, filterDateFrom, filterDateTo, filterSubmittedBy].filter(Boolean).length;
 
   const clearAllFilters = () => {
     setFilterLevel('');
@@ -524,12 +535,13 @@ export default function DirectorDashboard({ data }: Props) {
     setFilterStatus('');
     setFilterDateFrom('');
     setFilterDateTo('');
+    setFilterSubmittedBy('');
   };
 
   // Reset to page 1 when filters/search/sort change
   useEffect(() => {
     setCurrentPage(1);
-  }, [parentSubmissions.length, search, sortKey, sortDir, filterLevel, filterDepartment, filterStatus, filterDateFrom, filterDateTo]);
+  }, [parentSubmissions.length, search, sortKey, sortDir, filterLevel, filterDepartment, filterStatus, filterDateFrom, filterDateTo, filterSubmittedBy]);
 
   // Pagination
   const totalPages = Math.ceil(parentSubmissions.length / rowsPerPage);
@@ -853,7 +865,7 @@ export default function DirectorDashboard({ data }: Props) {
                   </button>
                 </div>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                 {/* Level */}
                 <div>
                   <label className="block text-xs text-gray-400 mb-1">Level</label>
@@ -917,6 +929,20 @@ export default function DirectorDashboard({ data }: Props) {
                     onChange={e => setFilterDateTo(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 text-sm text-white focus:border-gold/50 focus:outline-none"
                   />
+                </div>
+                {/* Submitted By */}
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Submitted By</label>
+                  <select
+                    value={filterSubmittedBy}
+                    onChange={e => setFilterSubmittedBy(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 text-sm text-white focus:border-gold/50 focus:outline-none"
+                  >
+                    <option value="">All Submitters</option>
+                    {uniqueSubmitters.map(name => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </div>
