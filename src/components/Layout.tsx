@@ -76,8 +76,8 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
   };
 
   const TOOL_NAV = [
-    { path: '/app', icon: LayoutDashboard, label: 'Analytics Dashboard', roles: ['super_admin', 'admin', 'approver', 'viewer'] },
-    { path: '/app/tracker', icon: Table2, label: 'Workflow Tracker', roles: ['super_admin', 'admin', 'approver', 'viewer'] },
+    { path: '/app', icon: LayoutDashboard, label: 'Analytics Dashboard', roles: ['super_admin', 'admin', 'approver'] },
+    { path: '/app/tracker', icon: Table2, label: 'Workflow Tracker', roles: ['super_admin', 'admin', 'approver'] },
     { path: '/app/bottlenecks', icon: AlertTriangle, label: 'Bottleneck Analysis', roles: ['super_admin', 'admin'] },
     { path: '/app/kanban', icon: Kanban, label: 'Kanban Board', roles: ['super_admin', 'admin', 'approver'] },
     { path: '/app/analytics', icon: BarChart3, label: 'Advanced Analytics', roles: ['super_admin', 'admin'] },
@@ -85,7 +85,7 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
     { path: '/app/activity', icon: FileText, label: 'Activity Log', roles: ['super_admin', 'admin'] },
     { path: '/app/billing', icon: CreditCard, label: 'Billing', roles: ['super_admin'] },
     { path: '/app/org-settings', icon: Building2, label: 'Organization', roles: ['super_admin'] },
-    { path: '/app/settings', icon: Settings, label: 'Settings', roles: ['super_admin', 'admin', 'approver', 'viewer'] },
+    { path: '/app/settings', icon: Settings, label: 'Settings', roles: ['super_admin', 'admin', 'approver'] },
     { path: '/app/help', icon: HelpCircle, label: 'Help & Support', roles: ['super_admin', 'admin', 'approver', 'viewer'] },
   ].filter(item => item.roles.includes(orgRole));
 

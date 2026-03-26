@@ -35,6 +35,12 @@ function PageLoader() {
   );
 }
 
+function RoleGuard({ allowed, children }: { allowed: string[]; children: React.ReactNode }) {
+  const { orgRole } = useAuth();
+  if (!allowed.includes(orgRole)) return <Navigate to="/app/director" replace />;
+  return <>{children}</>;
+}
+
 function ProtectedApp() {
   const data = useSubmissions();
 
@@ -43,18 +49,18 @@ function ProtectedApp() {
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/" element={<DirectorDashboard data={data} />} />
-          <Route path="/tracker" element={<WorkflowTracker data={data} />} />
-          <Route path="/bottlenecks" element={<BottleneckAnalysis data={data} />} />
-          <Route path="/approval/:level" element={<ApprovalDetail data={data} />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/team" element={<TeamManagement />} />
-          <Route path="/org-settings" element={<OrgSettings />} />
-          <Route path="/billing" element={<Billing />} />
+          <Route path="/tracker" element={<RoleGuard allowed={['super_admin', 'admin', 'approver']}><WorkflowTracker data={data} /></RoleGuard>} />
+          <Route path="/bottlenecks" element={<RoleGuard allowed={['super_admin', 'admin']}><BottleneckAnalysis data={data} /></RoleGuard>} />
+          <Route path="/approval/:level" element={<RoleGuard allowed={['super_admin', 'admin', 'approver']}><ApprovalDetail data={data} /></RoleGuard>} />
+          <Route path="/settings" element={<RoleGuard allowed={['super_admin', 'admin', 'approver']}><Settings /></RoleGuard>} />
+          <Route path="/team" element={<RoleGuard allowed={['super_admin', 'admin']}><TeamManagement /></RoleGuard>} />
+          <Route path="/org-settings" element={<RoleGuard allowed={['super_admin']}><OrgSettings /></RoleGuard>} />
+          <Route path="/billing" element={<RoleGuard allowed={['super_admin']}><Billing /></RoleGuard>} />
           <Route path="/profile" element={<Profile />} />
-          <Route path="/activity" element={<ActivityLog />} />
+          <Route path="/activity" element={<RoleGuard allowed={['super_admin', 'admin']}><ActivityLog /></RoleGuard>} />
           <Route path="/help" element={<HelpSupport />} />
-          <Route path="/analytics" element={<AdvancedAnalytics data={data} />} />
-          <Route path="/kanban" element={<KanbanBoard data={data} />} />
+          <Route path="/analytics" element={<RoleGuard allowed={['super_admin', 'admin']}><AdvancedAnalytics data={data} /></RoleGuard>} />
+          <Route path="/kanban" element={<RoleGuard allowed={['super_admin', 'admin', 'approver']}><KanbanBoard data={data} /></RoleGuard>} />
           <Route path="/director" element={<DirectorDashboard data={data} />} />
           <Route path="/submit-request" element={<SubmitRequest activeForms={data.activeForms} />} />
         </Routes>
