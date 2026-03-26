@@ -384,3 +384,39 @@ GET /api/cleanup-submissions?dryRun=false → Actually deletes submissions from 
 
 ### History
 - **2026-03-23:** Executed cleanup — deleted 73 of 83 submissions, kept 10 (all pending with `huzaifa.dawasaz@mediaoffice.ae`). Zero failures. JotForm DELETE API (`DELETE /submission/{id}`) confirmed working on enterprise instance.
+
+---
+
+## Supabase Auth & User Management
+
+### Tables
+
+| Table | Purpose | Key Columns |
+|-------|---------|-------------|
+| `auth.users` | Supabase Auth (managed) | email, password, email_confirmed_at, user_metadata |
+| `profiles` | User profile data | user_id, full_name, department, role, org_id, avatar_url, preferences |
+| `org_members` | Org membership link | org_id, user_id, role, invited_by, joined_at |
+| `organizations` | Organization details | id, name, logo_url, branding, owner_id, plan, created_at |
+
+### Roles (OrgRole type)
+- `super_admin` — Full access, can manage team, settings, billing
+- `admin` — Can manage team members, approve/reject, all dashboard features
+- `approver` — Can approve/reject assigned submissions
+- `viewer` — **View only** — can only see assigned forms/tasks, no action buttons (approve/reject/comment hidden)
+
+### Creating a New User (3-step process)
+1. **Create auth user:** `POST /auth/v1/admin/users` with email, password, `email_confirm: true`
+2. **Create profile:** Insert into `profiles` table with user_id, full_name, department, role, org_id
+3. **Create org_member:** Insert into `org_members` table with org_id, user_id, role
+
+### Current Organization
+- **Name:** Bettroi / Dubai Media Office
+- **ID:** `971589dd-afcb-4a12-8900-47626e4d59cc`
+- **Plan:** enterprise
+
+### Current Users
+| Email | Name | Role | Department |
+|-------|------|------|------------|
+| bk@bettroi.com | Murali BK | admin (isAdmin) | - |
+| huzaifa.dawasaz@mediaoffice.ae | Huzaifa Dawasaz | L1 Approver | - |
+| saikat.dutta@gmail.com | Saikat Dutta | viewer | Operations |

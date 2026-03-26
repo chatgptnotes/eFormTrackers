@@ -49,6 +49,7 @@ export function getUserConfig(email: string | null | undefined): UserConfig {
   if (!email) return DEFAULT_USER_CONFIG;
   if (USER_CONFIGS[email]) return USER_CONFIGS[email];
   // Auto-generate from email prefix (e.g. "sarah.ali@mediaoffice.ae" → "Sarah Ali")
+  // Default to Viewer with NO approval levels — only admins explicitly listed above get full access
   const prefix = email.split('@')[0];
   const name = prefix
     .split(/[._-]/)
@@ -56,9 +57,9 @@ export function getUserConfig(email: string | null | undefined): UserConfig {
     .join(' ');
   return {
     name,
-    role: 'Approver',
-    approvalLevels: [1, 2, 3, 4],
-    nameMatches: [prefix.toLowerCase()],
+    role: 'Viewer',
+    approvalLevels: [],
+    nameMatches: [],
     isAdmin: false,
   };
 }

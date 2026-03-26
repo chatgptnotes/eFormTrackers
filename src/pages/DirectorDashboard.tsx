@@ -188,8 +188,9 @@ function LevelBadge({ level }: { level: number | 'completed' | 'rejected' }) {
 
 export default function DirectorDashboard({ data }: Props) {
   const { activeSidebarCategory, addAuditEntry, activeWorkflowId } = useApp();
-  const { user } = useAuth();
+  const { user, orgRole } = useAuth();
   const currentUser = getUserConfig(user?.email);
+  const isViewer = orgRole === 'viewer';
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<'daysAtCurrentLevel' | 'submissionDate' | 'currentApprovalLevel'>('submissionDate');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -373,6 +374,18 @@ export default function DirectorDashboard({ data }: Props) {
   const directorSubmissions = useMemo(() => {
     let subs = data.allSubmissions.filter(s => {
       if (dismissedIds.has(s.id)) return false;
+
+      // Viewer: only sees submissions where they are the pending approver (assigned to them)
+      if (isViewer && user?.email) {
+        const myEmail = user.email.toLowerCase();
+        if (s.pendingApproverEmail?.toLowerCase() === myEmail) return true;
+        const pendingEntry = s.approvalHistory?.find(a => a.status === 'pending');
+        if (pendingEntry?.approverEmail?.toLowerCase() === myEmail) return true;
+        // Also show submissions they submitted
+        if (s.submittedBy.email?.toLowerCase() === myEmail) return true;
+        return false;
+      }
+
       // Admin sees everything
       if (currentUser.isAdmin) return true;
       // Completed / rejected submissions are visible to everyone
@@ -477,7 +490,7 @@ export default function DirectorDashboard({ data }: Props) {
     });
 
     return subs;
-  }, [data.allSubmissions, activeSidebarCategory, activeWorkflowId, search, sortKey, sortDir, dismissedIds, currentUser, assignedToMe, user?.email, filterLevel, filterDepartment, filterStatus, filterDateFrom, filterDateTo, filterSubmittedBy]);
+  }, [data.allSubmissions, activeSidebarCategory, activeWorkflowId, search, sortKey, sortDir, dismissedIds, currentUser, assignedToMe, user?.email, filterLevel, filterDepartment, filterStatus, filterDateFrom, filterDateTo, filterSubmittedBy, isViewer]);
 
   // Group parent + child submissions by workflowInstanceId
   const { parentSubmissions } = useMemo(() => {
@@ -706,7 +719,7 @@ export default function DirectorDashboard({ data }: Props) {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-bold text-white">
-              Welcome, {currentUser.name} — <span className="text-gold capitalize">{currentUser.role}</span>
+              Welcome, {currentUser.name} — <span className="text-gold capitalize">{orgRole === 'super_admin' ? 'Super Admin' : orgRole}</span>
             </h2>
             <p className="text-sm text-gray-400 mt-1">
               {parentSubmissions.length > 0
@@ -812,7 +825,7 @@ export default function DirectorDashboard({ data }: Props) {
             <Download className="w-4 h-4" />
             Export to Excel
           </button>
-          {deleteConfirmId === 'all' ? (
+          {isViewer ? null : deleteConfirmId === 'all' ? (
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/10 border border-red-500/30">
               <span className="text-xs text-red-400 whitespace-nowrap">Delete all {parentSubmissions.length} submissions?</span>
               <button
@@ -1055,7 +1068,11 @@ export default function DirectorDashboard({ data }: Props) {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
-                        {sub.currentApprovalLevel === 'completed' ? (
+                        {isViewer ? (
+                          <span className="px-2.5 py-1.5 rounded-lg bg-gray-500/10 text-gray-400 text-xs font-medium inline-flex items-center gap-1 border border-gray-500/20">
+                            <Eye className="w-3.5 h-3.5" /> View Only
+                          </span>
+                        ) : sub.currentApprovalLevel === 'completed' ? (
                           <span className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 text-xs font-medium inline-flex items-center gap-1 border border-emerald-500/20">
                             <CheckCircle2 className="w-3.5 h-3.5" /> Approved & Completed
                           </span>
