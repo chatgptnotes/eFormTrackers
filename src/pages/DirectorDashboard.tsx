@@ -1108,11 +1108,10 @@ export default function DirectorDashboard({ data }: Props) {
                         ) : sub.actionType === 'task' ? (
                           (user?.email && sub.pendingApproverEmail?.toLowerCase() === user.email.toLowerCase()) ? (
                             <button
-                              onClick={() => handleTaskComplete(sub.id)}
-                              disabled={taskActionLoading === sub.id}
-                              className="px-2.5 py-1.5 rounded-lg bg-gold/20 text-gold hover:bg-gold/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1 transition-colors"
+                              onClick={() => openModal(sub)}
+                              className="px-2.5 py-1.5 rounded-lg bg-gold/20 text-gold hover:bg-gold/30 text-xs font-medium flex items-center gap-1 transition-colors"
                             >
-                              {taskActionLoading === sub.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                              <CheckCircle2 className="w-3.5 h-3.5" />
                               Complete Task
                             </button>
                           ) : (
