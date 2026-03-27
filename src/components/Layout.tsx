@@ -90,7 +90,7 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
   ].filter(item => item.roles.includes(orgRole));
 
   const currentLabel = location.pathname === '/app/director'
-    ? "Director's Dashboard"
+    ? "Dashboard"
     : TOOL_NAV.find(i => i.path === location.pathname)?.label || 'Dashboard';
 
   return (
@@ -136,7 +136,7 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
             <div className="px-4 pb-2">
               <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-2 px-2">Departments</p>
 
-              {/* Director's Dashboard link */}
+              {/* Dashboard link */}
               <Link
                 to="/app/director"
                 onClick={() => { setActiveSidebarCategory(null); setSidebarOpen(false); }}
@@ -147,7 +147,7 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
                 }`}
               >
                 <ShieldCheck className="w-4.5 h-4.5" />
-                <span className="text-sm font-medium">Director's Dashboard</span>
+                <span className="text-sm font-medium">Dashboard</span>
               </Link>
 
               {/* Category items */}
