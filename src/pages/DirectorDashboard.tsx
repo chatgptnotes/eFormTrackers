@@ -366,16 +366,10 @@ export default function DirectorDashboard({ data }: Props) {
       // Use email-url endpoint which builds the correct workflow-aware URL with taskID
       const res = await fetch(`/api/email-url?formId=${sub.formId}&submissionId=${sub.id}`);
       const data = await res.json();
-      const url = data.approvalUrl;
-      if (url) {
-        window.open(url, '_blank', 'noopener,noreferrer');
-      } else {
-        // No working URL available (task assigned to different user) — open modal for in-app completion
-        openModal(sub);
-      }
+      const url = data.approvalUrl || sub.approvalUrl || sub.taskUrl;
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
     } catch {
-      // API failed — open modal as fallback
-      openModal(sub);
+      if (sub.taskUrl) window.open(sub.taskUrl, '_blank', 'noopener,noreferrer');
     } finally {
       setTaskUrlLoading(null);
     }

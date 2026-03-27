@@ -91,8 +91,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Fallback: no prefill or prefill not found
       const constructedUrl = `${JOTFORM_HOST}/${taskFormID}?workflowAssignFormTask=1&taskID=${taskId}`;
       return res.status(200).json({ approvalUrl: constructedUrl, formId, submissionId, source: 'constructed-form' });
+    } else if (taskType === 'workflow_assign_task') {
+      // Task types: use accessLink (/share/ URL) if available
+      if (accessLink) {
+        return res.status(200).json({ approvalUrl: accessLink, formId, submissionId, source: 'accessLink-task' });
+      }
+      // Fallback: use inbox URL which prompts JotForm login (SSO)
+      const constructedUrl = `${JOTFORM_HOST}/inbox/${taskFormID}/${submissionId}`;
+      return res.status(200).json({ approvalUrl: constructedUrl, formId, submissionId, source: 'inbox-task' });
     } else {
-      // Approval/task types use path-based format with access token
+      // Approval types use path-based format with access token
       if (taskFormID && taskId && accessToken) {
         const encodedToken = encodeURIComponent(accessToken);
         const constructedUrl = `${JOTFORM_HOST}/approval-form/${taskFormID}/task/${taskId}/access-token/${encodedToken}`;
