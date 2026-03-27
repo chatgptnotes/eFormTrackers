@@ -66,7 +66,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const taskType = String(element.type || '');
 
     if (taskType === 'workflow_assign_form') {
-      // Form tasks use simple query-param format (no access token needed)
+      // Check if prefill is enabled and fetch the prefill token from JotForm API
+      const prefillEnabled = String((element as any).prefillEnabled || '') === 'Yes';
+      if (prefillEnabled && taskFormID) {
+        try {
+          const prefillUrl = `${JOTFORM_BASE}/form/${taskFormID}/prefills?apiKey=${JOTFORM_API_KEY}&teamID=${TEAM_ID}`;
+          const prefillRes = await fetch(prefillUrl);
+          if (prefillRes.ok) {
+            const prefillData = await prefillRes.json();
+            const prefills = prefillData?.content || [];
+            for (const p of prefills) {
+              const urls: Array<Record<string, any>> = p.urls || [];
+              const match = urls.find((u) => u.settings?.id === submissionId);
+              if (match) {
+                const constructedUrl = `${JOTFORM_HOST}/${taskFormID}/prefill/${match.id}?workflowAssignFormTask=1&taskID=${taskId}`;
+                return res.status(200).json({ approvalUrl: constructedUrl, formId, submissionId, source: 'prefill-api' });
+              }
+            }
+          }
+        } catch (e) {
+          console.error('Prefill API error:', e);
+        }
+      }
+      // Fallback: no prefill or prefill not found
       const constructedUrl = `${JOTFORM_HOST}/${taskFormID}?workflowAssignFormTask=1&taskID=${taskId}`;
       return res.status(200).json({ approvalUrl: constructedUrl, formId, submissionId, source: 'constructed-form' });
     } else {
