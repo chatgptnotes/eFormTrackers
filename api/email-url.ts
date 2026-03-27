@@ -66,11 +66,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const taskType = String(element.type || '');
 
     if (taskType === 'workflow_assign_form') {
-      // Use accessLink (/share/ URL) if available — it includes prefill data
-      if (accessLink) {
-        return res.status(200).json({ approvalUrl: accessLink, formId, submissionId, source: 'accessLink-form' });
-      }
-      // Fallback: construct URL without prefill (for forms without prefill enabled)
+      // Form tasks use simple query-param format (no access token needed)
       const constructedUrl = `${JOTFORM_HOST}/${taskFormID}?workflowAssignFormTask=1&taskID=${taskId}`;
       return res.status(200).json({ approvalUrl: constructedUrl, formId, submissionId, source: 'constructed-form' });
     } else {
