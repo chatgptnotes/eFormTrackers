@@ -1108,11 +1108,12 @@ export default function DirectorDashboard({ data }: Props) {
                         ) : sub.actionType === 'task' ? (
                           (user?.email && sub.pendingApproverEmail?.toLowerCase() === user.email.toLowerCase()) ? (
                             <button
-                              onClick={() => openModal(sub)}
-                              className="px-2.5 py-1.5 rounded-lg bg-gold/20 text-gold hover:bg-gold/30 text-xs font-medium flex items-center gap-1 transition-colors"
+                              onClick={() => openTaskUrl(sub)}
+                              disabled={taskUrlLoading === sub.id}
+                              className="px-2.5 py-1.5 rounded-lg bg-gold/20 text-gold hover:bg-gold/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1 transition-colors"
                             >
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              Complete Task
+                              {taskUrlLoading === sub.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ClipboardList className="w-3.5 h-3.5" />}
+                              View Task
                             </button>
                           ) : (
                             <span className="px-2.5 py-1.5 rounded-lg bg-gray-500/10 text-gray-600 text-xs font-medium flex items-center gap-1 border border-gray-500/10" title="This task is assigned to someone else">
