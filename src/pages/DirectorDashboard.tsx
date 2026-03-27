@@ -1068,7 +1068,7 @@ export default function DirectorDashboard({ data }: Props) {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
-                        {isViewer ? (
+                        {isViewer && !(user?.email && sub.pendingApproverEmail?.toLowerCase() === user.email.toLowerCase()) ? (
                           <span className="px-2.5 py-1.5 rounded-lg bg-gray-500/10 text-gray-400 text-xs font-medium inline-flex items-center gap-1 border border-gray-500/20">
                             <Eye className="w-3.5 h-3.5" /> View Only
                           </span>
