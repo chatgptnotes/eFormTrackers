@@ -22,6 +22,7 @@ interface Props {
   setRefreshConfig: (fn: (prev: RefreshConfig) => RefreshConfig) => void;
   onRefresh: () => void;
   activeForms?: JFFormMeta[];
+  activeDepartments?: string[];
 }
 
 const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -37,7 +38,7 @@ const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>
 };
 
 
-export default function Layout({ children, refreshConfig, setRefreshConfig, onRefresh, activeForms }: Props) {
+export default function Layout({ children, refreshConfig, setRefreshConfig, onRefresh, activeForms, activeDepartments = [] }: Props) {
   const location = useLocation();
   const navigate = useNavigate();
   const { orgRole, organization, hasPermission } = useAuth();
@@ -151,7 +152,7 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
               </Link>
 
               {/* Category items */}
-              {SIDEBAR_CATEGORIES.map(cat => {
+              {SIDEBAR_CATEGORIES.filter(cat => cat.type === 'all' || (cat.filter?.departments && cat.filter.departments.some(d => activeDepartments.includes(d)))).map(cat => {
                 const Icon = CATEGORY_ICONS[cat.id] || Folder;
                 const isActive = activeSidebarCategory?.id === cat.id;
                 const isExpanded = expandedCategories.has(cat.id);

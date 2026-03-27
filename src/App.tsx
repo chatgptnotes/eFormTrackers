@@ -6,6 +6,7 @@ import DirectorDashboard from './pages/DirectorDashboard';
 import { useSubmissions } from './hooks/useSubmissions';
 import ErrorBoundary from './components/ErrorBoundary';
 import { Loader2 } from 'lucide-react';
+import { ToastProvider } from './components/ToastNotification';
 
 // Lazy-loaded pages — only downloaded when the user navigates to them
 const WorkflowTracker = lazy(() => import('./pages/WorkflowTracker'));
@@ -45,7 +46,7 @@ function ProtectedApp() {
   const data = useSubmissions();
 
   return (
-    <Layout refreshConfig={data.refreshConfig} setRefreshConfig={data.setRefreshConfig} onRefresh={data.refresh} activeForms={data.activeForms}>
+    <Layout refreshConfig={data.refreshConfig} setRefreshConfig={data.setRefreshConfig} onRefresh={data.refresh} activeForms={data.activeForms} activeDepartments={[...new Set(data.allSubmissions.map(s => s.submittedBy.department).filter(Boolean))]}>
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/" element={<DirectorDashboard data={data} />} />
@@ -95,6 +96,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
+      <ToastProvider>
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/" element={<Navigate to="/app" replace />} />
@@ -106,6 +108,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
+      </ToastProvider>
     </ErrorBoundary>
   );
 }
