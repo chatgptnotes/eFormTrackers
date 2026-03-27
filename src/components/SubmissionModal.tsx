@@ -101,7 +101,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
         ? submission.approvalHistory.find(a => a.level === submission.currentApprovalLevel && a.status === 'pending')
         : submission.approvalHistory.find(a => a.status === 'pending'))
     : null;
-  const designatedApproverEmail = pendingEntry?.approverEmail || pendingEntry?.approverName || '';
+  const designatedApproverEmail = submission?.pendingApproverEmail || pendingEntry?.approverEmail || pendingEntry?.approverName || '';
   // isDesignatedApprover: true if logged-in user's email matches the evaluator email
   const isDesignatedApprover = !!user?.email && (
     designatedApproverEmail.toLowerCase() === user.email.toLowerCase() ||
