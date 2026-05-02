@@ -77,39 +77,41 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
   };
 
   const TOOL_NAV = [
-    { path: '/app', icon: LayoutDashboard, label: 'Analytics Dashboard', roles: ['super_admin', 'admin', 'approver'] },
-    { path: '/app/tracker', icon: Table2, label: 'Workflow Tracker', roles: ['super_admin', 'admin', 'approver'] },
-    { path: '/app/bottlenecks', icon: AlertTriangle, label: 'Bottleneck Analysis', roles: ['super_admin', 'admin'] },
-    { path: '/app/kanban', icon: Kanban, label: 'Kanban Board', roles: ['super_admin', 'admin', 'approver'] },
-    { path: '/app/analytics', icon: BarChart3, label: 'Advanced Analytics', roles: ['super_admin', 'admin'] },
+    // { path: '/app', icon: LayoutDashboard, label: 'Analytics Dashboard', roles: ['super_admin', 'admin', 'approver'] },
+    // { path: '/app/tracker', icon: Table2, label: 'Workflow Tracker', roles: ['super_admin', 'admin', 'approver'] },
+    // { path: '/app/bottlenecks', icon: AlertTriangle, label: 'Bottleneck Analysis', roles: ['super_admin', 'admin'] },
+    // { path: '/app/kanban', icon: Kanban, label: 'Kanban Board', roles: ['super_admin', 'admin', 'approver'] },
+    // { path: '/app/analytics', icon: BarChart3, label: 'Advanced Analytics', roles: ['super_admin', 'admin'] },
     { path: '/app/team', icon: Users, label: 'Team', roles: ['super_admin', 'admin'] },
-    { path: '/app/activity', icon: FileText, label: 'Activity Log', roles: ['super_admin', 'admin'] },
-    { path: '/app/billing', icon: CreditCard, label: 'Billing', roles: ['super_admin'] },
+    // { path: '/app/activity', icon: FileText, label: 'Activity Log', roles: ['super_admin', 'admin'] },
+    // { path: '/app/billing', icon: CreditCard, label: 'Billing', roles: ['super_admin'] },
     { path: '/app/org-settings', icon: Building2, label: 'Organization', roles: ['super_admin'] },
     { path: '/app/settings', icon: Settings, label: 'Settings', roles: ['super_admin', 'admin', 'approver'] },
-    { path: '/app/help', icon: HelpCircle, label: 'Help & Support', roles: ['super_admin', 'admin', 'approver', 'viewer'] },
+    // { path: '/app/help', icon: HelpCircle, label: 'Help & Support', roles: ['super_admin', 'admin', 'approver', 'viewer'] },
   ].filter(item => item.roles.includes(orgRole));
 
   const currentLabel = location.pathname === '/app/director'
     ? "Dashboard"
+    : location.pathname === '/app/modern'
+    ? "Modern Dashboard"
     : TOOL_NAV.find(i => i.path === location.pathname)?.label || 'Dashboard';
 
   return (
     <div className="min-h-screen flex">
       {/* Sidebar — bg-navy adapts: dark in dark mode, white in light mode */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-navy border-r border-navy-light/20 transform transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-gradient-to-b from-blue-950 to-slate-800 border-r border-slate-800 transform transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex flex-col h-full">
-          {/* Logo — JotForm-style branding */}
-          <div className="p-5 border-b border-navy-light/20">
+          {/* Logo — FlowAccel branding */}
+          <div className="p-5 border-b border-slate-800">
             <div className="flex items-center gap-3">
-              {/* JotForm-style logo mark: orange square with white J */}
-              <div className="w-9 h-9 rounded-[6px] flex items-center justify-center flex-shrink-0" style={{ background: '#FF6100' }}>
-                <span className="text-white font-black text-lg leading-none" style={{ fontFamily: '"Plus Jakarta Sans", sans-serif' }}>J</span>
+              {/* FlowAccel logo mark */}
+              <div className="w-9 h-9 flex items-center justify-center flex-shrink-0">
+                <img src="https://eforms.mediaoffice.ae/enterprise/logo.png" alt="Logo" className="w-full h-full object-contain" />
               </div>
               <div>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-white font-bold text-base tracking-tight">Jot</span>
-                  <span className="font-bold text-base tracking-tight" style={{ color: '#FF6100' }}>Flow</span>
+                  <span className="font-bold text-base tracking-tight" style={{ color: '#ffffff' }}>Flow</span>
+                  <span className="font-bold text-base tracking-tight" style={{ color: '#1E88E5' }}>Accel</span>
                 </div>
                 <p className="text-[10px] text-gray-500 truncate max-w-[160px] leading-tight">{organization?.name || 'Workflow Dashboard'}</p>
               </div>
@@ -128,7 +130,7 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
                     : 'bg-gold/10 text-gold border border-gold/20 hover:bg-gold/20'
                 }`}
               >
-                <PlusCircle className="w-4.5 h-4.5" />
+                <PlusCircle className="w-4.5 h-4.5" style={{ color: '#ffffff' }} />
                 <span className="text-sm font-semibold">Submit New Request</span>
               </Link>
             </div>
@@ -144,11 +146,25 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl mb-1 transition-all duration-200 ${
                   location.pathname === '/app/director' && !activeSidebarCategory
                     ? 'bg-gold/10 text-gold border border-gold/20'
-                    : 'text-gray-400 hover:text-white hover:bg-navy-light/30'
+                    : 'text-white hover:bg-slate-800'
                 }`}
               >
-                <ShieldCheck className="w-4.5 h-4.5" />
-                <span className="text-sm font-medium">Dashboard</span>
+                <ShieldCheck className="w-4.5 h-4.5" style={{ color: '#ffffff' }} />
+                <span className="text-sm font-medium" style={{ color: '#ffffff' }}>Dashboard</span>
+              </Link>
+
+              {/* Modern Dashboard link */}
+              <Link
+                to="/app/modern"
+                onClick={() => { setActiveSidebarCategory(null); setSidebarOpen(false); }}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl mb-1 transition-all duration-200 ${
+                  location.pathname === '/app/modern'
+                    ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
+                    : 'text-white hover:bg-slate-800'
+                }`}
+              >
+                <LayoutGrid className="w-4.5 h-4.5" style={{ color: '#ffffff' }} />
+                <span className="text-sm font-medium" style={{ color: '#ffffff' }}>Modern Dashboard</span>
               </Link>
 
               {/* Category items */}
@@ -168,25 +184,27 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
                       className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl mb-0.5 transition-all duration-200 ${
                         isActive
                           ? 'bg-gold/10 text-gold border border-gold/20'
-                          : 'text-gray-400 hover:text-white hover:bg-navy-light/30'
+                          : 'text-white hover:bg-slate-800'
                       }`}
                     >
-                      {hasChildren ? (
-                        isExpanded ? <FolderOpen className="w-4 h-4" /> : <Folder className="w-4 h-4" />
-                      ) : (
-                        <Icon className="w-4 h-4" />
-                      )}
-                      <span className="text-sm font-medium flex-1 text-left">{cat.label}</span>
+                      <div style={{ color: '#ffffff' }}>
+                        {hasChildren ? (
+                          isExpanded ? <FolderOpen className="w-4 h-4" /> : <Folder className="w-4 h-4" />
+                        ) : (
+                          <Icon className="w-4 h-4" />
+                        )}
+                      </div>
+                      <span className="text-sm font-medium flex-1 text-left" style={{ color: '#ffffff' }}>{cat.label}</span>
                       {hasChildren && (
                         <span onClick={(e) => toggleExpand(cat.id, e)}>
-                          {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                          {isExpanded ? <ChevronDown className="w-3.5 h-3.5" style={{ color: '#ffffff' }} /> : <ChevronRight className="w-3.5 h-3.5" style={{ color: '#ffffff' }} />}
                         </span>
                       )}
                     </button>
 
                     {/* Children */}
                     {hasChildren && isExpanded && (
-                      <div className="ml-4 pl-3 border-l border-navy-light/15 space-y-0.5 mb-1">
+                      <div className="ml-4 pl-3 border-l border-slate-800 space-y-0.5 mb-1">
                         {cat.children!.map(child => {
                           const childActive = activeSidebarCategory?.id === child.id;
                           return (
@@ -196,11 +214,11 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
                               className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-all duration-200 ${
                                 childActive
                                   ? 'bg-gold/10 text-gold'
-                                  : 'text-gray-500 hover:text-white hover:bg-navy-light/20'
+                                  : 'text-white hover:bg-slate-800'
                               }`}
                             >
                               <div className={`w-1.5 h-1.5 rounded-full ${childActive ? 'bg-gold' : 'bg-gray-600'}`} />
-                              {child.label}
+                              <span style={{ color: '#ffffff' }}>{child.label}</span>
                             </button>
                           );
                         })}
@@ -212,7 +230,7 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
             </div>
 
             {/* Section 2: Workflows */}
-            <div className="mx-4 border-t border-navy-light/20 my-2" />
+            <div className="mx-4 border-t border-slate-800 my-2" />
             <div className="px-4 pb-2">
               <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-2 px-2">Workflows</p>
 
@@ -227,11 +245,11 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
                 className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl mb-0.5 transition-all duration-200 ${
                   !activeWorkflowId && location.pathname === '/app/director'
                     ? 'bg-gold/10 text-gold border border-gold/20'
-                    : 'text-gray-400 hover:text-white hover:bg-navy-light/30'
+                    : 'text-white hover:bg-slate-800'
                 }`}
               >
-                <Layers className="w-4 h-4" />
-                <span className="text-sm font-medium flex-1 text-left">All Workflows</span>
+                <Layers className="w-4 h-4" style={{ color: '#ffffff' }} />
+                <span className="text-sm font-medium flex-1 text-left" style={{ color: '#ffffff' }}>All Workflows</span>
               </button>
 
               {(activeForms || []).map(f => ({ id: f.id, label: f.title })).map(wf => {
@@ -252,18 +270,18 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
                     className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl mb-0.5 transition-all duration-200 ${
                       isActive
                         ? 'bg-gold/10 text-gold border border-gold/20'
-                        : 'text-gray-400 hover:text-white hover:bg-navy-light/30'
+                        : 'text-white hover:bg-slate-800'
                     }`}
                   >
-                    <Icon className="w-4 h-4" />
-                    <span className="text-sm font-medium flex-1 text-left leading-tight">{wf.label}</span>
+                    <div style={{ color: '#ffffff' }}><Icon className="w-4 h-4" /></div>
+                    <span className="text-sm font-medium flex-1 text-left leading-tight" style={{ color: '#ffffff' }}>{wf.label}</span>
                   </button>
                 );
               })}
             </div>
 
             {/* Separator */}
-            <div className="mx-4 border-t border-navy-light/20 my-2" />
+            <div className="mx-4 border-t border-slate-800 my-2" />
 
             {/* Section 3: Tools */}
             <div className="px-4 pt-1 pb-4 space-y-0.5">
@@ -278,11 +296,11 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
                     className={`flex items-center gap-3 px-3 py-2 rounded-xl transition-all duration-200 ${
                       active
                         ? 'bg-gold/10 text-gold border border-gold/20'
-                        : 'text-gray-400 hover:text-white hover:bg-navy-light/30'
+                        : 'text-white hover:bg-slate-800'
                     }`}
                   >
-                    <item.icon className="w-4 h-4" />
-                    <span className="text-sm font-medium">{item.label}</span>
+                    <div style={{ color: '#ffffff' }}><item.icon className="w-4 h-4" /></div>
+                    <span className="text-sm font-medium" style={{ color: '#ffffff' }}>{item.label}</span>
                   </Link>
                 );
               })}
@@ -290,13 +308,13 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
           </nav>
 
           {/* Refresh Controls */}
-          <div className="p-4 border-t border-navy-light/20">
-            <div className="p-3 space-y-2 rounded-lg bg-navy-light/20 border border-navy-light/20">
+          <div className="p-4 border-t border-slate-800 hidden">
+            <div className="p-3 space-y-2 rounded-lg bg-slate-700/20 border border-slate-800">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] text-gray-500 font-medium uppercase tracking-wide">Auto Refresh</span>
                 <button
                   onClick={() => setRefreshConfig(prev => ({ ...prev, autoRefresh: !prev.autoRefresh }))}
-                  className={`w-9 h-5 rounded-full transition-colors ${refreshConfig.autoRefresh ? 'bg-gold' : 'bg-navy-light'} relative`}
+                  className={`w-9 h-5 rounded-full transition-colors ${refreshConfig.autoRefresh ? 'bg-gold' : 'bg-slate-700'} relative`}
                 >
                   <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-[3px] transition-transform ${refreshConfig.autoRefresh ? 'translate-x-[18px]' : 'translate-x-[3px]'}`} />
                 </button>
@@ -305,7 +323,7 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
                 <select
                   value={refreshConfig.intervalMinutes}
                   onChange={e => setRefreshConfig(prev => ({ ...prev, intervalMinutes: Number(e.target.value) }))}
-                  className="w-full bg-navy-dark border border-navy-light/30 rounded-lg px-2 py-1 text-xs text-gray-300"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-gray-300"
                 >
                   <option value={5}>Every 5 min</option>
                   <option value={15}>Every 15 min</option>
@@ -329,9 +347,9 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
       )}
 
       {/* Main */}
-      <div className="flex-1 lg:ml-72 h-screen overflow-y-auto">
+      <div className="flex-1 lg:ml-72 h-screen overflow-y-scroll">
         {/* Top bar */}
-        <header className="sticky top-0 z-30 bg-navy-dark/80 backdrop-blur-xl border-b border-navy-light/10">
+        <header className="sticky top-0 z-30 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800">
           <div className="flex items-center justify-between px-6 py-4">
             <div className="flex items-center gap-4">
               <button onClick={() => setSidebarOpen(!sidebarOpen)} className="lg:hidden text-gray-400 hover:text-white">
@@ -344,10 +362,10 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
             </div>
             <div className="flex items-center gap-3">
               <a
-                href="https://eforms.mediaoffice.ae/"
+                href="https://eforms.mediaoffice.ae/workspace/team/gdmo-bettroi"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-navy-light/30 hover:bg-navy-light/50 text-gray-400 hover:text-gold transition-all text-sm font-semibold"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-700/30 hover:bg-slate-700/50 text-gray-400 hover:text-gold transition-all text-sm font-semibold"
               >
                 <ExternalLink className="w-4 h-4" />
                 Workspace
@@ -362,14 +380,14 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
               <button
                 onClick={toggleTheme}
                 title={themeMode === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-navy-light/30 hover:bg-navy-light/50 text-gray-400 hover:text-gold transition-all"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-700/30 hover:bg-slate-700/50 text-gray-400 hover:text-gold transition-all"
               >
                 {themeMode === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </button>
               <button
                 onClick={handleRefresh}
                 title="Refresh data"
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-navy-light/30 hover:bg-navy-light/50 text-gray-400 hover:text-gold transition-all"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-700/30 hover:bg-slate-700/50 text-gray-400 hover:text-gold transition-all hidden"
               >
                 <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
                 {refreshConfig.autoRefresh && (

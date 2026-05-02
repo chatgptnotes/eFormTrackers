@@ -134,7 +134,7 @@ export default function TeamManagement() {
           <p className="text-gray-400 mt-1">Workspace team members and their roles</p>
         </div>
         <div className="flex items-center gap-3">
-          {canCreateUser && (
+          {false && canCreateUser && (
             <button
               onClick={() => { setShowCreateForm(!showCreateForm); setCreateError(null); setCreateSuccess(null); }}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${

@@ -9,6 +9,7 @@ import { Loader2 } from 'lucide-react';
 import { ToastProvider } from './components/ToastNotification';
 
 // Lazy-loaded pages — only downloaded when the user navigates to them
+const ModernDashboard = lazy(() => import('./pages/ModernDashboard'));
 const WorkflowTracker = lazy(() => import('./pages/WorkflowTracker'));
 const BottleneckAnalysis = lazy(() => import('./pages/BottleneckAnalysis'));
 const ApprovalDetail = lazy(() => import('./pages/ApprovalDetail'));
@@ -50,6 +51,7 @@ function ProtectedApp() {
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/" element={<DirectorDashboard data={data} />} />
+          <Route path="/modern" element={<RoleGuard allowed={['super_admin', 'admin', 'approver']}><ModernDashboard data={data} /></RoleGuard>} />
           <Route path="/tracker" element={<RoleGuard allowed={['super_admin', 'admin', 'approver']}><WorkflowTracker data={data} /></RoleGuard>} />
           <Route path="/bottlenecks" element={<RoleGuard allowed={['super_admin', 'admin']}><BottleneckAnalysis data={data} /></RoleGuard>} />
           <Route path="/approval/:level" element={<RoleGuard allowed={['super_admin', 'admin', 'approver']}><ApprovalDetail data={data} /></RoleGuard>} />

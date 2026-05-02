@@ -123,10 +123,10 @@ function WorkflowStatusBadge({ submission }: { submission: Submission }) {
   const { currentApprovalLevel, actionType, approvalHistory } = submission;
 
   if (currentApprovalLevel === 'completed') {
-    return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-400">Completed</span>;
+    return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm">Completed</span>;
   }
   if (currentApprovalLevel === 'rejected') {
-    return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/20 text-red-400">Rejected</span>;
+    return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-red-500/20 text-red-300 border border-red-500/30 shadow-sm">Rejected</span>;
   }
 
   const level = typeof currentApprovalLevel === 'number' ? currentApprovalLevel : 1;
@@ -134,16 +134,16 @@ function WorkflowStatusBadge({ submission }: { submission: Submission }) {
 
   // Show workflow-step-aware status
   if (actionType === 'task') {
-    return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gold/20 text-gold">L{level} Task Pending</span>;
+    return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-gold/20 text-gold border border-gold/30 shadow-sm">L{level} Task Pending</span>;
   }
   if (actionType === 'form') {
-    return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400">Form Pending</span>;
+    return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30 shadow-sm">Form Pending</span>;
   }
 
   if (hasApproved) {
-    return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400">L{level} Approval Pending</span>;
+    return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30 shadow-sm">L{level} Approval Pending</span>;
   }
-  return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400">L{level} Approval Pending</span>;
+  return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm">L{level} Approval Pending</span>;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -227,6 +227,8 @@ export default function DirectorDashboard({ data }: Props) {
   const [taskConfirmRejectId, setTaskConfirmRejectId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [viewSignature, setViewSignature] = useState<{ url: string; approver: string; level: number } | null>(null);
+  const [sigLoading, setSigLoading] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [filterLevel, setFilterLevel] = useState('');
   const [filterDepartment, setFilterDepartment] = useState('');
@@ -349,6 +351,30 @@ export default function DirectorDashboard({ data }: Props) {
       alert(`Complete failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setTaskActionLoading(null);
+    }
+  };
+
+  const fetchAndShowSignature = async (submissionId: string, level: number, taskId: string) => {
+    setSigLoading(taskId);
+    try {
+      const { data } = await supabase
+        .from('jf_signatures')
+        .select('signature_url, approver_name')
+        .eq('submission_id', submissionId)
+        .eq('level', level)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (data?.signature_url) {
+        setViewSignature({ url: data.signature_url, approver: data.approver_name || 'Unknown', level });
+      } else {
+        alert('Signature not found');
+      }
+    } catch (err) {
+      alert('Failed to fetch signature');
+    } finally {
+      setSigLoading(null);
     }
   };
 
@@ -539,7 +565,31 @@ export default function DirectorDashboard({ data }: Props) {
     }
 
     const parents = directorSubmissions.filter(s => !childIds.has(s.id));
-    return { parentSubmissions: parents, childrenByParentId: childrenMap };
+
+    // Keep only the FIRST (earliest) parent per workflow instance
+    const firstParentPerWorkflow = new Map<string, Submission>();
+    for (const parent of parents) {
+      const wfId = parent.workflowInstanceId || parent.formId;
+      if (!firstParentPerWorkflow.has(wfId)) {
+        firstParentPerWorkflow.set(wfId, parent);
+      } else {
+        // Keep the one with earliest submission date
+        const existing = firstParentPerWorkflow.get(wfId)!;
+        if (new Date(parent.submissionDate).getTime() < new Date(existing.submissionDate).getTime()) {
+          firstParentPerWorkflow.set(wfId, parent);
+        }
+      }
+    }
+
+    const filteredParents = Array.from(firstParentPerWorkflow.values());
+
+    // Sort by submission date - newest first
+    filteredParents.sort((a, b) => {
+      const cmp = new Date(b.submissionDate).getTime() - new Date(a.submissionDate).getTime();
+      return cmp === 0 ? Number(b.id) - Number(a.id) : cmp;
+    });
+
+    return { parentSubmissions: filteredParents, childrenByParentId: childrenMap };
   }, [directorSubmissions]);
 
   // Unique filter options derived from all submissions
@@ -989,26 +1039,26 @@ export default function DirectorDashboard({ data }: Props) {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.25 }}
-        className="glass-card overflow-hidden"
+        className="glass-card overflow-hidden relative"
       >
-        <div className="overflow-x-auto">
-          <table className="w-full">
+        <div className="overflow-x-auto w-full">
+          <table className="w-full table-fixed">
             <thead>
-              <tr className="border-b border-navy-light/20">
-                <th className="px-4 py-3 text-left text-sm font-bold text-gray-300 uppercase w-12">S.No</th>
-                <th className="px-4 py-3 text-left text-sm font-bold text-gray-300 uppercase">Ref#</th>
-                <th className="px-4 py-3 text-left text-sm font-bold text-gray-300 uppercase">Title / Form</th>
-                <th className="px-4 py-3 text-left text-sm font-bold text-gray-300 uppercase">Submitted By</th>
-                <th className="px-4 py-3 text-left text-sm font-bold text-gray-300 uppercase">Submission Date</th>
-                <th className="px-4 py-3 text-left text-sm font-bold text-gray-300 uppercase cursor-pointer select-none" onClick={() => toggleSort('currentApprovalLevel')}>
+              <tr className="border-b border-navy-light/20 bg-navy-dark/50">
+                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider w-12">S.No</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider">Ref#</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider">Title / Form</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider">Submitted By</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider">Submission Date</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider cursor-pointer select-none" onClick={() => toggleSort('currentApprovalLevel')}>
                   <div className="flex items-center gap-1">Level <SortIcon field="currentApprovalLevel" /></div>
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-bold text-gray-300 uppercase">Pending With</th>
-                <th className="px-4 py-3 text-left text-sm font-bold text-gray-300 uppercase cursor-pointer select-none" onClick={() => toggleSort('daysAtCurrentLevel')}>
+                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider">Pending With</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider cursor-pointer select-none" onClick={() => toggleSort('daysAtCurrentLevel')}>
                   <div className="flex items-center gap-1">Aging <SortIcon field="daysAtCurrentLevel" /></div>
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-bold text-gray-300 uppercase">Status</th>
-                <th className="px-4 py-3 text-center text-sm font-bold text-gray-300 uppercase">Actions</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider">Status</th>
+                <th className="px-4 py-3 text-center text-[11px] font-bold text-gray-400 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1032,7 +1082,7 @@ export default function DirectorDashboard({ data }: Props) {
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 50, height: 0 }}
                     transition={{ duration: 0.3 }}
-                    className="border-b border-navy-light/10 hover:bg-navy-light/5"
+                    className="border-b border-navy-light/10 hover:bg-white/5 transition-colors duration-150 cursor-pointer"
                   >
                     <td className="px-4 py-3 text-sm text-gray-400 font-mono">{(safeCurrentPage - 1) * rowsPerPage + idx + 1}</td>
                     <td className="px-4 py-3">
@@ -1259,13 +1309,13 @@ export default function DirectorDashboard({ data }: Props) {
                   {/* Expanded workflow steps timeline */}
                   {expandedRowId === sub.id && (
                     <tr className="bg-navy-dark/30">
-                      <td colSpan={10} className="px-4 py-4 pl-10">
+                      <td colSpan={10} className="px-4 py-4 pl-10 overflow-hidden">
                         {expandedTasks.length === 0 ? (
                           <span className="text-xs text-gray-500 italic">No workflow steps found</span>
                         ) : (
-                          <div>
+                          <div className="w-full max-w-full overflow-x-hidden">
                             <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-3">Workflow Steps</p>
-                            <div className="space-y-0">
+                            <div className="space-y-0 max-w-full">
                               {expandedTasks.map((task, idx) => {
                                 const isCompleted = task.status === 'COMPLETED';
                                 const isActive = task.status === 'ACTIVE';
@@ -1313,11 +1363,23 @@ export default function DirectorDashboard({ data }: Props) {
                                       </div>
 
                                       {/* Action area */}
-                                      <div className="flex items-center gap-1.5 flex-shrink-0 ml-3">
+                                      <div className="flex items-center gap-1.5 flex-shrink-0 ml-3 flex-wrap">
                                         {isCompleted ? (
-                                          <span className="px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-400 text-xs font-medium flex items-center gap-1 border border-emerald-500/20">
-                                            <CheckCircle2 className="w-3 h-3" /> Completed
-                                          </span>
+                                          <div className="flex items-center gap-1.5">
+                                            <span className="px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-400 text-xs font-medium flex items-center gap-1 border border-emerald-500/20 shadow-sm">
+                                              <CheckCircle2 className="w-3 h-3" /> Completed
+                                            </span>
+                                            {task.type === 'workflow_approval' && (
+                                              <button
+                                                onClick={() => fetchAndShowSignature(sub.id, task.level, task.taskId)}
+                                                disabled={sigLoading === task.taskId}
+                                                className="px-2 py-1 rounded-md bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 text-xs font-medium flex items-center gap-1 border border-purple-500/20 transition-colors disabled:opacity-50 shadow-sm"
+                                              >
+                                                {sigLoading === task.taskId ? <Loader2 className="w-3 h-3 animate-spin" /> : <Eye className="w-3 h-3" />}
+                                                View Sig
+                                              </button>
+                                            )}
+                                          </div>
                                         ) : isPending ? (
                                           <span className="px-2 py-1 rounded-md bg-gray-500/10 text-gray-500 text-xs font-medium flex items-center gap-1 border border-gray-500/10">
                                             <Clock className="w-3 h-3" /> Waiting
@@ -1689,6 +1751,43 @@ export default function DirectorDashboard({ data }: Props) {
               >
                 Cancel
               </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Signature Viewer Modal */}
+      <AnimatePresence>
+        {viewSignature && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+            onClick={() => setViewSignature(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-navy-dark border border-navy-light/30 rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-white font-semibold">Signature</h3>
+                  <p className="text-xs text-gray-400">Level {viewSignature.level} — {viewSignature.approver}</p>
+                </div>
+                <button
+                  onClick={() => setViewSignature(null)}
+                  className="text-gray-500 hover:text-white transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="bg-white rounded-xl p-3">
+                <img src={viewSignature.url} alt="Signature" className="w-full object-contain max-h-40" />
+              </div>
             </motion.div>
           </motion.div>
         )}
