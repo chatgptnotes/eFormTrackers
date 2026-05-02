@@ -52,10 +52,11 @@ export default function UserDropdown() {
             className="flex items-center gap-3 px-4 py-2.5 text-gray-300 hover:text-white hover:bg-navy-light/30 transition-colors">
             <User className="w-4 h-4" /> Profile & Settings
           </Link>
-          <Link to="/app/billing" onClick={() => setOpen(false)}
+          {/* Billing hidden */}
+          {/* <Link to="/app/billing" onClick={() => setOpen(false)}
             className="flex items-center gap-3 px-4 py-2.5 text-gray-300 hover:text-white hover:bg-navy-light/30 transition-colors">
             <CreditCard className="w-4 h-4" /> Billing
-          </Link>
+          </Link> */}
           <Link to="/app/team" onClick={() => setOpen(false)}
             className="flex items-center gap-3 px-4 py-2.5 text-gray-300 hover:text-white hover:bg-navy-light/30 transition-colors">
             <Shield className="w-4 h-4" /> Team

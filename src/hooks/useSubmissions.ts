@@ -379,7 +379,11 @@ function mapGenericSubmission(
       : fields.overallStatusFieldId
         ? [{ level: 1, statusFieldId: fields.overallStatusFieldId, approverFieldId: null, overallStatusFieldId: fields.overallStatusFieldId }]
         : undefined,
-    workflowInstanceId: String(raw.workflowInstanceID || raw.workflow_instance_id || '') || undefined,
+    workflowInstanceId: (() => {
+      const wfId = String(raw.workflowInstanceID || raw.workflow_instance_id || '') || undefined;
+      if (raw.id) console.log(`[mapGenericSubmission] Sub ${raw.id}: Pass 1 workflowInstanceId from bulk API = "${wfId}"`);
+      return wfId;
+    })(),
     needsSync,
     pendingApproverName: (() => {
       const pending = history.find(h => h.status === 'pending');
@@ -620,12 +624,12 @@ export function useSubmissions() {
           }
         }
 
-        // Second pass: batch-fetch REAL workflow tasks for all submissions (up to 50)
+        // Second pass: batch-fetch REAL workflow tasks for all submissions
         // Prioritize pending subs (need real approver data), then completed/rejected (need workflowInstanceId for grouping)
         const pendingSubs = [
           ...mapped.filter(s => typeof s.currentApprovalLevel === 'number'),
           ...mapped.filter(s => typeof s.currentApprovalLevel !== 'number' && !s.workflowInstanceId),
-        ].slice(0, 50);
+        ];
         if (pendingSubs.length > 0) {
           const taskResults = await Promise.allSettled(
             pendingSubs.map(sub => fetchWorkflowTasks(sub.id))
@@ -637,7 +641,9 @@ export function useSubmissions() {
             const sub = pendingSubs[i];
 
             // Capture workflowInstanceId from the workflow API
+            console.log(`[useSubmissions] Sub ${sub.id}: API returned wfInstanceId="${wfInstanceId}", before enrichment sub.workflowInstanceId="${sub.workflowInstanceId}"`);
             if (wfInstanceId) sub.workflowInstanceId = wfInstanceId;
+            console.log(`[useSubmissions] Sub ${sub.id}: after enrichment sub.workflowInstanceId="${sub.workflowInstanceId}"`);
             if (tasks.length === 0) continue;
 
             // Find the currently ACTIVE task

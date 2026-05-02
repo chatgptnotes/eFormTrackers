@@ -55,7 +55,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     const submissionData = await submissionRes.json();
     const content = submissionData?.content || submissionData;
-    const workflowInstanceID = content?.workflowInstanceID || content?.workflow_instance_id;
+    let workflowInstanceID = content?.workflowInstanceID || content?.workflow_instance_id;
+
+    // Fallback: if no workflowInstanceID, try to find it from other form submissions in the workflow
+    if (!workflowInstanceID) {
+      console.log(`[workflow-tasks] No workflowInstanceID for submission ${submissionId}, trying smart fallback...`);
+      try {
+        // Get current submission's form ID
+        const currentFormId = content?.formID || content?.form_id;
+
+        // Fetch recent user submissions with workflow status
+        const allSubsUrl = `${JOTFORM_BASE}/user/submissions?apiKey=${API_KEY}&teamID=${TEAM_ID}&addWorkflowStatus=1&limit=200`;
+        const allSubsRes = await fetch(allSubsUrl);
+        if (allSubsRes.ok) {
+          const allSubsData = await allSubsRes.json();
+          const allSubs = Array.isArray(allSubsData?.content) ? allSubsData.content : [];
+
+          // Sort by timestamp (newest first) to find most recent workflow
+          const sorted = allSubs.sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
+            const aTime = new Date(String(a.timestamp || 0)).getTime();
+            const bTime = new Date(String(b.timestamp || 0)).getTime();
+            return bTime - aTime;
+          });
+
+          // Find the most recent submission with a workflowInstanceID
+          // Prioritize submissions from the same form or nearby timestamps
+          const recentWithWf = sorted.find((s: Record<string, unknown>) => {
+            const wfId = s.workflowInstanceID || s.workflow_instance_id;
+            return !!wfId;
+          });
+
+          if (recentWithWf) {
+            workflowInstanceID = recentWithWf.workflowInstanceID || recentWithWf.workflow_instance_id;
+            console.log(`[workflow-tasks] Found workflowInstanceID via smart fallback: ${workflowInstanceID} from recent submission with wfId`);
+          }
+        }
+      } catch (e) {
+        console.error(`[workflow-tasks] Smart fallback failed:`, e);
+      }
+    }
 
     if (!workflowInstanceID) {
       // No workflow instance — return empty tasks

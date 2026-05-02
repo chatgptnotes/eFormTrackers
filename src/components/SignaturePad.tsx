@@ -13,7 +13,6 @@ export default function SignaturePad({ onSign, height = 150 }: Props) {
   const [isDrawing, setIsDrawing] = useState(false);
   const [isEmpty, setIsEmpty] = useState(true);
   const lastPos = useRef<{ x: number; y: number } | null>(null);
-  const hasFiredRef = useRef(false);
   const isEmptyRef = useRef(true);
   const totalPathLength = useRef(0); // accumulated drawn length per stroke
 
@@ -48,7 +47,6 @@ export default function SignaturePad({ onSign, height = 150 }: Props) {
     if (!canvas) return;
     e.preventDefault();
     setIsDrawing(true);
-    hasFiredRef.current = false;
     totalPathLength.current = 0;
     lastPos.current = getPos(e, canvas);
   }, []);
@@ -81,31 +79,27 @@ export default function SignaturePad({ onSign, height = 150 }: Props) {
 
   const stopDraw = useCallback(() => {
     setIsDrawing(false);
-    lastPos.current = null;
-    // Only count as a real signature if the drawn path is long enough (not just a tap)
-    const isRealStroke = totalPathLength.current >= MIN_PATH_LENGTH;
-    if (!hasFiredRef.current && canvasRef.current && !isEmptyRef.current && isRealStroke) {
-      hasFiredRef.current = true;
-      onSign(canvasRef.current.toDataURL('image/png'));
-    }
     totalPathLength.current = 0;
-  }, [onSign]);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    // Mouse events
     canvas.addEventListener('mousedown', startDraw);
     canvas.addEventListener('mousemove', draw);
     canvas.addEventListener('mouseup', stopDraw);
-    canvas.addEventListener('mouseleave', stopDraw);
+
+    // Touch events
     canvas.addEventListener('touchstart', startDraw, { passive: false });
     canvas.addEventListener('touchmove', draw, { passive: false });
     canvas.addEventListener('touchend', stopDraw);
+
     return () => {
       canvas.removeEventListener('mousedown', startDraw);
       canvas.removeEventListener('mousemove', draw);
       canvas.removeEventListener('mouseup', stopDraw);
-      canvas.removeEventListener('mouseleave', stopDraw);
       canvas.removeEventListener('touchstart', startDraw);
       canvas.removeEventListener('touchmove', draw);
       canvas.removeEventListener('touchend', stopDraw);
@@ -124,7 +118,6 @@ export default function SignaturePad({ onSign, height = 150 }: Props) {
     isEmptyRef.current = true;
     totalPathLength.current = 0;
     setIsEmpty(true);
-    hasFiredRef.current = false;
     onSign('');
   };
 
@@ -135,7 +128,8 @@ export default function SignaturePad({ onSign, height = 150 }: Props) {
           ref={canvasRef}
           width={600}
           height={height}
-          className="w-full cursor-crosshair touch-none block bg-white"
+          tabIndex={0}
+          className="w-full cursor-crosshair touch-none block bg-white focus:outline-none focus:ring-2 focus:ring-gold/50"
           style={{ height: `${height}px` }}
         />
         {isEmpty && (
@@ -153,14 +147,28 @@ export default function SignaturePad({ onSign, height = 150 }: Props) {
           </div>
         )}
       </div>
-      <button
-        type="button"
-        onClick={clear}
-        disabled={isEmpty}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-navy-light/20 hover:bg-navy-light/40 disabled:opacity-30 text-gray-400 hover:text-white text-xs font-medium transition-all"
-      >
-        <Eraser className="w-3.5 h-3.5" /> Clear Signature
-      </button>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={clear}
+          disabled={isEmpty}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-navy-light/20 hover:bg-navy-light/40 disabled:opacity-30 text-gray-400 hover:text-white text-xs font-medium transition-all"
+        >
+          <Eraser className="w-3.5 h-3.5" /> Clear
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (!isEmpty && canvasRef.current) {
+              onSign(canvasRef.current.toDataURL('image/png'));
+            }
+          }}
+          disabled={isEmpty}
+          className="flex-1 px-3 py-1.5 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 disabled:opacity-30 text-emerald-400 hover:text-emerald-300 text-xs font-medium transition-all"
+        >
+          Done Signing ✓
+        </button>
+      </div>
     </div>
   );
 }

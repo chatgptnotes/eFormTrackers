@@ -41,8 +41,8 @@ function PendingWithCell({ submission, onSyncClick }: { submission: Submission; 
   if (currentApprovalLevel === 'completed') {
     return (
       <div className="flex items-center gap-1.5">
-        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-        <span className="text-xs text-emerald-400 font-medium">Completed</span>
+        <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+        <span className="text-xs text-white font-medium">Completed</span>
       </div>
     );
   }
@@ -123,10 +123,10 @@ function WorkflowStatusBadge({ submission }: { submission: Submission }) {
   const { currentApprovalLevel, actionType, approvalHistory } = submission;
 
   if (currentApprovalLevel === 'completed') {
-    return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm">Completed</span>;
+    return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 ring-1 ring-inset ring-emerald-500/30 shadow-sm">Completed</span>;
   }
   if (currentApprovalLevel === 'rejected') {
-    return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-red-500/20 text-red-300 border border-red-500/30 shadow-sm">Rejected</span>;
+    return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-red-500/20 text-red-300 border border-red-500/30 ring-1 ring-inset ring-red-500/30 shadow-sm">Rejected</span>;
   }
 
   const level = typeof currentApprovalLevel === 'number' ? currentApprovalLevel : 1;
@@ -134,16 +134,16 @@ function WorkflowStatusBadge({ submission }: { submission: Submission }) {
 
   // Show workflow-step-aware status
   if (actionType === 'task') {
-    return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-gold/20 text-gold border border-gold/30 shadow-sm">L{level} Task Pending</span>;
+    return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-gold/20 text-gold border border-gold/30 ring-1 ring-inset ring-gold/30 shadow-sm">L{level} Task Pending</span>;
   }
   if (actionType === 'form') {
-    return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30 shadow-sm">Form Pending</span>;
+    return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30 ring-1 ring-inset ring-blue-500/30 shadow-sm">Form Pending</span>;
   }
 
   if (hasApproved) {
-    return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30 shadow-sm">L{level} Approval Pending</span>;
+    return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30 ring-1 ring-inset ring-blue-500/30 shadow-sm">L{level} Approval Pending</span>;
   }
-  return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm">L{level} Approval Pending</span>;
+  return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 ring-1 ring-inset ring-amber-500/30 shadow-sm">L{level} Approval Pending</span>;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -184,6 +184,16 @@ function LevelBadge({ level }: { level: number | 'completed' | 'rejected' }) {
       L{level}
     </span>
   );
+}
+
+function isAssignedToSpecificPerson(submission: Submission): boolean {
+  const { currentApprovalLevel, approvalHistory } = submission;
+  const pendingEntry = typeof currentApprovalLevel === 'number'
+    ? approvalHistory.find(a => a.level === currentApprovalLevel && a.status === 'pending')
+    : approvalHistory.find(a => a.status === 'pending');
+  if (!pendingEntry) return false;
+  const isGenericFallback = /^Level \d+ Approver$/.test(pendingEntry.approverName) || pendingEntry.approverName === 'Approver';
+  return !isGenericFallback;
 }
 
 export default function DirectorDashboard({ data }: Props) {
@@ -270,7 +280,7 @@ export default function DirectorDashboard({ data }: Props) {
 
   const handleDeleteAll = async () => {
     setDeletingId('all');
-    const ids = parentSubmissions.map(s => s.id);
+    const ids = directorSubmissions.map(s => s.id);
     let deleted = 0;
     let failed = 0;
     for (const id of ids) {
@@ -541,55 +551,41 @@ export default function DirectorDashboard({ data }: Props) {
 
   // Group parent + child submissions by workflowInstanceId
   const { parentSubmissions } = useMemo(() => {
-    const byInstance = new Map<string, Submission[]>();
+    // Group by workflowInstanceId - submissions from same workflow instance are grouped
+    const byWorkflowId = new Map<string, Submission[]>();
+    const ungrouped: Submission[] = [];
+
+    console.log(`[DirectorDashboard] Grouping ${directorSubmissions.length} submissions:`);
     for (const sub of directorSubmissions) {
-      const wfId = sub.workflowInstanceId;
-      if (wfId) {
-        if (!byInstance.has(wfId)) byInstance.set(wfId, []);
-        byInstance.get(wfId)!.push(sub);
-      }
-    }
-
-    const childrenMap = new Map<string, Submission[]>();
-    const childIds = new Set<string>();
-
-    for (const [, subs] of byInstance) {
-      if (subs.length <= 1) continue;
-      // Earliest submission = parent, rest = children
-      subs.sort((a, b) => new Date(a.submissionDate).getTime() - new Date(b.submissionDate).getTime()
-        || Number(a.id) - Number(b.id));
-      const parent = subs[0];
-      const children = subs.slice(1);
-      childrenMap.set(parent.id, children);
-      children.forEach(c => childIds.add(c.id));
-    }
-
-    const parents = directorSubmissions.filter(s => !childIds.has(s.id));
-
-    // Keep only the FIRST (earliest) parent per workflow instance
-    const firstParentPerWorkflow = new Map<string, Submission>();
-    for (const parent of parents) {
-      const wfId = parent.workflowInstanceId || parent.formId;
-      if (!firstParentPerWorkflow.has(wfId)) {
-        firstParentPerWorkflow.set(wfId, parent);
-      } else {
-        // Keep the one with earliest submission date
-        const existing = firstParentPerWorkflow.get(wfId)!;
-        if (new Date(parent.submissionDate).getTime() < new Date(existing.submissionDate).getTime()) {
-          firstParentPerWorkflow.set(wfId, parent);
+      console.log(`  Sub ${sub.id}: form="${sub.formTitle}", wfInstanceId="${sub.workflowInstanceId}"`);
+      if (sub.workflowInstanceId) {
+        if (!byWorkflowId.has(sub.workflowInstanceId)) {
+          byWorkflowId.set(sub.workflowInstanceId, []);
         }
+        byWorkflowId.get(sub.workflowInstanceId)!.push(sub);
+      } else {
+        // No workflowInstanceId - treat as separate submission
+        ungrouped.push(sub);
       }
     }
+    console.log(`[DirectorDashboard] After grouping: ${byWorkflowId.size} workflows with ${Array.from(byWorkflowId.values()).reduce((sum, arr) => sum + arr.length, 0)} submissions, ${ungrouped.length} ungrouped`);
 
-    const filteredParents = Array.from(firstParentPerWorkflow.values());
+    // Keep only the FIRST (earliest by ID) submission per workflow
+    const result: Submission[] = [];
+    for (const subs of byWorkflowId.values()) {
+      subs.sort((a, b) => Number(a.id) - Number(b.id));
+      result.push(subs[0]);
+    }
+    result.push(...ungrouped);
 
     // Sort by submission date - newest first
-    filteredParents.sort((a, b) => {
-      const cmp = new Date(b.submissionDate).getTime() - new Date(a.submissionDate).getTime();
-      return cmp === 0 ? Number(b.id) - Number(a.id) : cmp;
+    result.sort((a, b) => {
+      const dateA = new Date(a.submissionDate).getTime();
+      const dateB = new Date(b.submissionDate).getTime();
+      return dateB - dateA;
     });
 
-    return { parentSubmissions: filteredParents, childrenByParentId: childrenMap };
+    return { parentSubmissions: result, childrenByParentId: new Map() };
   }, [directorSubmissions]);
 
   // Unique filter options derived from all submissions
@@ -785,7 +781,7 @@ export default function DirectorDashboard({ data }: Props) {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="glass-card p-5 border border-gold/20 bg-gradient-to-r from-gold/5 to-transparent"
+        className="glass-card p-5 border border-gold/20 bg-gradient-to-r from-gold/5 to-transparent hidden"
       >
         <div className="flex items-center justify-between">
           <div>
@@ -891,14 +887,14 @@ export default function DirectorDashboard({ data }: Props) {
           <button
             onClick={() => exportToExcel(parentSubmissions, 'jotflow-submissions')}
             disabled={parentSubmissions.length === 0}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors whitespace-nowrap bg-navy-dark text-emerald-400 border border-emerald-500/30 hover:border-emerald-500/60 hover:bg-emerald-500/10 disabled:opacity-30 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors whitespace-nowrap bg-navy-dark text-blue-400 border border-blue-500/30 hover:border-blue-500/60 hover:bg-blue-500/10 disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <Download className="w-4 h-4" />
             Export to Excel
           </button>
           {isViewer ? null : deleteConfirmId === 'all' ? (
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/10 border border-red-500/30">
-              <span className="text-xs text-red-400 whitespace-nowrap">Delete all {parentSubmissions.length} submissions?</span>
+              <span className="text-xs text-red-400 whitespace-nowrap">Delete all {directorSubmissions.length} submissions?</span>
               <button
                 onClick={handleDeleteAll}
                 disabled={deletingId === 'all'}
@@ -1039,26 +1035,26 @@ export default function DirectorDashboard({ data }: Props) {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.25 }}
-        className="glass-card overflow-hidden relative"
+        className="glass-card overflow-hidden relative border-t-2 border-gold/40"
       >
         <div className="overflow-x-auto w-full">
           <table className="w-full table-fixed">
             <thead>
-              <tr className="border-b border-navy-light/20 bg-navy-dark/50">
-                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider w-12">S.No</th>
-                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider">Ref#</th>
-                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider">Title / Form</th>
-                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider">Submitted By</th>
-                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider">Submission Date</th>
-                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider cursor-pointer select-none" onClick={() => toggleSort('currentApprovalLevel')}>
+              <tr className="border-b-2 border-navy-light/30 bg-navy-dark/80">
+                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-300 uppercase tracking-wider w-12">S.No</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-300 uppercase tracking-wider hidden">Ref#</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-300 uppercase tracking-wider">Title / Form</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-300 uppercase tracking-wider">Submitted By</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-300 uppercase tracking-wider">Submission Date</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-300 uppercase tracking-wider cursor-pointer select-none" onClick={() => toggleSort('currentApprovalLevel')}>
                   <div className="flex items-center gap-1">Level <SortIcon field="currentApprovalLevel" /></div>
                 </th>
-                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider">Pending With</th>
-                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider cursor-pointer select-none" onClick={() => toggleSort('daysAtCurrentLevel')}>
+                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-300 uppercase tracking-wider">Pending With</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-300 uppercase tracking-wider cursor-pointer select-none hidden" onClick={() => toggleSort('daysAtCurrentLevel')}>
                   <div className="flex items-center gap-1">Aging <SortIcon field="daysAtCurrentLevel" /></div>
                 </th>
-                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider">Status</th>
-                <th className="px-4 py-3 text-center text-[11px] font-bold text-gray-400 uppercase tracking-wider">Actions</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-300 uppercase tracking-wider">Status</th>
+                <th className="px-4 py-3 text-center text-[11px] font-bold text-gray-300 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1082,10 +1078,10 @@ export default function DirectorDashboard({ data }: Props) {
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 50, height: 0 }}
                     transition={{ duration: 0.3 }}
-                    className="border-b border-navy-light/10 hover:bg-white/5 transition-colors duration-150 cursor-pointer"
+                    className="border-b border-white/8 hover:bg-gold/5 transition-colors duration-200 cursor-pointer"
                   >
-                    <td className="px-4 py-3 text-sm text-gray-400 font-mono">{(safeCurrentPage - 1) * rowsPerPage + idx + 1}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3.5 text-sm text-gray-400 font-mono">{(safeCurrentPage - 1) * rowsPerPage + idx + 1}</td>
+                    <td className="px-4 py-3.5 hidden">
                       <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => toggleRowExpand(sub)}
@@ -1098,46 +1094,59 @@ export default function DirectorDashboard({ data }: Props) {
                         </button>
                         <button
                           onClick={() => openModal(sub)}
-                          className="text-sm font-mono text-gold hover:underline"
+                          className="text-sm font-bold text-gold hover:underline bg-navy-light/20 rounded-md px-2 py-0.5 inline-block"
                         >
                           {sub.referenceNumber.split('-').pop()}
                         </button>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <a
-                        href={`https://eforms.mediaoffice.ae/inbox/${sub.formId}/${sub.id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-white hover:text-gold hover:underline inline-flex items-center gap-1 group"
-                      >
-                        {sub.title}
-                        <ExternalLink className="w-3 h-3 text-gray-600 group-hover:text-gold transition-colors" />
-                      </a>
-                      <p className="text-xs text-gray-500">{sub.formTitle}</p>
+                    <td className="px-4 py-3.5">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => toggleRowExpand(sub)}
+                          className="p-0.5 rounded hover:bg-navy-light/20 text-gray-500 hover:text-gold transition-colors flex-shrink-0"
+                          title={expandedRowId === sub.id ? 'Collapse' : 'Show workflow steps'}
+                        >
+                          {expandLoading === sub.id
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <ChevronRight className={`w-3.5 h-3.5 transition-transform ${expandedRowId === sub.id ? 'rotate-90' : ''}`} />}
+                        </button>
+                        <div>
+                          <a
+                            href={`https://eforms.mediaoffice.ae/inbox/${sub.formId}/${sub.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-white hover:text-gold hover:underline inline-flex items-center gap-1 group"
+                          >
+                            {sub.title}
+                            <ExternalLink className="w-3 h-3 text-gray-600 group-hover:text-gold transition-colors" />
+                          </a>
+                          <p className="text-xs text-gray-500">{sub.formTitle}</p>
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3.5">
                       <p className="text-sm text-gray-300">{sub.submittedBy.name}</p>
                       <p className="text-xs text-gray-500">{sub.submittedBy.department}</p>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3.5">
                       <p className="text-sm text-gray-300">
                         {new Date(sub.submissionDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                       </p>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3.5">
                       <LevelBadge level={sub.currentApprovalLevel} />
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3.5">
                       <PendingWithCell submission={sub} onSyncClick={setSyncSubmission} />
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3.5 hidden">
                       <AgingCell days={sub.daysAtCurrentLevel} />
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3.5">
                       <WorkflowStatusBadge submission={sub} />
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3.5">
                       <div className="flex flex-col gap-1">
                         {isViewer && !(user?.email && sub.pendingApproverEmail?.toLowerCase() === user.email.toLowerCase()) ? (
                           <span className="px-2.5 py-1.5 rounded-lg bg-gray-500/10 text-gray-400 text-xs font-medium inline-flex items-center gap-1 border border-gray-500/20">
