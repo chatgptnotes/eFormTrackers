@@ -2,7 +2,8 @@ import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, Search, AlertCircle, CheckCircle2, Clock, Zap, ExternalLink, User, Calendar, FileText, Briefcase, Download, ArrowUpDown } from 'lucide-react';
 import SubmissionModal from '../components/SubmissionModal';
-import { Submission } from '../types';
+import WorkflowDetailsModal from '../components/WorkflowDetailsModal';
+import { Submission, WorkflowTask } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { exportToExcel } from '../services/exportService';
 
@@ -36,6 +37,8 @@ export default function ModernDashboard({ data }: Props) {
   const { allSubmissions, loading } = data;
   const { user } = useAuth();
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
+  const [workflowModalSubmission, setWorkflowModalSubmission] = useState<Submission | null>(null);
+  const [expandedTasks, setExpandedTasks] = useState<WorkflowTask[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'latest' | 'oldest' | 'days'>('latest');
@@ -301,7 +304,10 @@ export default function ModernDashboard({ data }: Props) {
                   exit={{ opacity: 0, scale: 0.9 }}
                   transition={{ delay: idx * 0.05 }}
                   whileHover={{ y: -8, transition: { duration: 0.3 } }}
-                  onClick={() => setSelectedSubmission(submission)}
+                  onClick={() => {
+                    setWorkflowModalSubmission(submission);
+                    setExpandedTasks([]);
+                  }}
                   className={`group relative overflow-hidden rounded-2xl p-6 border-2 transition-all duration-300 cursor-pointer shadow-md hover:shadow-lg ${status === 'pending' ? 'border-cyan-400 hover:border-cyan-500' : status === 'approved' ? 'border-blue-400 hover:border-blue-500' : status === 'rejected' ? 'border-indigo-500 hover:border-indigo-600' : 'border-cyan-300 hover:border-cyan-400'}`}
                   style={{
                     background: '#ffffff',
@@ -433,7 +439,10 @@ export default function ModernDashboard({ data }: Props) {
                       ) : (
                         <motion.button
                           whileHover={{ x: 4 }}
-                          onClick={() => setSelectedSubmission(submission)}
+                          onClick={() => {
+                            setWorkflowModalSubmission(submission);
+                            setExpandedTasks([]);
+                          }}
                           className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-gradient-to-r ${statusConfig_item.color} text-white font-semibold text-sm transition-all hover:shadow-lg border border-transparent group/btn`}
                         >
                           <span>View Details</span>
@@ -516,6 +525,18 @@ export default function ModernDashboard({ data }: Props) {
           <SubmissionModal
             submission={selectedSubmission}
             onClose={() => setSelectedSubmission(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Workflow Details Modal */}
+      <AnimatePresence>
+        {workflowModalSubmission && (
+          <WorkflowDetailsModal
+            submission={workflowModalSubmission}
+            expandedTasks={expandedTasks}
+            onClose={() => setWorkflowModalSubmission(null)}
+            user={user}
           />
         )}
       </AnimatePresence>

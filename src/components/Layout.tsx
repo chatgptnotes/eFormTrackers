@@ -97,7 +97,7 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
     : TOOL_NAV.find(i => i.path === location.pathname)?.label || 'Dashboard';
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex" style={{ scrollbarGutter: 'stable' }}>
       {/* Sidebar — bg-navy adapts: dark in dark mode, white in light mode */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-gradient-to-b from-blue-950 to-slate-800 border-r border-slate-800 transform transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex flex-col h-full">

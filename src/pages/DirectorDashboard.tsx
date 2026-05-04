@@ -11,6 +11,8 @@ import { useSubmissions } from '../hooks/useSubmissions';
 import { Submission, WorkflowTask } from '../types';
 import CommentPanel from '../components/CommentPanel';
 import SubmissionModal from '../components/SubmissionModal';
+import WorkflowDetailsModal from '../components/WorkflowDetailsModal';
+import WorkflowDetailsSidebar from '../components/WorkflowDetailsSidebar';
 import { getUserConfig } from '../config/currentUser';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -231,6 +233,8 @@ export default function DirectorDashboard({ data }: Props) {
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
   const [expandedTasks, setExpandedTasks] = useState<WorkflowTask[]>([]);
   const [expandLoading, setExpandLoading] = useState<string | null>(null);
+  const [workflowModalSubmission, setWorkflowModalSubmission] = useState<Submission | null>(null);
+  const [workflowSidebarSubmission, setWorkflowSidebarSubmission] = useState<Submission | null>(null);
   const [taskActionLoading, setTaskActionLoading] = useState<string | null>(null);
   const [taskRejectingId, setTaskRejectingId] = useState<string | null>(null);
   const [taskRejectReason, setTaskRejectReason] = useState('');
@@ -276,6 +280,21 @@ export default function DirectorDashboard({ data }: Props) {
         setExpandedTasks(json.tasks || []);
       }
     } catch { /* ignore */ }
+  };
+
+  const openWorkflowModal = async (sub: Submission) => {
+    setWorkflowModalSubmission(sub);
+    setExpandLoading(sub.id);
+    try {
+      const res = await fetch(`/api/workflow-tasks?submissionId=${sub.id}`);
+      if (!res.ok) { setExpandLoading(null); return; }
+      const json = await res.json();
+      setExpandedTasks(json.tasks || []);
+    } catch {
+      setExpandedTasks([]);
+    } finally {
+      setExpandLoading(null);
+    }
   };
 
   const handleDeleteAll = async () => {
@@ -551,13 +570,19 @@ export default function DirectorDashboard({ data }: Props) {
 
   // Group parent + child submissions by workflowInstanceId
   const { parentSubmissions } = useMemo(() => {
+    // Filter to show only PRIMARY forms - exclude secondary forms like "Workflow Form", "Task", etc.
+    const primaryFormSubmissions = directorSubmissions.filter(sub => {
+      // Show submissions that don't have 'Workflow Form' in the title (hide secondary forms)
+      return !sub.formTitle.includes('Workflow Form');
+    });
+
     // Group by workflowInstanceId - submissions from same workflow instance are grouped
     const byWorkflowId = new Map<string, Submission[]>();
     const ungrouped: Submission[] = [];
 
-    console.log(`[DirectorDashboard] Grouping ${directorSubmissions.length} submissions:`);
-    for (const sub of directorSubmissions) {
-      console.log(`  Sub ${sub.id}: form="${sub.formTitle}", wfInstanceId="${sub.workflowInstanceId}"`);
+    console.log(`[DirectorDashboard] Grouping ${primaryFormSubmissions.length} primary submissions:`);
+    for (const sub of primaryFormSubmissions) {
+      console.log(`  Sub ${sub.id}: form="${sub.formTitle}", actionType="${sub.actionType}", wfInstanceId="${sub.workflowInstanceId}"`);
       if (sub.workflowInstanceId) {
         if (!byWorkflowId.has(sub.workflowInstanceId)) {
           byWorkflowId.set(sub.workflowInstanceId, []);
@@ -1037,9 +1062,9 @@ export default function DirectorDashboard({ data }: Props) {
         transition={{ delay: 0.25 }}
         className="glass-card overflow-hidden relative border-t-2 border-gold/40"
       >
-        <div className="overflow-x-auto w-full">
+        <div className="overflow-x-auto w-full" style={{ scrollbarGutter: 'stable' }}>
           <table className="w-full table-fixed">
-            <thead>
+            <thead className="sticky top-0 z-10">
               <tr className="border-b-2 border-navy-light/30 bg-navy-dark/80">
                 <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-300 uppercase tracking-wider w-12">S.No</th>
                 <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-300 uppercase tracking-wider hidden">Ref#</th>
@@ -1093,6 +1118,13 @@ export default function DirectorDashboard({ data }: Props) {
                             : <ChevronRight className={`w-3.5 h-3.5 transition-transform ${expandedRowId === sub.id ? 'rotate-90' : ''}`} />}
                         </button>
                         <button
+                          onClick={() => { toggleRowExpand(sub); setWorkflowModalSubmission(sub); }}
+                          className="p-0.5 rounded hover:bg-navy-light/20 text-gray-500 hover:text-gold transition-colors flex-shrink-0"
+                          title="View in modal"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                        <button
                           onClick={() => openModal(sub)}
                           className="text-sm font-bold text-gold hover:underline bg-navy-light/20 rounded-md px-2 py-0.5 inline-block"
                         >
@@ -1110,6 +1142,20 @@ export default function DirectorDashboard({ data }: Props) {
                           {expandLoading === sub.id
                             ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                             : <ChevronRight className={`w-3.5 h-3.5 transition-transform ${expandedRowId === sub.id ? 'rotate-90' : ''}`} />}
+                        </button>
+                        <button
+                          onClick={() => { toggleRowExpand(sub); setWorkflowModalSubmission(sub); }}
+                          className="p-0.5 rounded hover:bg-navy-light/20 text-gray-500 hover:text-gold transition-colors flex-shrink-0"
+                          title="View in modal"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => { toggleRowExpand(sub); setWorkflowSidebarSubmission(sub); }}
+                          className="p-0.5 rounded hover:bg-navy-light/20 text-gray-500 hover:text-gold transition-colors flex-shrink-0"
+                          title="View in sidebar"
+                        >
+                          <ChevronRight className="w-3.5 h-3.5 rotate-180" />
                         </button>
                         <div>
                           <a
@@ -1255,41 +1301,6 @@ export default function DirectorDashboard({ data }: Props) {
                                   className="px-2.5 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs font-medium flex items-center gap-1 border border-red-500/20 transition-colors"
                                 >
                                   <XCircle className="w-3.5 h-3.5" /> Reject
-                                </button>
-                              )}
-
-                              <button
-                                onClick={() => setCommentingId(commentingId === sub.id ? null : sub.id)}
-                                className={`px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1 border transition-colors ${
-                                  commentingId === sub.id
-                                    ? 'bg-blue-500/30 text-blue-300 border-blue-500/30'
-                                    : 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border-blue-500/20'
-                                }`}
-                              >
-                                <MessageSquare className="w-3.5 h-3.5" /> Comment
-                              </button>
-                            </div>
-
-                            {/* Secondary: View Task / View Form reference links */}
-                            <div className="flex items-center justify-center gap-3">
-                              {sub.taskUrl && (
-                                <button
-                                  onClick={() => openTaskUrl(sub)}
-                                  disabled={taskUrlLoading === sub.id}
-                                  className="flex items-center gap-1 text-xs text-slate-400 hover:text-gold transition-colors disabled:opacity-50"
-                                >
-                                  {taskUrlLoading === sub.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <ClipboardList className="w-3 h-3" />}
-                                  {taskUrlLoading === sub.id ? 'Loading...' : 'View Task'}
-                                </button>
-                              )}
-                              {sub.formUrl && (
-                                <button
-                                  onClick={() => openFormUrl(sub)}
-                                  disabled={formUrlLoading === sub.id}
-                                  className="flex items-center gap-1 text-xs text-slate-400 hover:text-blue-400 transition-colors disabled:opacity-50"
-                                >
-                                  {formUrlLoading === sub.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileEdit className="w-3 h-3" />}
-                                  {formUrlLoading === sub.id ? 'Loading...' : 'Complete Form'}
                                 </button>
                               )}
                             </div>
@@ -1707,6 +1718,53 @@ export default function DirectorDashboard({ data }: Props) {
           }}
         />
       )}
+
+      {/* Workflow Details Modal */}
+      <AnimatePresence>
+        {workflowModalSubmission && (
+          <WorkflowDetailsModal
+            submission={workflowModalSubmission}
+            expandedTasks={expandedTasks}
+            expandLoading={expandLoading || undefined}
+            taskActionLoading={taskActionLoading || undefined}
+            taskRejectingId={taskRejectingId}
+            taskRejectReason={taskRejectReason}
+            taskConfirmRejectId={taskConfirmRejectId}
+            sigLoading={sigLoading || undefined}
+            user={user}
+            onClose={() => setWorkflowModalSubmission(null)}
+            onTaskApprove={(submissionId) => { if (expandedRowId) handleTaskApprove(expandedRowId); }}
+            onTaskReject={(submissionId, reason) => { if (expandedRowId) handleTaskReject(expandedRowId, reason); }}
+            onFetchSignature={fetchAndShowSignature}
+            onOpenTaskLink={openTaskLink}
+            onSetTaskRejecting={setTaskRejectingId}
+            onSetTaskRejectReason={setTaskRejectReason}
+            onSetTaskConfirmReject={setTaskConfirmRejectId}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Workflow Details Sidebar */}
+      <WorkflowDetailsSidebar
+        isOpen={!!workflowSidebarSubmission}
+        submission={workflowSidebarSubmission}
+        expandedTasks={expandedTasks}
+        expandLoading={expandLoading || undefined}
+        taskActionLoading={taskActionLoading || undefined}
+        taskRejectingId={taskRejectingId}
+        taskRejectReason={taskRejectReason}
+        taskConfirmRejectId={taskConfirmRejectId}
+        sigLoading={sigLoading || undefined}
+        user={user}
+        onClose={() => setWorkflowSidebarSubmission(null)}
+        onTaskApprove={(submissionId) => { if (expandedRowId) handleTaskApprove(expandedRowId); }}
+        onTaskReject={(submissionId, reason) => { if (expandedRowId) handleTaskReject(expandedRowId, reason); }}
+        onFetchSignature={fetchAndShowSignature}
+        onOpenTaskLink={openTaskLink}
+        onSetTaskRejecting={setTaskRejectingId}
+        onSetTaskRejectReason={setTaskRejectReason}
+        onSetTaskConfirmReject={setTaskConfirmRejectId}
+      />
 
       {/* Sync Confirmation Modal */}
       <AnimatePresence>
