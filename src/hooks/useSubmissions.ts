@@ -821,15 +821,24 @@ export function useSubmissions() {
     let timer: ReturnType<typeof setTimeout> | null = null;
     const handle = () => {
       if (timer) clearTimeout(timer);
-      timer = setTimeout(loadFromSupabase, 500);
+      // Faster debounce: 300ms instead of 500ms for snappier updates
+      timer = setTimeout(loadFromSupabase, 300);
     };
     const channel = supabase
       .channel('jf_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'jf_submissions' }, handle)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'jf_approval_history' }, handle)
+      // Listen to ALL changes on jf_submissions table
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'jf_submissions' }, handle)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'jf_submissions' }, handle)
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'jf_submissions' }, handle)
+      // Listen to approval history updates
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'jf_approval_history' }, handle)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'jf_approval_history' }, handle)
       .subscribe();
 
-    return () => { if (timer) clearTimeout(timer); supabase.removeChannel(channel); };
+    return () => {
+      if (timer) clearTimeout(timer);
+      channel.unsubscribe();
+    };
   }, [loadFromSupabase]);
 
   // Auto-refresh (1 min fallback if webhooks fail) — uses lightweight Supabase query, no loading spinner

@@ -39,13 +39,38 @@ export default function NotificationBell() {
 
   useEffect(() => {
     if (!user) return;
+
+    // Load initial notifications
     const load = async () => {
       const { data } = await supabase.from('notifications').select('*').eq('user_email', user.email).order('created_at', { ascending: false }).limit(20);
       if (data && data.length > 0) setNotifications(data as Notification[]);
     };
     load();
-    const interval = setInterval(load, 30000);
-    return () => clearInterval(interval);
+
+    // Real-time subscription for new notifications
+    const channel = supabase
+      .channel(`notifications:${user.email}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_email=eq.${user.email}` },
+        (payload: any) => {
+          const newNotification = payload.new as Notification;
+          setNotifications(prev => [newNotification, ...prev].slice(0, 20));
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_email=eq.${user.email}` },
+        (payload: any) => {
+          const updatedNotification = payload.new as Notification;
+          setNotifications(prev => prev.map(n => n.id === updatedNotification.id ? updatedNotification : n));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
   }, [user]);
 
   useEffect(() => {
