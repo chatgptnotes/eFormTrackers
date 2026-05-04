@@ -258,6 +258,7 @@ export default function ModernDashboard({ data }: Props) {
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
   const [workflowModalSubmission, setWorkflowModalSubmission] = useState<Submission | null>(null);
   const [expandedTasks, setExpandedTasks] = useState<WorkflowTask[]>([]);
+  const [workflowLoading, setWorkflowLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'latest' | 'oldest' | 'days'>('latest');
@@ -327,9 +328,22 @@ export default function ModernDashboard({ data }: Props) {
     setSelectedSubmission(submission);
   }, []);
 
-  const handleOpenWorkflow = useCallback((submission: Submission) => {
+  const handleOpenWorkflow = useCallback(async (submission: Submission) => {
     setWorkflowModalSubmission(submission);
-    setExpandedTasks([]);
+    setWorkflowLoading(true);
+    try {
+      const res = await fetch(`/api/workflow-tasks?submissionId=${submission.id}`);
+      if (res.ok) {
+        const json = await res.json();
+        setExpandedTasks(json.tasks || []);
+      } else {
+        setExpandedTasks([]);
+      }
+    } catch {
+      setExpandedTasks([]);
+    } finally {
+      setWorkflowLoading(false);
+    }
   }, []);
 
   // Stats cards
@@ -596,6 +610,7 @@ export default function ModernDashboard({ data }: Props) {
           <WorkflowDetailsModal
             submission={workflowModalSubmission}
             expandedTasks={expandedTasks}
+            expandLoading={workflowLoading ? workflowModalSubmission.id : undefined}
             onClose={() => setWorkflowModalSubmission(null)}
             user={user}
           />

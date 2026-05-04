@@ -78,7 +78,12 @@ export default function WorkflowDetailsModal({
         {/* Content */}
         <div className="p-6 space-y-6">
           {/* 1. WORKFLOW STEPS */}
-          {expandedTasks.length === 0 ? (
+          {expandLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 text-gold animate-spin" />
+              <span className="text-sm text-gray-400 ml-3">Loading workflow steps...</span>
+            </div>
+          ) : expandedTasks.length === 0 ? (
             <span className="text-xs text-gray-500 italic">No workflow steps found</span>
           ) : (
             <div className="w-full">
