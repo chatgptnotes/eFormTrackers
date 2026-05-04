@@ -33,6 +33,221 @@ function getSubmissionStatus(submission: Submission): keyof typeof statusConfig 
   return 'pending';
 }
 
+interface SubmissionCardProps {
+  submission: Submission;
+  idx: number;
+  user: ReturnType<typeof import('../contexts/AuthContext').useAuth>['user'];
+  onViewDetails: (submission: Submission) => void;
+  onOpenModal: (submission: Submission) => void;
+}
+
+interface StatCardProps {
+  label: string;
+  value: number | string;
+  icon: string;
+  trend: string;
+  color: string;
+  idx: number;
+}
+
+const StatCard = memo(function StatCard({ label, value, icon, trend, color, idx }: StatCardProps) {
+  const borderColorMap: Record<number, string> = {
+    0: 'border-blue-500',
+    1: 'border-cyan-400',
+    2: 'border-blue-400',
+    3: 'border-indigo-400',
+  };
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ delay: idx * 0.1 }}
+      whileHover={{ y: -6, transition: { duration: 0.2 } }}
+      className={`group relative overflow-hidden rounded-2xl p-6 border-2 transition-all duration-300 cursor-pointer shadow-md hover:shadow-lg ${borderColorMap[idx % 4]}`}
+      style={{
+        background: '#ffffff',
+        boxShadow: `0 4px 12px rgba(0, 0, 0, 0.08), inset 0 0 0 2px ${borderColorMap[idx % 4].replace('border-', '')} opacity-0`,
+      }}
+    >
+      <div className="relative z-10">
+        <div className="flex items-start justify-between mb-4">
+          <span className="text-4xl">{icon}</span>
+          <span className={`text-xs font-bold px-3 py-1.5 rounded-lg border backdrop-blur-sm ${color === 'from-blue-500 to-blue-600' ? 'text-blue-700 bg-blue-50 border-blue-300' : color === 'from-cyan-400 to-sky-500' ? 'text-cyan-700 bg-cyan-50 border-cyan-300' : color === 'from-blue-400 to-blue-600' ? 'text-blue-700 bg-blue-50 border-blue-300' : 'text-indigo-700 bg-indigo-50 border-indigo-300'}`}>
+            {trend}
+          </span>
+        </div>
+
+        <p className="text-gray-700 text-xs font-semibold uppercase tracking-wider mb-2">
+          {label}
+        </p>
+        <div className="flex items-baseline gap-2">
+          <span className="text-3xl md:text-4xl font-black text-black">
+            {value}
+          </span>
+        </div>
+      </div>
+    </motion.div>
+  );
+});
+
+const SubmissionCard = memo(function SubmissionCard({ submission, idx, user, onViewDetails, onOpenModal }: SubmissionCardProps) {
+  const status = getSubmissionStatus(submission);
+  const statusConfig_item = statusConfig[status];
+  const StatusIcon = statusConfig_item.icon;
+
+  return (
+    <motion.div
+      key={submission.id}
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      transition={{ delay: idx * 0.05 }}
+      whileHover={{ y: -8, transition: { duration: 0.3 } }}
+      onClick={() => onOpenModal(submission)}
+      className={`group relative overflow-hidden rounded-2xl p-6 border-2 transition-all duration-300 cursor-pointer shadow-md hover:shadow-lg ${status === 'pending' ? 'border-cyan-400 hover:border-cyan-500' : status === 'approved' ? 'border-blue-400 hover:border-blue-500' : status === 'rejected' ? 'border-indigo-500 hover:border-indigo-600' : 'border-cyan-300 hover:border-cyan-400'}`}
+      style={{
+        background: '#ffffff',
+      }}
+    >
+
+      <div className="relative z-10 space-y-3">
+        {/* Header with Title */}
+        <div>
+          <p className="text-xs font-bold text-gray-800 uppercase tracking-wider mb-1">
+            {submission.formTitle || 'Form Submission'}
+          </p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1">
+              <p className="text-sm font-black text-black font-mono">
+                ID: {submission.id.slice(0, 8).toUpperCase()}
+              </p>
+            </div>
+            <span className={`inline-block text-xs font-bold px-2.5 py-1 rounded-lg text-white bg-gradient-to-r ${statusConfig_item.color}`}>
+              {statusConfig_item.label}
+            </span>
+          </div>
+        </div>
+
+        {/* Submitted By */}
+        <div className="flex items-center gap-2 py-2 border-t border-gray-200">
+          <User className="w-4 h-4 text-gray-700" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-gray-800 font-medium">Submitted By</p>
+            <p className="text-sm font-bold text-black truncate">
+              {submission.submittedBy.name}
+            </p>
+            <p className="text-xs text-gray-500 truncate">
+              {submission.submittedBy.email}
+            </p>
+          </div>
+        </div>
+
+        {/* Pending With / Current Approver */}
+        <div className="flex items-center gap-2 py-2 border-t border-gray-200 bg-blue-50 px-3 rounded-lg">
+          <Briefcase className="w-4 h-4 text-blue-700 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-gray-900 font-medium">Pending With</p>
+            <p className="text-sm font-bold text-black truncate">
+              {submission.pendingApproverName || 'Approver'}
+            </p>
+            {submission.pendingApproverEmail && (
+              <p className="text-xs text-gray-500 truncate">
+                {submission.pendingApproverEmail}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Department & Priority */}
+        <div className="grid grid-cols-2 gap-2 py-2 border-t border-gray-200 text-xs">
+          <div>
+            <p className="text-gray-900 font-medium">Department</p>
+            <p className="font-bold text-black">
+              {submission.submittedBy.department || '—'}
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-900 font-medium">Priority</p>
+            <p className={`font-bold text-sm ${
+              submission.priority === 'urgent' ? 'text-red-600' :
+              submission.priority === 'high' ? 'text-orange-600' :
+              submission.priority === 'medium' ? 'text-yellow-600' :
+              'text-green-600'
+            }`}>
+              {submission.priority?.toUpperCase() || '—'}
+            </p>
+          </div>
+        </div>
+
+        {/* Dates */}
+        <div className="grid grid-cols-2 gap-2 py-2 border-t border-gray-200 text-xs">
+          <div>
+            <p className="text-gray-900 font-medium">Submitted</p>
+            <p className="font-bold text-black">
+              {new Date(submission.submissionDate).toLocaleDateString()}
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-900 font-medium">Pending For</p>
+            <p className={`font-bold text-sm ${
+              submission.daysAtCurrentLevel > 14 ? 'text-red-600' :
+              submission.daysAtCurrentLevel > 7 ? 'text-orange-600' :
+              'text-gray-900'
+            }`}>
+              {submission.daysAtCurrentLevel || 0} days
+            </p>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="pt-2 border-t border-gray-200 space-y-2">
+          {/* Check if user is the pending approver */}
+          {user?.email === submission.pendingApproverEmail && submission.currentApprovalLevel !== 'completed' && submission.currentApprovalLevel !== 'rejected' ? (
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              onClick={() => onViewDetails(submission)}
+              className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-gradient-to-r ${statusConfig_item.color} text-white font-semibold text-sm transition-all hover:shadow-lg border border-transparent`}
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Review & Approve</span>
+            </motion.button>
+          ) : submission.actionType === 'form' && submission.formUrl ? (
+            <a
+              href={submission.formUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-gradient-to-r ${statusConfig_item.color} text-white font-semibold text-sm transition-all hover:shadow-lg border border-transparent`}
+            >
+              <FileText className="w-4 h-4" />
+              <span>Fill Form</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          ) : submission.approvalUrl ? (
+            <a
+              href={submission.approvalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-gradient-to-r ${statusConfig_item.color} text-white font-semibold text-sm transition-all hover:shadow-lg border border-transparent`}
+            >
+              <ExternalLink className="w-4 h-4" />
+              <span>View Task</span>
+            </a>
+          ) : (
+            <motion.button
+              whileHover={{ x: 4 }}
+              onClick={() => onViewDetails(submission)}
+              className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-gradient-to-r ${statusConfig_item.color} text-white font-semibold text-sm transition-all hover:shadow-lg border border-transparent group/btn`}
+            >
+              <span>View Details</span>
+              <span className="group-hover/btn:translate-x-1 transition-transform">→</span>
+            </motion.button>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+});
+
 export default function ModernDashboard({ data }: Props) {
   const { allSubmissions, loading } = data;
   const { user } = useAuth();
@@ -82,10 +297,40 @@ export default function ModernDashboard({ data }: Props) {
     currentPage * itemsPerPage
   );
 
-  // Export to Excel handler
-  const handleExport = () => {
+  // Memoized callbacks
+  const handleExport = useCallback(() => {
     exportToExcel(filteredAndSortedSubmissions, 'Modern Dashboard Data');
-  };
+  }, [filteredAndSortedSubmissions]);
+
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    startTransition(() => {
+      setSearchQuery(e.target.value);
+      setCurrentPage(1);
+    });
+  }, []);
+
+  const handleStatusFilter = useCallback((status: string) => {
+    startTransition(() => {
+      setFilterStatus(status);
+      setCurrentPage(1);
+    });
+  }, []);
+
+  const handleSortChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    startTransition(() => {
+      setSortBy(e.target.value as 'latest' | 'oldest' | 'days');
+      setCurrentPage(1);
+    });
+  }, []);
+
+  const handleViewDetails = useCallback((submission: Submission) => {
+    setSelectedSubmission(submission);
+  }, []);
+
+  const handleOpenWorkflow = useCallback((submission: Submission) => {
+    setWorkflowModalSubmission(submission);
+    setExpandedTasks([]);
+  }, []);
 
   // Stats cards
   const pendingCount = allSubmissions.filter(s => getSubmissionStatus(s) === 'pending').length;
@@ -158,46 +403,17 @@ export default function ModernDashboard({ data }: Props) {
         transition={{ staggerChildren: 0.1 }}
         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
       >
-        {stats.map((stat, idx) => {
-          const borderColorMap: Record<number, string> = {
-            0: 'border-blue-500',
-            1: 'border-cyan-400',
-            2: 'border-blue-400',
-            3: 'border-indigo-400',
-          };
-          return (
-          <motion.div
+        {stats.map((stat, idx) => (
+          <StatCard
             key={idx}
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: idx * 0.1 }}
-            whileHover={{ y: -6, transition: { duration: 0.2 } }}
-            className={`group relative overflow-hidden rounded-2xl p-6 border-2 transition-all duration-300 cursor-pointer shadow-md hover:shadow-lg ${borderColorMap[idx % 4]}`}
-            style={{
-              background: '#ffffff',
-              boxShadow: `0 4px 12px rgba(0, 0, 0, 0.08), inset 0 0 0 2px ${borderColorMap[idx % 4].replace('border-', '')} opacity-0`,
-            }}
-          >
-            <div className="relative z-10">
-              <div className="flex items-start justify-between mb-4">
-                <span className="text-4xl">{stat.icon}</span>
-                <span className={`text-xs font-bold px-3 py-1.5 rounded-lg border backdrop-blur-sm ${stat.color === 'from-blue-500 to-blue-600' ? 'text-blue-700 bg-blue-50 border-blue-300' : stat.color === 'from-cyan-400 to-sky-500' ? 'text-cyan-700 bg-cyan-50 border-cyan-300' : stat.color === 'from-blue-400 to-blue-600' ? 'text-blue-700 bg-blue-50 border-blue-300' : 'text-indigo-700 bg-indigo-50 border-indigo-300'}`}>
-                  {stat.trend}
-                </span>
-              </div>
-
-              <p className="text-gray-700 text-xs font-semibold uppercase tracking-wider mb-2">
-                {stat.label}
-              </p>
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl md:text-4xl font-black text-black">
-                  {stat.value}
-                </span>
-              </div>
-            </div>
-          </motion.div>
-          );
-        })}
+            idx={idx}
+            label={stat.label}
+            value={stat.value}
+            icon={stat.icon}
+            trend={stat.trend}
+            color={stat.color}
+          />
+        ))}
       </motion.div>
 
       {/* Search, Filter & Action Section */}
@@ -214,12 +430,7 @@ export default function ModernDashboard({ data }: Props) {
             type="text"
             placeholder="Search by ID, name, or form title..."
             value={searchQuery}
-            onChange={(e) => {
-              startTransition(() => {
-                setSearchQuery(e.target.value);
-                setCurrentPage(1);
-              });
-            }}
+            onChange={handleSearchChange}
             className="w-full pl-12 pr-4 py-3 rounded-xl bg-white border border-gray-300 text-black placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
           />
         </div>
@@ -241,12 +452,7 @@ export default function ModernDashboard({ data }: Props) {
                   key={status}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  onClick={() => {
-                    startTransition(() => {
-                      setFilterStatus(status);
-                      setCurrentPage(1);
-                    });
-                  }}
+                  onClick={() => handleStatusFilter(status)}
                   className={`px-3 py-2 rounded-lg font-semibold text-sm transition-all duration-200 border ${
                     filterStatus === status
                       ? `bg-gradient-to-r ${filterColors[status]} text-white shadow-lg border-transparent`
@@ -265,12 +471,7 @@ export default function ModernDashboard({ data }: Props) {
             <div className="relative">
               <select
                 value={sortBy}
-                onChange={(e) => {
-                  startTransition(() => {
-                    setSortBy(e.target.value as 'latest' | 'oldest' | 'days');
-                    setCurrentPage(1);
-                  });
-                }}
+                onChange={handleSortChange}
                 className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-800 font-semibold text-sm focus:outline-none focus:border-blue-500 appearance-none pr-8 cursor-pointer"
               >
                 <option value="latest">Latest First</option>
@@ -304,169 +505,16 @@ export default function ModernDashboard({ data }: Props) {
       >
         <AnimatePresence>
           {paginatedSubmissions.length > 0 ? (
-            paginatedSubmissions.map((submission, idx) => {
-              const status = getSubmissionStatus(submission);
-              const statusConfig_item = statusConfig[status];
-              const StatusIcon = statusConfig_item.icon;
-
-              return (
-                <motion.div
-                  key={submission.id}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ delay: idx * 0.05 }}
-                  whileHover={{ y: -8, transition: { duration: 0.3 } }}
-                  onClick={() => {
-                    setWorkflowModalSubmission(submission);
-                    setExpandedTasks([]);
-                  }}
-                  className={`group relative overflow-hidden rounded-2xl p-6 border-2 transition-all duration-300 cursor-pointer shadow-md hover:shadow-lg ${status === 'pending' ? 'border-cyan-400 hover:border-cyan-500' : status === 'approved' ? 'border-blue-400 hover:border-blue-500' : status === 'rejected' ? 'border-indigo-500 hover:border-indigo-600' : 'border-cyan-300 hover:border-cyan-400'}`}
-                  style={{
-                    background: '#ffffff',
-                  }}
-                >
-
-                  <div className="relative z-10 space-y-3">
-                    {/* Header with Title */}
-                    <div>
-                      <p className="text-xs font-bold text-gray-800 uppercase tracking-wider mb-1">
-                        {submission.formTitle || 'Form Submission'}
-                      </p>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1">
-                          <p className="text-sm font-black text-black font-mono">
-                            ID: {submission.id.slice(0, 8).toUpperCase()}
-                          </p>
-                        </div>
-                        <span className={`inline-block text-xs font-bold px-2.5 py-1 rounded-lg text-white bg-gradient-to-r ${statusConfig_item.color}`}>
-                          {statusConfig_item.label}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Submitted By */}
-                    <div className="flex items-center gap-2 py-2 border-t border-gray-200">
-                      <User className="w-4 h-4 text-gray-700" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs text-gray-800 font-medium">Submitted By</p>
-                        <p className="text-sm font-bold text-black truncate">
-                          {submission.submittedBy.name}
-                        </p>
-                        <p className="text-xs text-gray-500 truncate">
-                          {submission.submittedBy.email}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Pending With / Current Approver */}
-                    <div className="flex items-center gap-2 py-2 border-t border-gray-200 bg-blue-50 px-3 rounded-lg">
-                      <Briefcase className="w-4 h-4 text-blue-700 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs text-gray-900 font-medium">Pending With</p>
-                        <p className="text-sm font-bold text-black truncate">
-                          {submission.pendingApproverName || 'Approver'}
-                        </p>
-                        {submission.pendingApproverEmail && (
-                          <p className="text-xs text-gray-500 truncate">
-                            {submission.pendingApproverEmail}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Department & Priority */}
-                    <div className="grid grid-cols-2 gap-2 py-2 border-t border-gray-200 text-xs">
-                      <div>
-                        <p className="text-gray-900 font-medium">Department</p>
-                        <p className="font-bold text-black">
-                          {submission.submittedBy.department || '—'}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-gray-900 font-medium">Priority</p>
-                        <p className={`font-bold text-sm ${
-                          submission.priority === 'urgent' ? 'text-red-600' :
-                          submission.priority === 'high' ? 'text-orange-600' :
-                          submission.priority === 'medium' ? 'text-yellow-600' :
-                          'text-green-600'
-                        }`}>
-                          {submission.priority?.toUpperCase() || '—'}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Dates */}
-                    <div className="grid grid-cols-2 gap-2 py-2 border-t border-gray-200 text-xs">
-                      <div>
-                        <p className="text-gray-900 font-medium">Submitted</p>
-                        <p className="font-bold text-black">
-                          {new Date(submission.submissionDate).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-gray-900 font-medium">Pending For</p>
-                        <p className={`font-bold text-sm ${
-                          submission.daysAtCurrentLevel > 14 ? 'text-red-600' :
-                          submission.daysAtCurrentLevel > 7 ? 'text-orange-600' :
-                          'text-gray-900'
-                        }`}>
-                          {submission.daysAtCurrentLevel || 0} days
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="pt-2 border-t border-gray-200 space-y-2">
-                      {/* Check if user is the pending approver */}
-                      {user?.email === submission.pendingApproverEmail && submission.currentApprovalLevel !== 'completed' && submission.currentApprovalLevel !== 'rejected' ? (
-                        <motion.button
-                          whileHover={{ scale: 1.02 }}
-                          onClick={() => setSelectedSubmission(submission)}
-                          className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-gradient-to-r ${statusConfig_item.color} text-white font-semibold text-sm transition-all hover:shadow-lg border border-transparent`}
-                        >
-                          <CheckCircle2 className="w-4 h-4" />
-                          <span>Review & Approve</span>
-                        </motion.button>
-                      ) : submission.actionType === 'form' && submission.formUrl ? (
-                        <a
-                          href={submission.formUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-gradient-to-r ${statusConfig_item.color} text-white font-semibold text-sm transition-all hover:shadow-lg border border-transparent`}
-                        >
-                          <FileText className="w-4 h-4" />
-                          <span>Fill Form</span>
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-                      ) : submission.approvalUrl ? (
-                        <a
-                          href={submission.approvalUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-gradient-to-r ${statusConfig_item.color} text-white font-semibold text-sm transition-all hover:shadow-lg border border-transparent`}
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                          <span>View Task</span>
-                        </a>
-                      ) : (
-                        <motion.button
-                          whileHover={{ x: 4 }}
-                          onClick={() => {
-                            setWorkflowModalSubmission(submission);
-                            setExpandedTasks([]);
-                          }}
-                          className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-gradient-to-r ${statusConfig_item.color} text-white font-semibold text-sm transition-all hover:shadow-lg border border-transparent group/btn`}
-                        >
-                          <span>View Details</span>
-                          <span className="group-hover/btn:translate-x-1 transition-transform">→</span>
-                        </motion.button>
-                      )}
-                    </div>
-                  </div>
-                </motion.div>
-              );
-            })
+            paginatedSubmissions.map((submission, idx) => (
+              <SubmissionCard
+                key={submission.id}
+                submission={submission}
+                idx={idx}
+                user={user}
+                onViewDetails={handleViewDetails}
+                onOpenModal={handleOpenWorkflow}
+              />
+            ))
           ) : (
             <motion.div
               initial={{ opacity: 0 }}

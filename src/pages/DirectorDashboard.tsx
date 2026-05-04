@@ -22,7 +22,7 @@ interface Props {
   data: ReturnType<typeof useSubmissions>;
 }
 
-function AgingCell({ days }: { days: number }) {
+const AgingCell = memo(function AgingCell({ days }: { days: number }) {
   const color = days > 14 ? 'text-red-400' : days > 7 ? 'text-orange-400' : days > 3 ? 'text-amber-400' : 'text-emerald-400';
   const barColor = days > 14 ? 'bg-red-500' : days > 7 ? 'bg-orange-500' : days > 3 ? 'bg-amber-500' : 'bg-emerald-500';
   const barWidth = Math.min(100, (days / 30) * 100);
@@ -34,9 +34,9 @@ function AgingCell({ days }: { days: number }) {
       </div>
     </div>
   );
-}
+});
 
-function PendingWithCell({ submission, onSyncClick }: { submission: Submission; onSyncClick?: (sub: Submission) => void }) {
+const PendingWithCell = memo(function PendingWithCell({ submission, onSyncClick }: { submission: Submission; onSyncClick?: (sub: Submission) => void }) {
   const { currentApprovalLevel, approvalHistory, actionType } = submission;
 
   // Completed or rejected — nothing pending
@@ -119,9 +119,9 @@ function PendingWithCell({ submission, onSyncClick }: { submission: Submission; 
       </div>
     </div>
   );
-}
+});
 
-function WorkflowStatusBadge({ submission }: { submission: Submission }) {
+const WorkflowStatusBadge = memo(function WorkflowStatusBadge({ submission }: { submission: Submission }) {
   const { currentApprovalLevel, actionType, approvalHistory } = submission;
 
   if (currentApprovalLevel === 'completed') {
@@ -146,9 +146,9 @@ function WorkflowStatusBadge({ submission }: { submission: Submission }) {
     return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30 ring-1 ring-inset ring-blue-500/30 shadow-sm">L{level} Approval Pending</span>;
   }
   return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 ring-1 ring-inset ring-amber-500/30 shadow-sm">L{level} Approval Pending</span>;
-}
+});
 
-function StatusBadge({ status }: { status: string }) {
+const StatusBadge = memo(function StatusBadge({ status }: { status: string }) {
   const lower = (status || '').toLowerCase();
   const styles: Record<string, string> = {
     'pending': 'bg-amber-500/20 text-amber-400',
@@ -164,9 +164,9 @@ function StatusBadge({ status }: { status: string }) {
       {status || 'Unknown'}
     </span>
   );
-}
+});
 
-function LevelBadge({ level }: { level: number | 'completed' | 'rejected' }) {
+const LevelBadge = memo(function LevelBadge({ level }: { level: number | 'completed' | 'rejected' }) {
   if (level === 'completed') return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-400">Completed</span>;
   if (level === 'rejected') return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/20 text-red-400">Rejected</span>;
   const colors: Record<number, string> = {
@@ -186,7 +186,7 @@ function LevelBadge({ level }: { level: number | 'completed' | 'rejected' }) {
       L{level}
     </span>
   );
-}
+});
 
 function isAssignedToSpecificPerson(submission: Submission): boolean {
   const { currentApprovalLevel, approvalHistory } = submission;
@@ -772,11 +772,39 @@ export default function DirectorDashboard({ data }: Props) {
     });
   }, [sortKey]);
 
-  const SortIcon = ({ field }: { field: typeof sortKey }) => (
+  const handleSearchChange = useCallback((value: string) => {
+    startTransition(() => setSearch(value));
+  }, []);
+
+  const handleFilterLevelChange = useCallback((value: string) => {
+    startTransition(() => setFilterLevel(value));
+  }, []);
+
+  const handleFilterDepartmentChange = useCallback((value: string) => {
+    startTransition(() => setFilterDepartment(value));
+  }, []);
+
+  const handleFilterStatusChange = useCallback((value: string) => {
+    startTransition(() => setFilterStatus(value));
+  }, []);
+
+  const handleFilterDateFromChange = useCallback((value: string) => {
+    startTransition(() => setFilterDateFrom(value));
+  }, []);
+
+  const handleFilterDateToChange = useCallback((value: string) => {
+    startTransition(() => setFilterDateTo(value));
+  }, []);
+
+  const handleFilterSubmittedByChange = useCallback((value: string) => {
+    startTransition(() => setFilterSubmittedBy(value));
+  }, []);
+
+  const SortIcon = useCallback(({ field }: { field: typeof sortKey }) => (
     sortKey === field
       ? (sortDir === 'desc' ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />)
       : <ArrowUpDown className="w-3.5 h-3.5 opacity-30" />
-  );
+  ), [sortKey, sortDir]);
 
   // Skeleton: only shown on very first load when Supabase cache is also empty
   if (data.loading && data.allSubmissions.length === 0) {
@@ -880,7 +908,7 @@ export default function DirectorDashboard({ data }: Props) {
             <input
               type="text"
               value={search}
-              onChange={e => startTransition(() => setSearch(e.target.value))}
+              onChange={e => handleSearchChange(e.target.value)}
               placeholder="Search by reference, title, submitter, or form type..."
               className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-navy-dark border border-navy-light/30 text-sm text-white placeholder-gray-600 focus:border-gold/50 focus:outline-none"
             />
@@ -985,7 +1013,7 @@ export default function DirectorDashboard({ data }: Props) {
                   <label className="block text-xs text-gray-400 mb-1">Level</label>
                   <select
                     value={filterLevel}
-                    onChange={e => startTransition(() => setFilterLevel(e.target.value))}
+                    onChange={e => handleFilterLevelChange(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 text-sm text-white focus:border-gold/50 focus:outline-none"
                   >
                     <option value="">All Levels</option>
@@ -1001,7 +1029,7 @@ export default function DirectorDashboard({ data }: Props) {
                   <label className="block text-xs text-gray-400 mb-1">Department</label>
                   <select
                     value={filterDepartment}
-                    onChange={e => startTransition(() => setFilterDepartment(e.target.value))}
+                    onChange={e => handleFilterDepartmentChange(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 text-sm text-white focus:border-gold/50 focus:outline-none"
                   >
                     <option value="">All Departments</option>
@@ -1015,7 +1043,7 @@ export default function DirectorDashboard({ data }: Props) {
                   <label className="block text-xs text-gray-400 mb-1">Status</label>
                   <select
                     value={filterStatus}
-                    onChange={e => startTransition(() => setFilterStatus(e.target.value))}
+                    onChange={e => handleFilterStatusChange(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 text-sm text-white focus:border-gold/50 focus:outline-none"
                   >
                     <option value="">All Statuses</option>
@@ -1030,7 +1058,7 @@ export default function DirectorDashboard({ data }: Props) {
                   <input
                     type="date"
                     value={filterDateFrom}
-                    onChange={e => startTransition(() => setFilterDateFrom(e.target.value))}
+                    onChange={e => handleFilterDateFromChange(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 text-sm text-white focus:border-gold/50 focus:outline-none"
                   />
                 </div>
@@ -1040,7 +1068,7 @@ export default function DirectorDashboard({ data }: Props) {
                   <input
                     type="date"
                     value={filterDateTo}
-                    onChange={e => startTransition(() => setFilterDateTo(e.target.value))}
+                    onChange={e => handleFilterDateToChange(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 text-sm text-white focus:border-gold/50 focus:outline-none"
                   />
                 </div>
@@ -1049,7 +1077,7 @@ export default function DirectorDashboard({ data }: Props) {
                   <label className="block text-xs text-gray-400 mb-1">Submitted By</label>
                   <select
                     value={filterSubmittedBy}
-                    onChange={e => startTransition(() => setFilterSubmittedBy(e.target.value))}
+                    onChange={e => handleFilterSubmittedByChange(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 text-sm text-white focus:border-gold/50 focus:outline-none"
                   >
                     <option value="">All Submitters</option>
