@@ -44,18 +44,29 @@ interface SubmissionCardProps {
 interface StatCardProps {
   label: string;
   value: number | string;
-  icon: string;
   trend: string;
   color: string;
   idx: number;
 }
 
-const StatCard = memo(function StatCard({ label, value, icon, trend, color, idx }: StatCardProps) {
+const StatCard = memo(function StatCard({ label, value, trend, color, idx }: StatCardProps) {
   const borderColorMap: Record<number, string> = {
     0: 'border-blue-500',
     1: 'border-cyan-400',
     2: 'border-blue-400',
     3: 'border-indigo-400',
+  };
+  const bgColorMap: Record<number, string> = {
+    0: 'bg-blue-50',
+    1: 'bg-cyan-50',
+    2: 'bg-blue-50',
+    3: 'bg-indigo-50',
+  };
+  const textColorMap: Record<number, string> = {
+    0: 'text-blue-700',
+    1: 'text-cyan-700',
+    2: 'text-blue-700',
+    3: 'text-indigo-700',
   };
   return (
     <motion.div
@@ -66,13 +77,11 @@ const StatCard = memo(function StatCard({ label, value, icon, trend, color, idx 
       className={`group relative overflow-hidden rounded-2xl p-6 border-2 transition-all duration-300 cursor-pointer shadow-md hover:shadow-lg ${borderColorMap[idx % 4]}`}
       style={{
         background: '#ffffff',
-        boxShadow: `0 4px 12px rgba(0, 0, 0, 0.08), inset 0 0 0 2px ${borderColorMap[idx % 4].replace('border-', '')} opacity-0`,
       }}
     >
       <div className="relative z-10">
         <div className="flex items-start justify-between mb-4">
-          <span className="text-4xl">{icon}</span>
-          <span className={`text-xs font-bold px-3 py-1.5 rounded-lg border backdrop-blur-sm ${color === 'from-blue-500 to-blue-600' ? 'text-blue-700 bg-blue-50 border-blue-300' : color === 'from-cyan-400 to-sky-500' ? 'text-cyan-700 bg-cyan-50 border-cyan-300' : color === 'from-blue-400 to-blue-600' ? 'text-blue-700 bg-blue-50 border-blue-300' : 'text-indigo-700 bg-indigo-50 border-indigo-300'}`}>
+          <span className={`text-xs font-bold px-3 py-1.5 rounded-lg border backdrop-blur-sm ${textColorMap[idx % 4]} ${bgColorMap[idx % 4]} ${borderColorMap[idx % 4]}`}>
             {trend}
           </span>
         </div>
@@ -349,42 +358,46 @@ export default function ModernDashboard({ data }: Props) {
     }
   }, []);
 
-  // Stats cards
+  // Stats cards with dynamic calculations
   const pendingCount = allSubmissions.filter(s => getSubmissionStatus(s) === 'pending').length;
   const approvedCount = allSubmissions.filter(s => getSubmissionStatus(s) === 'approved').length;
+  const completedCount = allSubmissions.filter(s => getSubmissionStatus(s) === 'completed').length;
+  const rejectedCount = allSubmissions.filter(s => getSubmissionStatus(s) === 'rejected').length;
   const criticalCount = allSubmissions.filter(s => s.daysAtCurrentLevel > 7).length;
   const avgDays = allSubmissions.length > 0
     ? Math.round(allSubmissions.reduce((sum, s) => sum + (s.daysAtCurrentLevel || 0), 0) / allSubmissions.length)
     : 0;
+
+  // Dynamic trend calculations
+  const totalSubmissionsChange = allSubmissions.length > 0 ? '+' + allSubmissions.length : '0';
+  const pendingTrendChange = criticalCount > 0 ? `${criticalCount} critical` : 'On track';
+  const approvedTrendChange = completedCount + approvedCount;
+  const avgDaysChange = avgDays > 0 ? avgDays + 'd' : '—';
 
   const stats = [
     {
       label: 'Total Submissions',
       value: allSubmissions.length,
       color: 'from-blue-500 to-blue-600',
-      icon: '📋',
-      trend: '+12%',
+      trend: totalSubmissionsChange,
     },
     {
       label: 'Pending Review',
       value: pendingCount,
       color: 'from-cyan-400 to-sky-500',
-      icon: '⏳',
-      trend: `${criticalCount} critical`,
+      trend: pendingTrendChange,
     },
     {
       label: 'Approved',
       value: approvedCount,
       color: 'from-blue-400 to-blue-600',
-      icon: '✅',
-      trend: '+8',
+      trend: approvedTrendChange > 0 ? '+' + approvedTrendChange : '0',
     },
     {
       label: 'Avg Processing',
       value: `${avgDays}d`,
       color: 'from-indigo-400 to-blue-500',
-      icon: '⚡',
-      trend: '-2 days',
+      trend: avgDaysChange,
     },
   ];
 
@@ -400,7 +413,7 @@ export default function ModernDashboard({ data }: Props) {
   }
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto">
+    <div className="space-y-8 w-full px-4">
       {/* Header Section */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
@@ -426,7 +439,6 @@ export default function ModernDashboard({ data }: Props) {
             idx={idx}
             label={stat.label}
             value={stat.value}
-            icon={stat.icon}
             trend={stat.trend}
             color={stat.color}
           />
