@@ -270,14 +270,17 @@ export default function ModernDashboard({ data }: Props) {
 
   // Filter and sort submissions
   const filteredAndSortedSubmissions = useMemo(() => {
-    let filtered = allSubmissions.filter(sub => {
-      const matchesSearch = sub.id.toLowerCase().includes(deferredSearchQuery.toLowerCase()) ||
-        sub.submittedBy.name.toLowerCase().includes(deferredSearchQuery.toLowerCase()) ||
-        sub.formTitle.toLowerCase().includes(deferredSearchQuery.toLowerCase());
-      const status = getSubmissionStatus(sub);
-      const matchesStatus = filterStatus === 'all' || status === filterStatus;
-      return matchesSearch && matchesStatus;
-    });
+    let filtered = allSubmissions
+      // Filter to show only PRIMARY forms - exclude child "Workflow Form" submissions
+      .filter(sub => !sub.formTitle.includes('Workflow Form'))
+      .filter(sub => {
+        const matchesSearch = sub.id.toLowerCase().includes(deferredSearchQuery.toLowerCase()) ||
+          sub.submittedBy.name.toLowerCase().includes(deferredSearchQuery.toLowerCase()) ||
+          sub.formTitle.toLowerCase().includes(deferredSearchQuery.toLowerCase());
+        const status = getSubmissionStatus(sub);
+        const matchesStatus = filterStatus === 'all' || status === filterStatus;
+        return matchesSearch && matchesStatus;
+      });
 
     // Sort based on selection
     if (sortBy === 'latest') {
