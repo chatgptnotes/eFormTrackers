@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useTransition, useDeferredValue, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, Search, AlertCircle, CheckCircle2, Clock, Zap, ExternalLink, User, Calendar, FileText, Briefcase, Download, ArrowUpDown } from 'lucide-react';
 import SubmissionModal from '../components/SubmissionModal';
@@ -36,6 +36,10 @@ function getSubmissionStatus(submission: Submission): keyof typeof statusConfig 
 export default function ModernDashboard({ data }: Props) {
   const { allSubmissions, loading } = data;
   const { user } = useAuth();
+
+  // Fiber optimizations
+  const [isPending, startTransition] = useTransition();
+
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
   const [workflowModalSubmission, setWorkflowModalSubmission] = useState<Submission | null>(null);
   const [expandedTasks, setExpandedTasks] = useState<WorkflowTask[]>([]);
@@ -45,12 +49,15 @@ export default function ModernDashboard({ data }: Props) {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 12;
 
+  // Defer expensive search rendering
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+
   // Filter and sort submissions
   const filteredAndSortedSubmissions = useMemo(() => {
     let filtered = allSubmissions.filter(sub => {
-      const matchesSearch = sub.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        sub.submittedBy.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        sub.formTitle.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch = sub.id.toLowerCase().includes(deferredSearchQuery.toLowerCase()) ||
+        sub.submittedBy.name.toLowerCase().includes(deferredSearchQuery.toLowerCase()) ||
+        sub.formTitle.toLowerCase().includes(deferredSearchQuery.toLowerCase());
       const status = getSubmissionStatus(sub);
       const matchesStatus = filterStatus === 'all' || status === filterStatus;
       return matchesSearch && matchesStatus;
@@ -66,7 +73,7 @@ export default function ModernDashboard({ data }: Props) {
     }
 
     return filtered;
-  }, [allSubmissions, searchQuery, filterStatus, sortBy]);
+  }, [allSubmissions, deferredSearchQuery, filterStatus, sortBy]);
 
   // Pagination
   const totalPages = Math.ceil(filteredAndSortedSubmissions.length / itemsPerPage);
@@ -208,8 +215,10 @@ export default function ModernDashboard({ data }: Props) {
             placeholder="Search by ID, name, or form title..."
             value={searchQuery}
             onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setCurrentPage(1);
+              startTransition(() => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              });
             }}
             className="w-full pl-12 pr-4 py-3 rounded-xl bg-white border border-gray-300 text-black placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
           />
@@ -233,8 +242,10 @@ export default function ModernDashboard({ data }: Props) {
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => {
-                    setFilterStatus(status);
-                    setCurrentPage(1);
+                    startTransition(() => {
+                      setFilterStatus(status);
+                      setCurrentPage(1);
+                    });
                   }}
                   className={`px-3 py-2 rounded-lg font-semibold text-sm transition-all duration-200 border ${
                     filterStatus === status
@@ -255,8 +266,10 @@ export default function ModernDashboard({ data }: Props) {
               <select
                 value={sortBy}
                 onChange={(e) => {
-                  setSortBy(e.target.value as 'latest' | 'oldest' | 'days');
-                  setCurrentPage(1);
+                  startTransition(() => {
+                    setSortBy(e.target.value as 'latest' | 'oldest' | 'days');
+                    setCurrentPage(1);
+                  });
                 }}
                 className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-800 font-semibold text-sm focus:outline-none focus:border-blue-500 appearance-none pr-8 cursor-pointer"
               >

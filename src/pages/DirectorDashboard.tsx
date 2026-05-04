@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useTransition, useDeferredValue, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   CheckCircle2, XCircle, MessageSquare, Clock, AlertTriangle, User,
@@ -203,6 +203,10 @@ export default function DirectorDashboard({ data }: Props) {
   const { user, orgRole } = useAuth();
   const currentUser = getUserConfig(user?.email);
   const isViewer = orgRole === 'viewer';
+
+  // Fiber optimizations
+  const [isPending, startTransition] = useTransition();
+
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<'daysAtCurrentLevel' | 'submissionDate' | 'currentApprovalLevel'>('submissionDate');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -250,6 +254,9 @@ export default function DirectorDashboard({ data }: Props) {
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
   const [filterSubmittedBy, setFilterSubmittedBy] = useState('');
+
+  // Defer expensive search/filter rendering
+  const deferredSearch = useDeferredValue(search);
 
   const toggleRowExpand = async (sub: Submission) => {
     if (expandedRowId === sub.id) {
@@ -488,9 +495,9 @@ export default function DirectorDashboard({ data }: Props) {
       subs = subs.filter(s => activeSidebarCategory.filter!.formIds!.includes(s.formId));
     }
 
-    // Apply search
-    if (search) {
-      const q = search.toLowerCase();
+    // Apply search (deferred for better performance)
+    if (deferredSearch) {
+      const q = deferredSearch.toLowerCase();
       subs = subs.filter(s =>
         s.title.toLowerCase().includes(q) ||
         s.referenceNumber.toLowerCase().includes(q) ||
@@ -566,7 +573,7 @@ export default function DirectorDashboard({ data }: Props) {
     });
 
     return subs;
-  }, [data.allSubmissions, activeSidebarCategory, activeWorkflowId, search, sortKey, sortDir, dismissedIds, currentUser, assignedToMe, user?.email, filterLevel, filterDepartment, filterStatus, filterDateFrom, filterDateTo, filterSubmittedBy, isViewer]);
+  }, [data.allSubmissions, activeSidebarCategory, activeWorkflowId, deferredSearch, sortKey, sortDir, dismissedIds, currentUser, assignedToMe, user?.email, filterLevel, filterDepartment, filterStatus, filterDateFrom, filterDateTo, filterSubmittedBy, isViewer]);
 
   // Group parent + child submissions by workflowInstanceId
   const { parentSubmissions } = useMemo(() => {
@@ -758,10 +765,12 @@ export default function DirectorDashboard({ data }: Props) {
     }
   };
 
-  const toggleSort = (key: typeof sortKey) => {
-    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortKey(key); setSortDir('desc'); }
-  };
+  const toggleSort = useCallback((key: typeof sortKey) => {
+    startTransition(() => {
+      if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+      else { setSortKey(key); setSortDir('desc'); }
+    });
+  }, [sortKey]);
 
   const SortIcon = ({ field }: { field: typeof sortKey }) => (
     sortKey === field
@@ -871,7 +880,7 @@ export default function DirectorDashboard({ data }: Props) {
             <input
               type="text"
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={e => startTransition(() => setSearch(e.target.value))}
               placeholder="Search by reference, title, submitter, or form type..."
               className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-navy-dark border border-navy-light/30 text-sm text-white placeholder-gray-600 focus:border-gold/50 focus:outline-none"
             />
@@ -976,7 +985,7 @@ export default function DirectorDashboard({ data }: Props) {
                   <label className="block text-xs text-gray-400 mb-1">Level</label>
                   <select
                     value={filterLevel}
-                    onChange={e => setFilterLevel(e.target.value)}
+                    onChange={e => startTransition(() => setFilterLevel(e.target.value))}
                     className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 text-sm text-white focus:border-gold/50 focus:outline-none"
                   >
                     <option value="">All Levels</option>
@@ -992,7 +1001,7 @@ export default function DirectorDashboard({ data }: Props) {
                   <label className="block text-xs text-gray-400 mb-1">Department</label>
                   <select
                     value={filterDepartment}
-                    onChange={e => setFilterDepartment(e.target.value)}
+                    onChange={e => startTransition(() => setFilterDepartment(e.target.value))}
                     className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 text-sm text-white focus:border-gold/50 focus:outline-none"
                   >
                     <option value="">All Departments</option>
@@ -1006,7 +1015,7 @@ export default function DirectorDashboard({ data }: Props) {
                   <label className="block text-xs text-gray-400 mb-1">Status</label>
                   <select
                     value={filterStatus}
-                    onChange={e => setFilterStatus(e.target.value)}
+                    onChange={e => startTransition(() => setFilterStatus(e.target.value))}
                     className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 text-sm text-white focus:border-gold/50 focus:outline-none"
                   >
                     <option value="">All Statuses</option>
@@ -1021,7 +1030,7 @@ export default function DirectorDashboard({ data }: Props) {
                   <input
                     type="date"
                     value={filterDateFrom}
-                    onChange={e => setFilterDateFrom(e.target.value)}
+                    onChange={e => startTransition(() => setFilterDateFrom(e.target.value))}
                     className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 text-sm text-white focus:border-gold/50 focus:outline-none"
                   />
                 </div>
@@ -1031,7 +1040,7 @@ export default function DirectorDashboard({ data }: Props) {
                   <input
                     type="date"
                     value={filterDateTo}
-                    onChange={e => setFilterDateTo(e.target.value)}
+                    onChange={e => startTransition(() => setFilterDateTo(e.target.value))}
                     className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 text-sm text-white focus:border-gold/50 focus:outline-none"
                   />
                 </div>
@@ -1040,7 +1049,7 @@ export default function DirectorDashboard({ data }: Props) {
                   <label className="block text-xs text-gray-400 mb-1">Submitted By</label>
                   <select
                     value={filterSubmittedBy}
-                    onChange={e => setFilterSubmittedBy(e.target.value)}
+                    onChange={e => startTransition(() => setFilterSubmittedBy(e.target.value))}
                     className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 text-sm text-white focus:border-gold/50 focus:outline-none"
                   >
                     <option value="">All Submitters</option>
