@@ -1,6 +1,6 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-import { X, CheckCircle2, XCircle, Clock, Eye, Lock, ClipboardList, FileEdit, Loader2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { X, CheckCircle2, XCircle, Clock, Eye, Lock, ClipboardList, FileEdit, Loader2, ExternalLink } from 'lucide-react';
 import { Submission, WorkflowTask } from '../types';
 
 interface Props {
@@ -28,6 +28,12 @@ const LevelBadge = ({ level }: { level?: number | string }) => {
   return <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-500/15 text-blue-400">L{level}</span>;
 };
 
+function extractSignatureUrl(comments?: string): string | null {
+  if (!comments) return null;
+  const match = comments.match(/Signature:\s*(https?:\/\/[^\s|]+)/);
+  return match ? match[1] : null;
+}
+
 export default function WorkflowDetailsModal({
   submission,
   expandedTasks,
@@ -47,7 +53,25 @@ export default function WorkflowDetailsModal({
   onSetTaskRejectReason,
   onSetTaskConfirmReject,
 }: Props) {
+  const [signatureViewUrl, setSignatureViewUrl] = useState<string | null>(null);
+
   if (!submission) return null;
+
+  const handleViewSignature = (task: WorkflowTask) => {
+    if (!submission.approvalHistory) return;
+    const approvalEntry = submission.approvalHistory.find(a => a.level === task.level && a.status === 'approved');
+    if (approvalEntry && approvalEntry.comments) {
+      const sigUrl = extractSignatureUrl(approvalEntry.comments);
+      if (sigUrl) {
+        setSignatureViewUrl(sigUrl);
+        return;
+      }
+    }
+    // Fallback: fetch from jf_signatures if available (for backward compatibility or if comments not synced)
+    if (onFetchSignature) {
+      onFetchSignature(submission.id, task.level, task.taskId);
+    }
+  };
 
   return (
     <motion.div
@@ -115,9 +139,9 @@ export default function WorkflowDetailsModal({
 
                         <div className="flex items-center gap-1.5 flex-shrink-0 ml-3 flex-wrap">
                           {isCompleted ? (
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-400 text-xs font-medium flex items-center gap-1 border border-emerald-500/20"><CheckCircle2 className="w-3 h-3" /> Completed</span>
-                              {task.type === 'workflow_approval' && <button onClick={() => onFetchSignature?.(submission.id, task.level || 0, task.taskId || '')} disabled={sigLoading === task.taskId} className="px-2 py-1 rounded-md bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 text-xs font-medium flex items-center gap-1 border border-purple-500/20 disabled:opacity-50">{sigLoading === task.taskId ? <Loader2 className="w-3 h-3 animate-spin" /> : <Eye className="w-3 h-3" />} View Sig</button>}
+                              {task.type === 'workflow_approval' && <button onClick={() => handleViewSignature(task)} title="View Signature" className="px-2 py-1 rounded-md bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 text-xs font-medium flex items-center gap-0.5 border border-purple-500/20"><Eye className="w-3 h-3" /> <span className="hidden sm:inline">View Sig</span></button>}
                             </div>
                           ) : isPending ? (
                             <span className="px-2 py-1 rounded-md bg-gray-500/10 text-gray-500 text-xs font-medium flex items-center gap-1 border border-gray-500/10"><Clock className="w-3 h-3" /> Waiting</span>
@@ -241,6 +265,51 @@ export default function WorkflowDetailsModal({
           )}
         </div>
       </motion.div>
+
+      {/* Signature Viewer Modal */}
+      <AnimatePresence>
+        {signatureViewUrl && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+            onClick={() => setSignatureViewUrl(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-white rounded-2xl overflow-hidden w-full max-w-sm sm:max-w-md shadow-2xl"
+            >
+              <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-900">Signature</h3>
+                <button
+                  onClick={() => setSignatureViewUrl(null)}
+                  className="p-1 rounded-lg hover:bg-gray-100 text-gray-600 hover:text-gray-900"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-4 bg-gray-50 flex items-center justify-center" style={{ minHeight: '300px' }}>
+                <img src={signatureViewUrl} alt="Signature" className="max-w-full max-h-[400px] object-contain" />
+              </div>
+              <div className="p-4 border-t border-gray-200 flex gap-2">
+                <a
+                  href={signatureViewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium text-sm transition-colors"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Open
+                </a>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

@@ -136,6 +136,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const result = await completeRes.json();
 
+    // Save approval to jf_approval_history for audit trail and comment retrieval
+    try {
+      const supa = createClient(SUPABASE_URL, SUPABASE_KEY);
+      const taskProps = (activeTask.properties || {}) as Record<string, unknown>;
+      const assigneeUser = (taskProps.assigneeUser || {}) as Record<string, unknown>;
+      const approverLevel = Number(activeTask.level || 0);
+      const approverName = String(assigneeUser.name || '');
+      const approverEmail = String(assigneeUser.email || '');
+
+      const { error: histError } = await supa.from('jf_approval_history').insert({
+        submission_id: submissionId,
+        form_id: content?.formID || '', // Get from submission
+        level: approverLevel,
+        action: action.toUpperCase(),
+        approver_name: approverName,
+        approver_email: approverEmail,
+        comment: comment || '',
+      });
+      if (histError) {
+        console.warn('[JotFlow] jf_approval_history insert error:', histError.message);
+      }
+    } catch (histErr) {
+      console.warn('[JotFlow] jf_approval_history save failed:', histErr);
+    }
+
     // Send notifications to the submitter on final approval or rejection
     try {
       const supa = createClient(SUPABASE_URL, SUPABASE_KEY);

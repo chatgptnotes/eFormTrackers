@@ -727,6 +727,39 @@ export function useSubmissions() {
             }
           }
         }
+
+        // Third pass: fetch approval comments from jf_approval_history table
+        const submissionIds = mapped.map(s => s.id);
+        if (submissionIds.length > 0) {
+          try {
+            const { data: approvalRecords } = await supabase
+              .from('jf_approval_history')
+              .select('*')
+              .in('submission_id', submissionIds);
+
+            if (approvalRecords && approvalRecords.length > 0) {
+              for (const sub of mapped) {
+                // Find all approval records for this submission
+                const subApprovals = approvalRecords.filter(
+                  (r: Record<string, unknown>) => String(r.submission_id) === sub.id
+                );
+
+                // For each approval entry in the history, find matching approval record and add comment
+                for (const entry of sub.approvalHistory) {
+                  const matching = subApprovals.find(
+                    (r: Record<string, unknown>) => Number(r.level) === entry.level
+                  );
+                  if (matching && matching.comment) {
+                    entry.comments = String(matching.comment);
+                  }
+                }
+              }
+            }
+          } catch (err) {
+            console.warn('[JotFlow] Failed to fetch approval history:', err);
+          }
+        }
+
         // Batch state updates together — prevents double render / flicker
         setStepsByForm(newStepsByForm);
         setActiveForms(forms);

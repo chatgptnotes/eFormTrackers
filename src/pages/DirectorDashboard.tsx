@@ -125,10 +125,10 @@ const WorkflowStatusBadge = memo(function WorkflowStatusBadge({ submission }: { 
   const { currentApprovalLevel, actionType, approvalHistory } = submission;
 
   if (currentApprovalLevel === 'completed') {
-    return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 ring-1 ring-inset ring-emerald-500/30 shadow-sm">Completed</span>;
+    return <span className="text-xs font-medium text-emerald-400">Completed</span>;
   }
   if (currentApprovalLevel === 'rejected') {
-    return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-red-500/20 text-red-300 border border-red-500/30 ring-1 ring-inset ring-red-500/30 shadow-sm">Rejected</span>;
+    return <span className="text-xs font-medium text-red-400">Rejected</span>;
   }
 
   const level = typeof currentApprovalLevel === 'number' ? currentApprovalLevel : 1;
@@ -136,53 +136,55 @@ const WorkflowStatusBadge = memo(function WorkflowStatusBadge({ submission }: { 
 
   // Show workflow-step-aware status
   if (actionType === 'task') {
-    return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-gold/20 text-gold border border-gold/30 ring-1 ring-inset ring-gold/30 shadow-sm">L{level} Task Pending</span>;
+    return <span className="text-xs font-medium text-amber-400">L{level} Task Pending</span>;
   }
   if (actionType === 'form') {
-    return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30 ring-1 ring-inset ring-blue-500/30 shadow-sm">Form Pending</span>;
+    return <span className="text-xs font-medium text-blue-400">Form Pending</span>;
   }
 
   if (hasApproved) {
-    return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30 ring-1 ring-inset ring-blue-500/30 shadow-sm">L{level} Approval Pending</span>;
+    return <span className="text-xs font-medium text-indigo-400">L{level} Approval Pending</span>;
   }
-  return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 ring-1 ring-inset ring-amber-500/30 shadow-sm">L{level} Approval Pending</span>;
+  return <span className="text-xs font-medium text-amber-400">L{level} Approval Pending</span>;
 });
 
 const StatusBadge = memo(function StatusBadge({ status }: { status: string }) {
   const lower = (status || '').toLowerCase();
   const styles: Record<string, string> = {
-    'pending': 'bg-amber-500/20 text-amber-400',
-    'in progress': 'bg-blue-500/20 text-blue-400',
-    'completed': 'bg-emerald-500/20 text-emerald-400',
-    'approved': 'bg-emerald-500/20 text-emerald-400',
-    'rejected': 'bg-red-500/20 text-red-400',
-    'denied': 'bg-red-500/20 text-red-400',
+    'pending': 'text-amber-400',
+    'in progress': 'text-blue-400',
+    'completed': 'text-emerald-400',
+    'approved': 'text-emerald-400',
+    'rejected': 'text-red-400',
+    'denied': 'text-red-400',
   };
   const matched = Object.entries(styles).find(([key]) => lower.includes(key));
+  const colorClass = matched ? matched[1] : 'text-gray-400';
   return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${matched ? matched[1] : 'bg-gray-500/20 text-gray-400'}`}>
+    <span className={`text-xs font-medium ${colorClass}`}>
       {status || 'Unknown'}
     </span>
   );
 });
 
 const LevelBadge = memo(function LevelBadge({ level }: { level: number | 'completed' | 'rejected' }) {
-  if (level === 'completed') return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-400">Completed</span>;
-  if (level === 'rejected') return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/20 text-red-400">Rejected</span>;
+  if (level === 'completed') return <span className="text-xs font-medium text-emerald-400">Completed</span>;
+  if (level === 'rejected') return <span className="text-xs font-medium text-red-400">Rejected</span>;
   const colors: Record<number, string> = {
-    1: 'bg-blue-500/20 text-blue-400',
-    2: 'bg-amber-500/20 text-amber-400',
-    3: 'bg-purple-500/20 text-purple-400',
-    4: 'bg-red-500/20 text-red-400',
-    5: 'bg-teal-500/20 text-teal-400',
-    6: 'bg-pink-500/20 text-pink-400',
-    7: 'bg-indigo-500/20 text-indigo-400',
-    8: 'bg-orange-500/20 text-orange-400',
-    9: 'bg-cyan-500/20 text-cyan-400',
-    10: 'bg-lime-500/20 text-lime-400',
+    1: 'text-blue-400',
+    2: 'text-amber-400',
+    3: 'text-purple-400',
+    4: 'text-red-400',
+    5: 'text-teal-400',
+    6: 'text-pink-400',
+    7: 'text-indigo-400',
+    8: 'text-orange-400',
+    9: 'text-cyan-400',
+    10: 'text-lime-400',
   };
+  const colorClass = colors[level] || 'text-gray-400';
   return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors[level] || 'bg-gray-500/20 text-gray-400'}`}>
+    <span className={`text-xs font-medium ${colorClass}`}>
       L{level}
     </span>
   );
@@ -1099,24 +1101,25 @@ export default function DirectorDashboard({ data }: Props) {
         transition={{ delay: 0.25 }}
         className="glass-card overflow-hidden relative border-t-2 border-gold/40"
       >
-        <div className="overflow-x-auto w-full" style={{ scrollbarGutter: 'stable' }}>
+        {/* Desktop Table */}
+        <div className="hidden md:block overflow-x-auto w-full" style={{ scrollbarGutter: 'stable' }}>
           <table className="w-full table-fixed">
             <thead className="sticky top-0 z-10">
-              <tr className="border-b-2 border-navy-light/30 bg-navy-dark/80">
-                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-300 uppercase tracking-wider w-12">S.No</th>
-                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-300 uppercase tracking-wider hidden">Ref#</th>
-                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-300 uppercase tracking-wider">Title / Form</th>
-                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-300 uppercase tracking-wider">Submitted By</th>
-                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-300 uppercase tracking-wider">Submission Date</th>
-                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-300 uppercase tracking-wider cursor-pointer select-none" onClick={() => toggleSort('currentApprovalLevel')}>
+              <tr className="border-b border-navy-light/40 bg-gradient-to-r from-navy-dark/95 to-navy-dark/90 backdrop-blur-sm">
+                <th className="px-4 py-3.5 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest w-12">No.</th>
+                <th className="px-4 py-3.5 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest hidden">Ref#</th>
+                <th className="px-4 py-3.5 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest">Title / Form</th>
+                <th className="px-4 py-3.5 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest">Submitted By</th>
+                <th className="px-4 py-3.5 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest">Date</th>
+                <th className="px-4 py-3.5 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest cursor-pointer select-none hover:text-gold transition-colors" onClick={() => toggleSort('currentApprovalLevel')}>
                   <div className="flex items-center gap-1">Level <SortIcon field="currentApprovalLevel" /></div>
                 </th>
-                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-300 uppercase tracking-wider">Pending With</th>
-                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-300 uppercase tracking-wider cursor-pointer select-none hidden" onClick={() => toggleSort('daysAtCurrentLevel')}>
+                <th className="px-4 py-3.5 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest">Pending With</th>
+                <th className="px-4 py-3.5 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest cursor-pointer select-none hidden hover:text-gold transition-colors" onClick={() => toggleSort('daysAtCurrentLevel')}>
                   <div className="flex items-center gap-1">Aging <SortIcon field="daysAtCurrentLevel" /></div>
                 </th>
-                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-300 uppercase tracking-wider">Status</th>
-                <th className="px-4 py-3 text-center text-[11px] font-bold text-gray-300 uppercase tracking-wider">Actions</th>
+                <th className="px-4 py-3.5 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest">Status</th>
+                <th className="px-4 py-3.5 text-center text-[10px] font-bold text-gray-400 uppercase tracking-widest">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1252,7 +1255,7 @@ export default function DirectorDashboard({ data }: Props) {
                             <button
                               onClick={() => openTaskUrl(sub)}
                               disabled={taskUrlLoading === sub.id}
-                              className="px-2.5 py-1.5 rounded-lg bg-gold/20 text-gold hover:bg-gold/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1 transition-colors"
+                              className="px-2.5 py-1.5 rounded-lg bg-gold/20 text-gold hover:bg-gold/35 disabled:opacity-50 text-xs font-medium flex items-center gap-1 border border-gold/40 transition-colors shadow-sm"
                             >
                               {taskUrlLoading === sub.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ClipboardList className="w-3.5 h-3.5" />}
                               View Task
@@ -1267,7 +1270,7 @@ export default function DirectorDashboard({ data }: Props) {
                             <button
                               onClick={() => openFormUrl(sub)}
                               disabled={formUrlLoading === sub.id}
-                              className="px-2.5 py-1.5 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1 transition-colors"
+                              className="px-2 py-1 text-xs font-medium text-blue-400 hover:text-blue-300 disabled:opacity-50 transition-colors"
                             >
                               {formUrlLoading === sub.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileEdit className="w-3.5 h-3.5" />}
                               Complete Form
@@ -1284,14 +1287,14 @@ export default function DirectorDashboard({ data }: Props) {
                                 <button
                                   onClick={() => openModal(sub)}
                                   disabled={actionLoading === sub.id}
-                                  className="px-2.5 py-1.5 rounded-lg bg-gold/20 text-gold hover:bg-gold/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1 transition-colors"
+                                  className="px-2 py-1 text-xs font-medium text-gold hover:text-amber-300 disabled:opacity-50 transition-colors"
                                   title={"Review & Approve"}
                                 >
                                   <CheckCircle2 className="w-3.5 h-3.5" />
                                   {"Review & Approve"}
                                 </button>
                               ) : typeof sub.currentApprovalLevel === 'number' ? (
-                                <span className="px-2.5 py-1.5 rounded-lg bg-gray-500/10 text-gray-600 text-xs font-medium flex items-center gap-1 border border-gray-500/10" title={`Your role cannot approve Level ${sub.currentApprovalLevel}`}>
+                                <span className="px-2 py-1 text-xs font-medium text-gray-500 flex items-center gap-1" title={`Your role cannot approve Level ${sub.currentApprovalLevel}`}>
                                   <Lock className="w-3.5 h-3.5" /> Not your level
                                 </span>
                               ) : null}
@@ -1335,7 +1338,7 @@ export default function DirectorDashboard({ data }: Props) {
                               ) : (
                                 <button
                                   onClick={() => setRejectingId(sub.id)}
-                                  className="px-2.5 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs font-medium flex items-center gap-1 border border-red-500/20 transition-colors"
+                                  className="px-2 py-1 text-xs font-medium text-red-400 hover:text-red-300 transition-colors"
                                 >
                                   <XCircle className="w-3.5 h-3.5" /> Reject
                                 </button>
@@ -1679,6 +1682,208 @@ export default function DirectorDashboard({ data }: Props) {
               </AnimatePresence>
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile Card Layout */}
+        <div className="md:hidden space-y-3 p-4">
+          {parentSubmissions.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-12">
+              <Shield className="w-10 h-10 text-emerald-400/50" />
+              <p className="text-gray-400">No submissions found</p>
+              <p className="text-xs text-gray-600">Try clearing your search or filters</p>
+            </div>
+          ) : (
+            <AnimatePresence>
+              {paginatedSubmissions.map((sub, idx) => (
+                <motion.div
+                  key={sub.id}
+                  layout
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                  className="border border-navy-light/30 rounded-lg bg-navy-dark/40 p-4 space-y-3"
+                >
+                  {/* Header: Ref# and Status */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-bold text-gold">{sub.referenceNumber}</p>
+                      <p className="text-xs text-gray-400">{sub.formTitle}</p>
+                    </div>
+                    <LevelBadge level={sub.currentApprovalLevel} />
+                  </div>
+
+                  {/* Title */}
+                  <div>
+                    <a
+                      href={`https://eforms.mediaoffice.ae/inbox/${sub.formId}/${sub.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-white hover:text-gold hover:underline inline-flex items-center gap-1 group"
+                    >
+                      {sub.title}
+                      <ExternalLink className="w-3 h-3 text-gray-600 group-hover:text-gold transition-colors" />
+                    </a>
+                  </div>
+
+                  {/* Submitted By */}
+                  <div className="text-xs space-y-1 border-t border-navy-light/20 pt-2">
+                    <p className="text-gray-400">
+                      <span className="font-semibold">By:</span> {sub.submittedBy.name}
+                    </p>
+                    <p className="text-gray-500">
+                      <span className="font-semibold">Dept:</span> {sub.submittedBy.department}
+                    </p>
+                    <p className="text-gray-500">
+                      <span className="font-semibold">Date:</span> {new Date(sub.submissionDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </p>
+                  </div>
+
+                  {/* Pending With */}
+                  <div className="text-xs border-t border-navy-light/20 pt-2">
+                    <p className="text-gray-400 font-semibold mb-1">Pending With:</p>
+                    <PendingWithCell submission={sub} onSyncClick={setSyncSubmission} />
+                  </div>
+
+                  {/* Status */}
+                  <div className="text-xs border-t border-navy-light/20 pt-2">
+                    <WorkflowStatusBadge submission={sub} />
+                  </div>
+
+                  {/* Actions */}
+                  <div className="border-t border-navy-light/20 pt-3 space-y-2">
+                    {isViewer && !(user?.email && sub.pendingApproverEmail?.toLowerCase() === user.email.toLowerCase()) ? (
+                      <span className="px-2.5 py-1.5 rounded-lg bg-gray-500/10 text-gray-400 text-xs font-medium inline-flex items-center gap-1 border border-gray-500/20 w-full justify-center">
+                        <Eye className="w-3 h-3" /> View Only
+                      </span>
+                    ) : sub.currentApprovalLevel === 'completed' ? (
+                      <span className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 text-xs font-medium inline-flex items-center gap-1 border border-emerald-500/20 w-full justify-center">
+                        <CheckCircle2 className="w-3 h-3" /> Completed
+                      </span>
+                    ) : sub.currentApprovalLevel === 'rejected' ? (
+                      <span className="px-2.5 py-1.5 rounded-lg bg-red-500/10 text-red-400 text-xs font-medium inline-flex items-center gap-1 border border-red-500/20 w-full justify-center">
+                        <XCircle className="w-3 h-3" /> Rejected
+                      </span>
+                    ) : viewOnly ? (
+                      <span className="px-2.5 py-1.5 rounded-lg bg-gray-500/10 text-gray-400 text-xs font-medium inline-flex items-center gap-1 border border-gray-500/20 w-full justify-center">
+                        <Eye className="w-3 h-3" /> View Only
+                      </span>
+                    ) : sub.actionType === 'task' ? (
+                      (user?.email && sub.pendingApproverEmail?.toLowerCase() === user.email.toLowerCase()) ? (
+                        <button
+                          onClick={() => openTaskUrl(sub)}
+                          disabled={taskUrlLoading === sub.id}
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-gold/20 text-gold hover:bg-gold/30 disabled:opacity-50 text-xs font-medium flex items-center justify-center gap-1 transition-colors"
+                        >
+                          {taskUrlLoading === sub.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ClipboardList className="w-3.5 h-3.5" />}
+                          View Task
+                        </button>
+                      ) : (
+                        <span className="px-2.5 py-1.5 rounded-lg bg-gray-500/10 text-gray-600 text-xs font-medium flex items-center justify-center gap-1 border border-gray-500/10 w-full">
+                          <Lock className="w-3.5 h-3.5" /> Not assigned
+                        </span>
+                      )
+                    ) : sub.actionType === 'form' ? (
+                      (user?.email && sub.pendingApproverEmail?.toLowerCase() === user.email.toLowerCase()) ? (
+                        <button
+                          onClick={() => openFormUrl(sub)}
+                          disabled={formUrlLoading === sub.id}
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 disabled:opacity-50 text-xs font-medium flex items-center justify-center gap-1 transition-colors"
+                        >
+                          {formUrlLoading === sub.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileEdit className="w-3.5 h-3.5" />}
+                          Complete Form
+                        </button>
+                      ) : (
+                        <span className="px-2.5 py-1.5 rounded-lg bg-gray-500/10 text-gray-600 text-xs font-medium flex items-center justify-center gap-1 border border-gray-500/10 w-full">
+                          <Lock className="w-3.5 h-3.5" /> Not assigned
+                        </span>
+                      )
+                    ) : (
+                      <div className="space-y-2">
+                        {typeof sub.currentApprovalLevel === 'number' && (user?.email && sub.pendingApproverEmail?.toLowerCase() === user.email.toLowerCase()) ? (
+                          <button
+                            onClick={() => openModal(sub)}
+                            disabled={actionLoading === sub.id}
+                            className="w-full px-2.5 py-1.5 rounded-lg bg-gold/20 text-gold hover:bg-gold/30 disabled:opacity-50 text-xs font-medium flex items-center justify-center gap-1 transition-colors"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            Review & Approve
+                          </button>
+                        ) : typeof sub.currentApprovalLevel === 'number' ? (
+                          <span className="px-2.5 py-1.5 rounded-lg bg-gray-500/10 text-gray-600 text-xs font-medium flex items-center justify-center gap-1 border border-gray-500/10 w-full">
+                            <Lock className="w-3.5 h-3.5" /> Not your level
+                          </span>
+                        ) : null}
+
+                        {confirmRejectId === sub.id ? (
+                          <div className="flex flex-col gap-1 rounded-lg bg-red-500/10 border border-red-500/30 px-2 py-1.5">
+                            <span className="text-[11px] text-red-400">Confirm reject?</span>
+                            <div className="flex gap-1">
+                              <button
+                                onClick={() => handleReject(sub)}
+                                disabled={actionLoading === sub.id}
+                                className="flex-1 px-2 py-0.5 rounded bg-red-600 text-white text-xs hover:bg-red-500 disabled:opacity-50"
+                              >
+                                Yes
+                              </button>
+                              <button onClick={() => { setConfirmRejectId(null); setRejectingId(sub.id); }} className="flex-1 px-1 py-0.5 text-xs text-gray-500 hover:text-gray-300">
+                                No
+                              </button>
+                            </div>
+                          </div>
+                        ) : rejectingId === sub.id ? (
+                          <div className="flex flex-col gap-1">
+                            <input
+                              type="text"
+                              value={rejectReason}
+                              onChange={e => setRejectReason(e.target.value)}
+                              placeholder="Reason..."
+                              autoFocus
+                              className="w-full px-2 py-1 text-xs rounded bg-navy-dark border border-red-500/30 text-white placeholder-gray-600 focus:outline-none"
+                            />
+                            <div className="flex gap-1">
+                              <button
+                                onClick={() => setConfirmRejectId(sub.id)}
+                                className="flex-1 px-2 py-1 rounded bg-red-500/30 text-red-400 text-xs hover:bg-red-500/40"
+                              >
+                                OK
+                              </button>
+                              <button onClick={() => { setRejectingId(null); setRejectReason(''); }} className="flex-1 px-1 py-1 text-xs text-gray-500 hover:text-gray-300">
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setRejectingId(sub.id)}
+                            className="w-full px-2.5 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs font-medium flex items-center justify-center gap-1 border border-red-500/20 transition-colors"
+                          >
+                            <XCircle className="w-3.5 h-3.5" /> Reject
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* View Detail — opens WorkflowDetailsModal popup */}
+                  <button
+                    onClick={() => openWorkflowModal(sub)}
+                    className="w-full px-2 py-1.5 rounded text-xs text-gray-400 hover:text-gold hover:bg-navy-light/20 transition-colors flex items-center justify-center gap-1"
+                  >
+                    {expandLoading === sub.id ? (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin" /> Loading...
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-3.5 h-3.5" /> View Detail
+                      </>
+                    )}
+                  </button>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          )}
         </div>
 
         {/* Footer with Pagination */}

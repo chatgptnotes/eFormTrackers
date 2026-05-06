@@ -687,7 +687,26 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                       <p className="text-xs text-gray-500 mt-0.5">
                         {entry.status === 'pending' ? 'Pending approval' : `${entry.status} on ${entry.date}`}
                       </p>
-                      {entry.comments && <p className="text-xs text-gray-400 mt-1 italic">"{entry.comments}"</p>}
+                      {entry.comments && (
+                        <div className="mt-2 space-y-2">
+                          {(() => {
+                            const signatureMatch = entry.comments.match(/Signature:\s*(https?:\/\/[^\s|]+)/);
+                            const signatureUrl = signatureMatch ? signatureMatch[1] : null;
+                            const commentText = entry.comments.replace(/\s*\|\s*Signature:\s*https?:\/\/[^\s|]*/, '').replace(/^Action:.*?\|\s*/, '');
+
+                            return (
+                              <>
+                                {commentText && <p className="text-xs text-gray-400 italic">"{commentText}"</p>}
+                                {signatureUrl && entry.status === 'approved' && (
+                                  <div className="mt-2 border border-emerald-500/30 rounded-lg overflow-hidden">
+                                    <img src={signatureUrl} alt="Signature" className="max-w-xs h-auto" />
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}

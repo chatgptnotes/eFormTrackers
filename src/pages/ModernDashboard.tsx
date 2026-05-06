@@ -6,6 +6,7 @@ import WorkflowDetailsModal from '../components/WorkflowDetailsModal';
 import { Submission, WorkflowTask } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { exportToExcel } from '../services/exportService';
+import { supabase } from '../lib/supabase';
 
 interface Props {
   data: ReturnType<typeof import('../hooks/useSubmissions').useSubmissions>;
@@ -244,7 +245,7 @@ const SubmissionCard = memo(function SubmissionCard({ submission, idx, user, onV
           ) : (
             <motion.button
               whileHover={{ x: 4 }}
-              onClick={() => onViewDetails(submission)}
+              onClick={(e) => { e.stopPropagation(); onOpenModal(submission); }}
               className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-gradient-to-r ${statusConfig_item.color} text-white font-semibold text-sm transition-all hover:shadow-lg border border-transparent group/btn`}
             >
               <span>View Details</span>
@@ -268,6 +269,8 @@ export default function ModernDashboard({ data }: Props) {
   const [workflowModalSubmission, setWorkflowModalSubmission] = useState<Submission | null>(null);
   const [expandedTasks, setExpandedTasks] = useState<WorkflowTask[]>([]);
   const [workflowLoading, setWorkflowLoading] = useState(false);
+  const [viewSignature, setViewSignature] = useState<{ url: string; approver: string; level: number } | null>(null);
+  const [sigLoading, setSigLoading] = useState<string | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'latest' | 'oldest' | 'days'>('latest');
@@ -355,6 +358,28 @@ export default function ModernDashboard({ data }: Props) {
       setExpandedTasks([]);
     } finally {
       setWorkflowLoading(false);
+    }
+  }, []);
+
+  const fetchAndShowSignature = useCallback(async (submissionId: string, level: number, taskId: string) => {
+    setSigLoading(taskId);
+    try {
+      const { data } = await supabase
+        .from('jf_signatures')
+        .select('signature_url, approver_name')
+        .eq('submission_id', submissionId)
+        .eq('level', level)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (data?.signature_url) {
+        setViewSignature({ url: data.signature_url, approver: data.approver_name || 'Unknown', level });
+      }
+    } catch (err) {
+      console.warn('Failed to fetch signature:', err);
+    } finally {
+      setSigLoading(undefined);
     }
   }, []);
 
@@ -628,7 +653,54 @@ export default function ModernDashboard({ data }: Props) {
             expandLoading={workflowLoading ? workflowModalSubmission.id : undefined}
             onClose={() => setWorkflowModalSubmission(null)}
             user={user}
+            onFetchSignature={fetchAndShowSignature}
+            sigLoading={sigLoading}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Signature Viewer Modal */}
+      <AnimatePresence>
+        {viewSignature && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+            onClick={() => setViewSignature(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-white rounded-2xl overflow-hidden w-full max-w-sm sm:max-w-md shadow-2xl"
+            >
+              <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-900">Signature</h3>
+                <button
+                  onClick={() => setViewSignature(null)}
+                  className="p-1 rounded-lg hover:bg-gray-100 text-gray-600 hover:text-gray-900"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="p-4 bg-gray-50 flex items-center justify-center" style={{ minHeight: '300px' }}>
+                <img src={viewSignature.url} alt="Signature" className="max-w-full max-h-[400px] object-contain" />
+              </div>
+              <div className="p-4 border-t border-gray-200 flex gap-2">
+                <a
+                  href={viewSignature.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium text-sm transition-colors"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Open
+                </a>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>
