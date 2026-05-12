@@ -420,12 +420,13 @@ export default function ModernDashboard({ data }: Props) {
     await Promise.all(promises);
   }, []);
 
-  // Pre-fetch workflows for all submissions on load
+  // Pre-fetch workflows for visible (paginated) submissions only — avoids
+  // hundreds of parallel API calls when there are many submissions.
   useEffect(() => {
-    if (allSubmissions.length > 0) {
-      preFetchWorkflows(allSubmissions);
+    if (paginatedSubmissions.length > 0) {
+      preFetchWorkflows(paginatedSubmissions);
     }
-  }, [allSubmissions.length]);
+  }, [paginatedSubmissions, preFetchWorkflows]);
 
   // Stats cards with dynamic calculations
   const pendingCount = allSubmissions.filter(s => getSubmissionStatus(s) === 'pending').length;
