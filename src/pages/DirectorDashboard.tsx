@@ -2076,8 +2076,8 @@ export default function DirectorDashboard({ data }: Props) {
         sigLoading={sigLoading || undefined}
         user={user}
         onClose={() => setWorkflowSidebarSubmission(null)}
-        onTaskApprove={(submissionId) => { if (expandedRowId) handleTaskApprove(expandedRowId); }}
-        onTaskReject={(submissionId, reason) => { if (expandedRowId) handleTaskReject(expandedRowId, reason); }}
+        onTaskApprove={(submissionId) => { if (workflowSidebarSubmission?.id) handleTaskApprove(workflowSidebarSubmission.id); }}
+        onTaskReject={(submissionId, reason) => { if (workflowSidebarSubmission?.id) handleTaskReject(workflowSidebarSubmission.id, reason); }}
         onFetchSignature={fetchAndShowSignature}
         onOpenTaskLink={openTaskLink}
         onSetTaskRejecting={setTaskRejectingId}
