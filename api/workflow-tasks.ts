@@ -105,7 +105,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const updatedAt = String(t.updated_at || '');
       const taskId = String(t.id || '');
       const internalFormID = String(element.internalFormID || element.resourceID || element.formID || props.formID || '');
-      const accessLink = String(t.accessLink || '');
+      const accessLink = String(
+        t.accessLink
+        || (props as Record<string, unknown>).accessLink
+        || (element as Record<string, unknown>).accessLink
+        || ''
+      );
 
       // Submitter: try completedBy, result, then fallback to assignee for completed tasks
       const submittedBy = String(completedBy.name || result.submittedBy || result.completed_by ||

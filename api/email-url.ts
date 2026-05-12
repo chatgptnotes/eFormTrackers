@@ -92,16 +92,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const constructedUrl = `${JOTFORM_HOST}/${taskFormID}?workflowAssignFormTask=1&taskID=${taskId}`;
       return res.status(200).json({ approvalUrl: constructedUrl, formId, submissionId, source: 'constructed-form' });
     } else {
-      // Approval/task types use path-based format with access token
+      // Approval / assigned-task types: JotForm's email notification uses the
+      // /share/{token} URL directly — that's what actually works. The
+      // /approval-form/{formID}/task/{taskID}/access-token/{token} rewrite
+      // 404s for workflow_assign_task, so prefer the raw accessLink first.
+      if (accessLink) {
+        return res.status(200).json({ approvalUrl: accessLink, formId, submissionId, source: 'accessLink' });
+      }
+
+      // Last resort: path-based URL (works for some workflow_approval cases).
       if (taskFormID && taskId && accessToken) {
         const encodedToken = encodeURIComponent(accessToken);
         const constructedUrl = `${JOTFORM_HOST}/approval-form/${taskFormID}/task/${taskId}/access-token/${encodedToken}`;
         return res.status(200).json({ approvalUrl: constructedUrl, formId, submissionId, source: 'constructed-path' });
-      }
-
-      // Fallback: use accessLink directly
-      if (accessLink) {
-        return res.status(200).json({ approvalUrl: accessLink, formId, submissionId, source: 'accessLink-fallback' });
       }
     }
 
