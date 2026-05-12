@@ -68,28 +68,28 @@ export default function WorkflowDetailsSidebar({
             animate={{ x: 0 }}
             exit={{ x: 600 }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="fixed right-0 top-0 h-full w-[600px] bg-navy-dark border-l border-navy-light/20 z-50 overflow-y-auto shadow-2xl"
+            className="fixed right-0 top-0 h-full w-[600px] bg-white border-l border-slate-200 z-50 overflow-y-auto shadow-xl"
           >
             {/* Header */}
-            <div className="sticky top-0 bg-navy-dark border-b border-navy-light/20 px-6 py-4 flex items-center justify-between">
+            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-5 flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold text-white">Workflow Details</h2>
-                <p className="text-xs text-gray-500 mt-1">{submission?.referenceNumber}</p>
+                <h2 className="text-lg font-bold text-slate-900">Workflow Details</h2>
+                <p className="text-xs text-slate-500 mt-1">{submission?.referenceNumber}</p>
               </div>
-              <button onClick={onClose} className="p-1 hover:bg-navy-light/20 rounded transition-colors">
-                <X className="w-5 h-5 text-gray-400 hover:text-white" />
+              <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded transition-colors">
+                <X className="w-5 h-5 text-slate-400 hover:text-slate-600" />
               </button>
             </div>
 
             {/* Content */}
-            <div className="p-4 space-y-4">
-              {/* Card 1: Process Activity Feed - Modern Enterprise Style */}
-              <div className="space-y-3">
-                <h3 className="text-xs font-bold text-slate-300 uppercase tracking-widest px-1">Process Timeline</h3>
+            <div className="p-6 space-y-6 bg-gradient-to-b from-slate-50 to-white">
+              {/* Card 1: Process Timeline - Clean JotForm Style */}
+              <div className="space-y-4">
+                <h3 className="text-xs font-bold text-slate-700 uppercase tracking-widest">Process Timeline</h3>
                 {expandedTasks.length === 0 ? (
-                  <span className="text-xs text-slate-500 italic block px-4">No workflow steps found</span>
+                  <span className="text-xs text-slate-500 italic block">No workflow steps found</span>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {expandedTasks.map((task, idx) => {
                       const isCompleted = task.status === 'COMPLETED';
                       const isActive = task.status === 'ACTIVE';
@@ -97,61 +97,44 @@ export default function WorkflowDetailsSidebar({
                       const emailMatch = user?.email && task.assigneeEmail?.toLowerCase() === user.email.toLowerCase();
                       const typeBadge = task.type === 'workflow_approval' ? 'Approval' : task.type === 'workflow_assign_task' ? 'Task' : task.type === 'workflow_assign_form' ? 'Form' : task.type;
 
-                      // Status color & badge styling
-                      const statusColor = isCompleted ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : isActive ? 'bg-blue-500/20 text-blue-300 border-blue-500/40' : 'bg-slate-600/10 text-slate-400 border-slate-600/30';
-                      const statusBgIcon = isCompleted ? 'bg-emerald-500/30' : isActive ? 'bg-blue-500/30' : 'bg-slate-600/20';
-                      const iconColor = isCompleted ? 'text-emerald-400' : isActive ? 'text-blue-400' : 'text-slate-500';
+                      // Status badge colors (clean, light style)
+                      const statusBadge = isCompleted ? 'bg-emerald-100 text-emerald-700' : isActive ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600';
+                      const typeBadgeStyle = task.type === 'workflow_approval' ? 'bg-indigo-100 text-indigo-700' : task.type === 'workflow_assign_form' ? 'bg-cyan-100 text-cyan-700' : 'bg-amber-100 text-amber-700';
+                      const avatarBg = isCompleted ? 'bg-emerald-500' : isActive ? 'bg-blue-500' : 'bg-slate-400';
+                      const avatarIcon = task.type === 'workflow_approval' ? <CheckCircle2 className="w-5 h-5" /> : task.type === 'workflow_assign_task' ? <ClipboardList className="w-5 h-5" /> : task.type === 'workflow_assign_form' ? <FileEdit className="w-5 h-5" /> : <Clock className="w-5 h-5" />;
 
                       return (
                         <div
                           key={task.taskId || idx}
-                          className={`rounded-lg border transition-all ${
-                            isActive
-                              ? 'bg-slate-700/30 border-slate-600/50 shadow-lg shadow-blue-500/10'
-                              : 'bg-slate-800/30 border-slate-700/30'
-                          } p-4 hover:bg-slate-700/40 hover:border-slate-600/60`}
+                          className="border-b border-slate-200 pb-3 last:border-b-0 last:pb-0 hover:bg-slate-50 -mx-6 px-6 py-3 transition-colors"
                         >
                           <div className="flex items-start gap-3">
-                            {/* Icon/Avatar */}
-                            <div className={`${statusBgIcon} rounded-lg p-2 flex-shrink-0 flex items-center justify-center`}>
-                              {task.type === 'workflow_approval' ? (
-                                <CheckCircle2 className={`w-5 h-5 ${iconColor}`} />
-                              ) : task.type === 'workflow_assign_task' ? (
-                                <ClipboardList className={`w-5 h-5 ${iconColor}`} />
-                              ) : task.type === 'workflow_assign_form' ? (
-                                <FileEdit className={`w-5 h-5 ${iconColor}`} />
-                              ) : (
-                                <Clock className={`w-5 h-5 ${iconColor}`} />
-                              )}
+                            {/* Avatar */}
+                            <div className={`${avatarBg} rounded-lg p-2.5 flex-shrink-0 flex items-center justify-center text-white`}>
+                              {avatarIcon}
                             </div>
 
                             {/* Content */}
                             <div className="flex-1 min-w-0">
+                              {/* Title & Status */}
                               <div className="flex items-center justify-between gap-2 mb-1">
-                                <h4 className="text-sm font-semibold text-white truncate">{task.name}</h4>
-                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border whitespace-nowrap ${statusColor}`}>
+                                <h4 className="text-sm font-semibold text-slate-900">{task.name}</h4>
+                                <span className={`text-xs px-2.5 py-1 rounded-full font-medium whitespace-nowrap text-[11px] ${statusBadge}`}>
                                   {isCompleted ? 'Complete' : isActive ? 'In Progress' : 'Pending'}
                                 </span>
                               </div>
 
+                              {/* Assignee */}
                               {task.assigneeName && (
-                                <p className="text-xs text-slate-400 mb-2">
+                                <p className="text-xs text-slate-600 mb-2">
                                   {task.assigneeName}
-                                  {task.assigneeEmail && <span className="text-slate-600"> • {task.assigneeEmail}</span>}
+                                  {task.assigneeEmail && <span className="text-slate-500"> • {task.assigneeEmail}</span>}
                                 </p>
                               )}
 
                               {/* Type Badge */}
                               <div className="flex items-center gap-2 mb-3">
-                                <span
-                                  className={`text-[10px] px-2 py-1 rounded-full font-semibold border ${
-                                    task.type === 'workflow_approval'
-                                      ? 'bg-indigo-600/20 text-indigo-300 border-indigo-600/40'
-                                      : task.type === 'workflow_assign_form'
-                                      ? 'bg-cyan-600/20 text-cyan-300 border-cyan-600/40'
-                                      : 'bg-amber-600/20 text-amber-300 border-amber-600/40'
-                                  }`}
-                                >
+                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${typeBadgeStyle}`}>
                                   {typeBadge}
                                 </span>
                               </div>
@@ -160,7 +143,7 @@ export default function WorkflowDetailsSidebar({
                               <div className="flex flex-wrap gap-2">
                                 {isCompleted ? (
                                   <>
-                                    <button className="text-[11px] px-3 py-1.5 rounded-md bg-emerald-600/20 text-emerald-400 border border-emerald-600/40 hover:bg-emerald-600/30 transition-colors cursor-default flex items-center gap-1">
+                                    <button className="text-[11px] px-3 py-1.5 rounded-md bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors cursor-default font-medium flex items-center gap-1">
                                       <CheckCircle2 className="w-3.5 h-3.5" /> Completed
                                     </button>
                                     {task.type === 'workflow_approval' && (
@@ -169,7 +152,7 @@ export default function WorkflowDetailsSidebar({
                                           onFetchSignature?.(submission?.id || '', task.level || 0, task.taskId || '')
                                         }
                                         disabled={sigLoading === task.taskId}
-                                        className="text-[11px] px-3 py-1.5 rounded-md bg-cyan-600/20 text-cyan-400 border border-cyan-600/40 hover:bg-cyan-600/30 disabled:opacity-50 transition-colors cursor-pointer"
+                                        className="text-[11px] px-3 py-1.5 rounded-md bg-cyan-100 text-cyan-700 hover:bg-cyan-200 disabled:opacity-50 transition-colors cursor-pointer font-medium"
                                       >
                                         {sigLoading === task.taskId ? (
                                           <Loader2 className="w-3.5 h-3.5 animate-spin inline mr-1" />
@@ -183,7 +166,7 @@ export default function WorkflowDetailsSidebar({
                                     )}
                                   </>
                                 ) : isPending ? (
-                                  <span className="text-[11px] px-3 py-1.5 rounded-md bg-slate-600/10 text-slate-400 border border-slate-600/30 flex items-center gap-1">
+                                  <span className="text-[11px] px-3 py-1.5 rounded-md bg-slate-100 text-slate-600 font-medium flex items-center gap-1">
                                     <Clock className="w-3.5 h-3.5" /> Awaiting
                                   </span>
                                 ) : isActive && task.type === 'workflow_approval' ? (
@@ -192,20 +175,20 @@ export default function WorkflowDetailsSidebar({
                                       <button
                                         onClick={() => onTaskApprove?.(submission?.id || '')}
                                         disabled={taskActionLoading === submission?.id}
-                                        className="text-[11px] px-3 py-1.5 rounded-md bg-emerald-600/20 text-emerald-400 border border-emerald-600/40 hover:bg-emerald-600/30 disabled:opacity-50 transition-colors cursor-pointer"
+                                        className="text-[11px] px-3 py-1.5 rounded-md bg-emerald-100 text-emerald-700 hover:bg-emerald-200 disabled:opacity-50 transition-colors cursor-pointer font-medium"
                                       >
                                         <CheckCircle2 className="w-3.5 h-3.5 inline mr-1" /> Approve
                                       </button>
                                       <button
                                         onClick={() => onSetTaskRejecting?.(task.taskId || '')}
                                         disabled={taskActionLoading === submission?.id}
-                                        className="text-[11px] px-3 py-1.5 rounded-md bg-red-600/20 text-red-400 border border-red-600/40 hover:bg-red-600/30 disabled:opacity-50 transition-colors cursor-pointer"
+                                        className="text-[11px] px-3 py-1.5 rounded-md bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50 transition-colors cursor-pointer font-medium"
                                       >
                                         <XCircle className="w-3.5 h-3.5 inline mr-1" /> Reject
                                       </button>
                                     </>
                                   ) : (
-                                    <span className="text-[11px] px-3 py-1.5 rounded-md bg-slate-600/10 text-slate-500 border border-slate-600/30 flex items-center gap-1">
+                                    <span className="text-[11px] px-3 py-1.5 rounded-md bg-slate-100 text-slate-600 font-medium flex items-center gap-1">
                                       <Lock className="w-3.5 h-3.5" /> Not Assigned
                                     </span>
                                   )
@@ -214,12 +197,12 @@ export default function WorkflowDetailsSidebar({
                                     <button
                                       onClick={() => onOpenTaskLink?.(task)}
                                       disabled={!task.accessLink}
-                                      className="text-[11px] px-3 py-1.5 rounded-md bg-amber-600/20 text-amber-400 border border-amber-600/40 hover:bg-amber-600/30 disabled:opacity-50 transition-colors cursor-pointer"
+                                      className="text-[11px] px-3 py-1.5 rounded-md bg-amber-100 text-amber-700 hover:bg-amber-200 disabled:opacity-50 transition-colors cursor-pointer font-medium"
                                     >
                                       <ClipboardList className="w-3.5 h-3.5 inline mr-1" /> Open Task
                                     </button>
                                   ) : (
-                                    <span className="text-[11px] px-3 py-1.5 rounded-md bg-slate-600/10 text-slate-500 border border-slate-600/30 flex items-center gap-1">
+                                    <span className="text-[11px] px-3 py-1.5 rounded-md bg-slate-100 text-slate-600 font-medium flex items-center gap-1">
                                       <Lock className="w-3.5 h-3.5" /> Not Assigned
                                     </span>
                                   )
@@ -228,12 +211,12 @@ export default function WorkflowDetailsSidebar({
                                     <button
                                       onClick={() => onOpenTaskLink?.(task)}
                                       disabled={!task.accessLink}
-                                      className="text-[11px] px-3 py-1.5 rounded-md bg-cyan-600/20 text-cyan-400 border border-cyan-600/40 hover:bg-cyan-600/30 disabled:opacity-50 transition-colors cursor-pointer"
+                                      className="text-[11px] px-3 py-1.5 rounded-md bg-cyan-100 text-cyan-700 hover:bg-cyan-200 disabled:opacity-50 transition-colors cursor-pointer font-medium"
                                     >
                                       <FileEdit className="w-3.5 h-3.5 inline mr-1" /> Fill Form
                                     </button>
                                   ) : (
-                                    <span className="text-[11px] px-3 py-1.5 rounded-md bg-slate-600/10 text-slate-500 border border-slate-600/30 flex items-center gap-1">
+                                    <span className="text-[11px] px-3 py-1.5 rounded-md bg-slate-100 text-slate-600 font-medium flex items-center gap-1">
                                       <Lock className="w-3.5 h-3.5" /> Not Assigned
                                     </span>
                                   )
