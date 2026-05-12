@@ -86,32 +86,32 @@ export default function WorkflowDetailsModal({
         animate={{ scale: 1, y: 0 }}
         exit={{ scale: 0.95, y: 20 }}
         onClick={e => e.stopPropagation()}
-        className="bg-navy-dark border border-navy-light/20 rounded-lg w-full max-w-5xl max-h-[90vh] overflow-y-auto shadow-2xl"
+        className="bg-white border border-slate-200 rounded-lg w-full max-w-5xl max-h-[90vh] overflow-y-auto shadow-xl"
       >
         {/* Header */}
-        <div className="sticky top-0 bg-navy-dark border-b border-navy-light/20 px-6 py-4 flex items-center justify-between">
+        <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-5 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-white">{submission.title}</h2>
-            <p className="text-sm text-gray-500 mt-1">{submission.referenceNumber}</p>
+            <h2 className="text-lg font-bold text-slate-900">{submission.title}</h2>
+            <p className="text-sm text-slate-600 mt-1">{submission.referenceNumber}</p>
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-navy-light/20 rounded transition-colors">
-            <X className="w-5 h-5 text-gray-400 hover:text-white" />
+          <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded transition-colors">
+            <X className="w-5 h-5 text-slate-400 hover:text-slate-600" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-6 bg-gradient-to-b from-slate-50 to-white">
           {/* 1. WORKFLOW STEPS */}
           {expandLoading ? (
             <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-6 h-6 text-amber-600 animate-spin" />
-              <span className="text-sm text-gray-400 ml-3">Loading workflow steps...</span>
+              <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
+              <span className="text-sm text-slate-600 ml-3">Loading workflow steps...</span>
             </div>
           ) : expandedTasks.length === 0 ? (
-            <span className="text-xs text-gray-500 italic">No workflow steps found</span>
+            <span className="text-xs text-slate-500 italic">No workflow steps found</span>
           ) : (
             <div className="w-full">
-              <p className="text-xs uppercase tracking-widest text-gray-400 font-semibold mb-5">Workflow Steps</p>
+              <p className="text-xs uppercase tracking-widest text-slate-700 font-semibold mb-5">Workflow Steps</p>
               <div className="space-y-0">
                 {expandedTasks.map((task, idx) => {
                   const isCompleted = task.status === 'COMPLETED';
@@ -146,7 +146,7 @@ export default function WorkflowDetailsModal({
                           <div className="flex items-center gap-3 flex-wrap">
                             <span
                               className={`text-base font-semibold transition-colors ${
-                                isCompleted ? 'text-gray-500' : isActive ? 'text-white' : 'text-gray-400'
+                                isCompleted ? 'text-slate-600' : isActive ? 'text-slate-900' : 'text-slate-500'
                               }`}
                             >
                               {task.name}
@@ -154,10 +154,10 @@ export default function WorkflowDetailsModal({
                             <span
                               className={`text-xs px-2.5 py-1 rounded-lg font-medium border transition-colors ${
                                 task.type === 'workflow_approval'
-                                  ? 'bg-teal-600/20 text-teal-300 border-teal-600/40'
+                                  ? 'bg-indigo-100 text-indigo-700 border-indigo-200'
                                   : task.type === 'workflow_assign_form'
-                                  ? 'bg-blue-600/20 text-blue-300 border-blue-600/40'
-                                  : 'bg-amber-600/20 text-amber-300 border-amber-600/40'
+                                  ? 'bg-cyan-100 text-cyan-700 border-cyan-200'
+                                  : 'bg-amber-100 text-amber-700 border-amber-200'
                               }`}
                             >
                               {typeBadge}
@@ -174,21 +174,21 @@ export default function WorkflowDetailsModal({
                         <div className="flex items-center gap-2 flex-shrink-0 ml-5 flex-wrap justify-end">
                           {isCompleted ? (
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="px-3 py-1.5 rounded-lg bg-emerald-600/20 text-emerald-400 text-xs font-semibold flex items-center gap-1.5 border border-emerald-600/40 hover:bg-emerald-600/30 transition-colors">
+                              <span className="px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-700 text-xs font-semibold flex items-center gap-1.5 border border-emerald-200 hover:bg-emerald-200 transition-colors">
                                 <CheckCircle2 className="w-3.5 h-3.5" /> Completed
                               </span>
                               {task.type === 'workflow_approval' && (
                                 <button
                                   onClick={() => handleViewSignature(task)}
                                   title="View Signature"
-                                  className="px-3 py-1.5 rounded-lg bg-teal-600/20 text-teal-400 hover:bg-teal-600/30 text-xs font-semibold flex items-center gap-1 border border-teal-600/40 transition-colors cursor-pointer"
+                                  className="px-3 py-1.5 rounded-lg bg-cyan-100 text-cyan-700 hover:bg-cyan-200 text-xs font-semibold flex items-center gap-1 border border-cyan-200 transition-colors cursor-pointer"
                                 >
                                   <Eye className="w-3.5 h-3.5" /> <span className="hidden sm:inline">View Sig</span>
                                 </button>
                               )}
                             </div>
                           ) : isPending ? (
-                            <span className="px-3 py-1.5 rounded-lg bg-gray-600/20 text-gray-400 text-xs font-semibold flex items-center gap-1.5 border border-gray-600/30">
+                            <span className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-semibold flex items-center gap-1.5 border border-slate-200">
                               <Clock className="w-3.5 h-3.5" /> Waiting
                             </span>
                           ) : isActive && task.type === 'workflow_approval' ? (
@@ -248,14 +248,14 @@ export default function WorkflowDetailsModal({
                                     <button
                                       onClick={() => onTaskApprove?.(submission.id)}
                                       disabled={taskActionLoading === submission.id}
-                                      className="px-3.5 py-1.5 rounded-lg bg-emerald-600/25 text-emerald-400 hover:bg-emerald-600/35 disabled:opacity-50 text-xs font-semibold flex items-center gap-1.5 border border-emerald-600/40 transition-colors cursor-pointer"
+                                      className="px-3.5 py-1.5 rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 disabled:opacity-50 text-xs font-semibold flex items-center gap-1.5 border border-emerald-200 transition-colors cursor-pointer"
                                     >
                                       <CheckCircle2 className="w-3.5 h-3.5" /> Approve
                                     </button>
                                     <button
                                       onClick={() => onSetTaskRejecting?.(task.taskId || '')}
                                       disabled={taskActionLoading === submission.id}
-                                      className="px-3.5 py-1.5 rounded-lg bg-red-600/25 text-red-400 hover:bg-red-600/35 disabled:opacity-50 text-xs font-semibold flex items-center gap-1.5 border border-red-600/40 transition-colors cursor-pointer"
+                                      className="px-3.5 py-1.5 rounded-lg bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50 text-xs font-semibold flex items-center gap-1.5 border border-red-200 transition-colors cursor-pointer"
                                     >
                                       <XCircle className="w-3.5 h-3.5" /> Reject
                                     </button>
@@ -263,7 +263,7 @@ export default function WorkflowDetailsModal({
                                 )}
                               </div>
                             ) : (
-                              <span className="px-3 py-1.5 rounded-lg bg-gray-600/20 text-gray-500 text-xs font-semibold flex items-center gap-1.5 border border-gray-600/30">
+                              <span className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-semibold flex items-center gap-1.5 border border-slate-200">
                                 <Lock className="w-3.5 h-3.5" /> Not assigned
                               </span>
                             )
@@ -272,12 +272,12 @@ export default function WorkflowDetailsModal({
                               <button
                                 onClick={() => onOpenTaskLink?.(task)}
                                 disabled={!task.accessLink}
-                                className="px-3.5 py-1.5 rounded-lg bg-amber-600/25 text-amber-400 hover:bg-amber-600/35 disabled:opacity-50 text-xs font-semibold flex items-center gap-1.5 border border-amber-600/40 transition-colors cursor-pointer"
+                                className="px-3.5 py-1.5 rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200 disabled:opacity-50 text-xs font-semibold flex items-center gap-1.5 border border-amber-200 transition-colors cursor-pointer"
                               >
                                 <ClipboardList className="w-3.5 h-3.5" /> View Task
                               </button>
                             ) : (
-                              <span className="px-3 py-1.5 rounded-lg bg-gray-600/20 text-gray-500 text-xs font-semibold flex items-center gap-1.5 border border-gray-600/30">
+                              <span className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-semibold flex items-center gap-1.5 border border-slate-200">
                                 <Lock className="w-3.5 h-3.5" /> Not assigned
                               </span>
                             )
@@ -286,12 +286,12 @@ export default function WorkflowDetailsModal({
                               <button
                                 onClick={() => onOpenTaskLink?.(task)}
                                 disabled={!task.accessLink}
-                                className="px-3.5 py-1.5 rounded-lg bg-blue-600/25 text-blue-400 hover:bg-blue-600/35 disabled:opacity-50 text-xs font-semibold flex items-center gap-1.5 border border-blue-600/40 transition-colors cursor-pointer"
+                                className="px-3.5 py-1.5 rounded-lg bg-cyan-100 text-cyan-700 hover:bg-cyan-200 disabled:opacity-50 text-xs font-semibold flex items-center gap-1.5 border border-cyan-200 transition-colors cursor-pointer"
                               >
                                 <FileEdit className="w-3.5 h-3.5" /> Complete Form
                               </button>
                             ) : (
-                              <span className="px-3 py-1.5 rounded-lg bg-gray-600/20 text-gray-500 text-xs font-semibold flex items-center gap-1.5 border border-gray-600/30">
+                              <span className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-semibold flex items-center gap-1.5 border border-slate-200">
                                 <Lock className="w-3.5 h-3.5" /> Not assigned
                               </span>
                             )

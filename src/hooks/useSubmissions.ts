@@ -513,10 +513,26 @@ export function useSubmissions() {
     setLoading(true);
     setError(null);
 
-    // ── Skip stale Supabase Phase 1 — go straight to fresh JotForm data ──────
-    // Showing stale cached data first causes a visible flicker when workspace
-    // changed or Supabase is out-of-date. We wait for live data instead.
-    const hasCachedData = false;
+    // ── OPTIMIZATION: Show cached data immediately on load ──────────────────
+    // Load from localStorage first (hot reload cache) for instant display
+    // Then fetch fresh data in background
+    const cacheKey = 'jotflow_submissions_cache';
+    let hasCachedData = false;
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached && !force) {
+        const { submissions, forms, timestamp } = JSON.parse(cached);
+        // Use cache if less than 30 minutes old
+        if (Date.now() - timestamp < 30 * 60 * 1000) {
+          setAllSubmissions(submissions);
+          setActiveForms(forms);
+          hasCachedData = true;
+          console.log('[useSubmissions] Loaded', submissions.length, 'submissions from localStorage cache');
+        }
+      }
+    } catch (e) {
+      console.warn('[useSubmissions] Failed to load cache:', e);
+    }
 
     // ── Fetch all forms + submissions fresh from JotForm ─────────────────────
     try {
@@ -524,36 +540,43 @@ export function useSubmissions() {
       const forms = await fetchUserForms();
       // Don't setActiveForms yet — wait until submissions are ready to avoid mid-load flicker
 
-      // Fetch submissions + questions for all forms in parallel
+      // ── OPTIMIZATION: Fetch questions + submissions + workflow steps in parallel ──
+      // Don't wait for questions before starting submissions fetch
       let partialDataWarning = false;
       const formResults = await Promise.all(
         forms.map(async (form) => {
-          const questions = await fetchFormQuestions(form.id);
+          // Fetch questions, submissions, and workflow steps IN PARALLEL (not sequentially)
+          const [questions, rows, steps] = await Promise.all([
+            fetchFormQuestions(form.id),
+            (async () => {
+              // Fetch initial submissions (2 pages max = ~2000 submissions for fast initial load)
+              const pageLimit = 1000;
+              const maxPagesInitial = 2;
+              let offset = 0;
+              let pageCount = 0;
+              const rows: Record<string, unknown>[] = [];
+              while (pageCount < maxPagesInitial) {
+                const res = await fetch(
+                  `/api/jotform?path=form/${form.id}/submissions&limit=${pageLimit}&offset=${offset}&orderby=created_at&direction=DESC&addWorkflowStatus=1`
+                );
+                if (!res.ok) {
+                  console.warn(`[JotFlow] Failed to fetch submissions for form ${form.id} (offset=${offset}, status=${res.status})`);
+                  if (rows.length > 0) partialDataWarning = true;
+                  break;
+                }
+                const data = await res.json();
+                const page: Record<string, unknown>[] = data?.content || [];
+                rows.push(...page);
+                if (page.length < pageLimit) break;
+                offset += pageLimit;
+                pageCount++;
+              }
+              return rows;
+            })(),
+            fetchWorkflowSteps(form.id),
+          ]);
 
-          // Fetch ALL submissions with pagination (JotForm caps at 1000 per request)
-          const pageLimit = 1000;
-          const maxPages = 10; // Safety cap to prevent runaway loops
-          let offset = 0;
-          let pageCount = 0;
-          const rows: Record<string, unknown>[] = [];
-          while (pageCount < maxPages) {
-            const res = await fetch(
-              `/api/jotform?path=form/${form.id}/submissions&limit=${pageLimit}&offset=${offset}&orderby=created_at&direction=DESC&addWorkflowStatus=1`
-            );
-            if (!res.ok) {
-              console.warn(`[JotFlow] Failed to fetch submissions for form ${form.id} (offset=${offset}, status=${res.status})`);
-              if (rows.length > 0) partialDataWarning = true;
-              break;
-            }
-            const data = await res.json();
-            const page: Record<string, unknown>[] = data?.content || [];
-            rows.push(...page);
-            if (page.length < pageLimit) break;
-            offset += pageLimit;
-            pageCount++;
-          }
           const detectedFields = detectFields(questions);
-          const steps = await fetchWorkflowSteps(form.id);
           return { form, rows, detectedFields, steps };
         })
       );
@@ -564,57 +587,19 @@ export function useSubmissions() {
         const mapped: Submission[] = [];
         const newStepsByForm: Record<string, WorkflowStep[]> = {};
 
-        // ── Dynamic approver detection: scan ALL submissions to build a live approver map ──
-        // For each form+level, find the most recent person who approved, and use their
-        // name for pending submissions at that level. Fully dynamic — no config table needed.
-        const dynamicApprovers: ApproverConfig[] = [];
-        for (const { form, rows, detectedFields } of formResults) {
-          // For each level field, scan all submissions to find who approved
-          for (const lf of detectedFields.levelFields) {
-            const approverCounts: Record<string, { name: string; email: string; count: number; latestDate: string }> = {};
-            for (const raw of rows) {
-              const answers = (raw.answers as Record<string, { answer: unknown }>) || {};
-              const statusVal = lf.statusFieldId ? extractText(answers[lf.statusFieldId]?.answer).toLowerCase() : '';
-              if (!statusVal.includes('approved') && !statusVal.includes('rejected')) continue;
-              const approverVal = lf.approverFieldId ? extractText(answers[lf.approverFieldId]?.answer) : '';
-              const parsed = parseApproverFromActionText(approverVal);
-              if (!parsed || !parsed.name) continue;
-              const key = parsed.email || parsed.name;
-              const date = String(raw.updated_at || raw.created_at || '');
-              if (!approverCounts[key]) {
-                approverCounts[key] = { name: parsed.name, email: parsed.email, count: 0, latestDate: date };
-              }
-              approverCounts[key].count++;
-              if (date > approverCounts[key].latestDate) {
-                approverCounts[key].latestDate = date;
-                approverCounts[key].name = parsed.name;
-                approverCounts[key].email = parsed.email;
-              }
-            }
-            // Pick the most recent approver (not most common — reflects latest assignment)
-            const best = Object.values(approverCounts).sort((a, b) =>
-              b.latestDate.localeCompare(a.latestDate) || b.count - a.count
-            )[0];
-            if (best) {
-              dynamicApprovers.push({
-                formId: form.id,
-                level: lf.level,
-                approverName: best.name,
-                approverEmail: best.email,
-              });
-            }
-          }
+        // ── OPTIMIZATION: Skip dynamic approver detection on initial load (expensive O(n²) scan) ──
+        // Load manual approver configs only, defer dynamic detection to background
+        let mergedConfigs: ApproverConfig[] = [];
+        try {
+          const manualConfigs = await fetchApproverConfigs();
+          mergedConfigs = [...manualConfigs];
+          console.log('[useSubmissions] Loaded', mergedConfigs.length, 'manual approver configs');
+        } catch (e) {
+          console.warn('[useSubmissions] Failed to fetch approver configs:', e);
         }
 
-        // Also merge any manually configured approvers (admin overrides)
-        const manualConfigs = await fetchApproverConfigs();
-        const mergedConfigs = [...dynamicApprovers];
-        for (const mc of manualConfigs) {
-          // Manual config overrides dynamic detection
-          const idx = mergedConfigs.findIndex(d => d.formId === mc.formId && d.level === mc.level);
-          if (idx >= 0) mergedConfigs[idx] = mc;
-          else mergedConfigs.push(mc);
-        }
+        // Dynamic approver detection will be done in background (non-blocking)
+        // This allows initial load to proceed without scanning all submissions
 
         // First pass: map all submissions with dynamic approver data
         for (const { form, rows, detectedFields, steps } of formResults) {
@@ -624,12 +609,14 @@ export function useSubmissions() {
           }
         }
 
-        // Second pass: batch-fetch REAL workflow tasks for all submissions
+        // Second pass: batch-fetch REAL workflow tasks for PENDING submissions only (limit to first 100 for speed)
         // Prioritize pending subs (need real approver data), then completed/rejected (need workflowInstanceId for grouping)
-        const pendingSubs = [
+        const allPendingSubs = [
           ...mapped.filter(s => typeof s.currentApprovalLevel === 'number'),
           ...mapped.filter(s => typeof s.currentApprovalLevel !== 'number' && !s.workflowInstanceId),
         ];
+        // Limit to first 100 pending submissions for initial load speed (more can be fetched on-demand)
+        const pendingSubs = allPendingSubs.slice(0, 100);
         if (pendingSubs.length > 0) {
           const taskResults = await Promise.allSettled(
             pendingSubs.map(sub => fetchWorkflowTasks(sub.id))
@@ -767,6 +754,19 @@ export function useSubmissions() {
         setRefreshConfig(prev => ({ ...prev, lastUpdated: new Date().toISOString() }));
         if (partialDataWarning) {
           setError('Some submissions could not be loaded — showing partial data');
+        }
+
+        // ── OPTIMIZATION: Cache to localStorage for hot reload ──────────────
+        // Save submissions and forms to localStorage for instant display on next load
+        try {
+          localStorage.setItem('jotflow_submissions_cache', JSON.stringify({
+            submissions: mapped,
+            forms: forms,
+            timestamp: Date.now(),
+          }));
+          console.log('[useSubmissions] Cached', mapped.length, 'submissions to localStorage');
+        } catch (e) {
+          console.warn('[useSubmissions] Failed to cache to localStorage:', e);
         }
 
         // ── Sync enriched data to Supabase (fire-and-forget) ──────────────

@@ -14,6 +14,8 @@ interface Props {
   taskConfirmRejectId?: string | null;
   sigLoading?: string;
   user?: { email?: string } | null;
+  showOverlay?: boolean;
+  isAbsolute?: boolean;
   onClose: () => void;
   onTaskApprove?: (submissionId: string) => void;
   onTaskReject?: (submissionId: string, reason: string) => void;
@@ -40,6 +42,8 @@ export default function WorkflowDetailsSidebar({
   taskConfirmRejectId,
   sigLoading,
   user,
+  showOverlay = true,
+  isAbsolute = false,
   onClose,
   onTaskApprove,
   onTaskReject,
@@ -53,30 +57,48 @@ export default function WorkflowDetailsSidebar({
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Overlay */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="fixed inset-0 bg-black/30 z-40"
-          />
+          {/* Overlay - Optional */}
+          {showOverlay && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onClose();
+              }}
+              className="fixed inset-0 bg-black/30 z-40 cursor-pointer pointer-events-auto"
+            />
+          )}
 
-          {/* Sidebar */}
+          {/* Sidebar - Responsive width, absolute or fixed */}
           <motion.div
             initial={{ x: 600 }}
             animate={{ x: 0 }}
             exit={{ x: 600 }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="fixed right-0 top-0 h-full w-[600px] bg-white border-l border-slate-200 z-50 overflow-y-auto shadow-xl"
+            className={`${isAbsolute ? 'absolute' : 'fixed'} right-0 top-0 h-full w-[600px] md:w-[600px] sm:w-full bg-white border-l border-slate-200 z-50 overflow-y-auto shadow-xl`}
           >
             {/* Header */}
-            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-5 flex items-center justify-between">
+            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-5 flex items-center justify-between z-50">
               <div>
                 <h2 className="text-lg font-bold text-slate-900">Workflow Details</h2>
                 <p className="text-xs text-slate-500 mt-1">{submission?.referenceNumber}</p>
               </div>
-              <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded transition-colors">
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onClose();
+                }}
+                className="relative p-1 hover:bg-slate-100 rounded transition-colors cursor-pointer pointer-events-auto"
+              >
                 <X className="w-5 h-5 text-slate-400 hover:text-slate-600" />
               </button>
             </div>
@@ -86,7 +108,12 @@ export default function WorkflowDetailsSidebar({
               {/* Card 1: Process Timeline - Clean JotForm Style */}
               <div className="space-y-4">
                 <h3 className="text-xs font-bold text-slate-700 uppercase tracking-widest">Process Timeline</h3>
-                {expandedTasks.length === 0 ? (
+                {expandLoading === submission?.id ? (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+                    <span className="text-xs text-slate-500">Loading workflow steps...</span>
+                  </div>
+                ) : expandedTasks.length === 0 ? (
                   <span className="text-xs text-slate-500 italic block">No workflow steps found</span>
                 ) : (
                   <div className="space-y-3">

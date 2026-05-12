@@ -22,12 +22,13 @@ export interface WorkflowTask {
 }
 
 /**
- * GET /api/workflow-tasks?submissionId=12345
+ * GET /api/workflow-tasks?submissionId=12345&workflowInstanceId=xyz
  *
- * Two-step approach (v2):
- * 1. Fetch submission with addWorkflowStatus=1 → get workflowInstanceID
- * 2. Fetch /workflow/instance/{instanceId} → get full taskList
- * 3. Return normalized tasks (filtering out initial Form submission step)
+ * Optimized approach:
+ * 1. If workflowInstanceId provided, skip submission fetch (pre-fetched on frontend)
+ * 2. If not provided, fetch submission with addWorkflowStatus=1 → get workflowInstanceID
+ * 3. Fetch /workflow/instance/{instanceId} → get full taskList
+ * 4. Return normalized tasks (filtering out initial Form submission step)
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
@@ -42,61 +43,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const submissionId = req.query.submissionId as string;
+  const providedWorkflowId = req.query.workflowInstanceId as string | undefined;
   if (!submissionId) {
     return res.status(400).json({ error: 'submissionId query parameter is required' });
   }
 
   try {
-    // Step 1: Fetch submission with workflow status to get workflowInstanceID
-    const submissionUrl = `${JOTFORM_BASE}/submission/${submissionId}?apiKey=${API_KEY}&teamID=${TEAM_ID}&addWorkflowStatus=1`;
-    const submissionRes = await fetch(submissionUrl);
-    if (!submissionRes.ok) {
-      throw new Error(`JotForm submission API error: ${submissionRes.status}`);
-    }
-    const submissionData = await submissionRes.json();
-    const content = submissionData?.content || submissionData;
-    let workflowInstanceID = content?.workflowInstanceID || content?.workflow_instance_id;
+    let workflowInstanceID = providedWorkflowId;
 
-    // Fallback: if no workflowInstanceID, try to find it from other form submissions in the workflow
+    // Skip submission fetch if workflowInstanceId already provided (pre-fetched on frontend)
     if (!workflowInstanceID) {
-      console.log(`[workflow-tasks] No workflowInstanceID for submission ${submissionId}, trying smart fallback...`);
-      try {
-        // Get current submission's form ID
-        const currentFormId = content?.formID || content?.form_id;
-
-        // Fetch recent user submissions with workflow status
-        const allSubsUrl = `${JOTFORM_BASE}/user/submissions?apiKey=${API_KEY}&teamID=${TEAM_ID}&addWorkflowStatus=1&limit=200`;
-        const allSubsRes = await fetch(allSubsUrl);
-        if (allSubsRes.ok) {
-          const allSubsData = await allSubsRes.json();
-          const allSubs = Array.isArray(allSubsData?.content) ? allSubsData.content : [];
-
-          // Sort by timestamp (newest first) to find most recent workflow
-          const sorted = allSubs.sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
-            const aTime = new Date(String(a.timestamp || 0)).getTime();
-            const bTime = new Date(String(b.timestamp || 0)).getTime();
-            return bTime - aTime;
-          });
-
-          // Find the most recent submission with a workflowInstanceID
-          // Prioritize submissions from the same form or nearby timestamps
-          const recentWithWf = sorted.find((s: Record<string, unknown>) => {
-            const wfId = s.workflowInstanceID || s.workflow_instance_id;
-            return !!wfId;
-          });
-
-          if (recentWithWf) {
-            workflowInstanceID = recentWithWf.workflowInstanceID || recentWithWf.workflow_instance_id;
-            console.log(`[workflow-tasks] Found workflowInstanceID via smart fallback: ${workflowInstanceID} from recent submission with wfId`);
-          }
-        }
-      } catch (e) {
-        console.error(`[workflow-tasks] Smart fallback failed:`, e);
+      console.log(`[workflow-tasks] Fetching submission ${submissionId} to get workflowInstanceID...`);
+      // Step 1: Fetch submission with workflow status to get workflowInstanceID
+      const submissionUrl = `${JOTFORM_BASE}/submission/${submissionId}?apiKey=${API_KEY}&teamID=${TEAM_ID}&addWorkflowStatus=1`;
+      const submissionRes = await fetch(submissionUrl);
+      if (!submissionRes.ok) {
+        throw new Error(`JotForm submission API error: ${submissionRes.status}`);
       }
+      const submissionData = await submissionRes.json();
+      const content = submissionData?.content || submissionData;
+      workflowInstanceID = content?.workflowInstanceID || content?.workflow_instance_id;
     }
 
     if (!workflowInstanceID) {
       // No workflow instance — return empty tasks
+      console.log(`[workflow-tasks] No workflowInstanceID found for submission ${submissionId}`);
       return res.status(200).json({ tasks: [] });
     }
 
@@ -164,111 +135,96 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return { name, type, status, assigneeName, assigneeEmail, level: index + 1, updatedAt, taskId, internalFormID, accessLink, submittedBy, submittedByEmail };
     });
 
-    // Step 3: Fetch form submission data for completed child tasks with internalFormID
-    // Log all task types for debugging
-    console.log('[workflow-tasks] All task types:', tasks.map(t => ({ name: t.name, type: t.type, status: t.status, internalFormID: t.internalFormID })));
+    // Step 3: Return workflow tasks immediately (form data will be fetched in background if needed)
+    console.log('[workflow-tasks] Returning', tasks.length, 'workflow tasks (form data is optional/deferred)');
 
-    // Broaden type filter: match known types + any type containing "form" or "task" (case-insensitive)
-    const isFormTaskType = (type: string) => {
-      const lower = type.toLowerCase();
-      return lower === 'workflow_assign_task' || lower === 'workflow_assign_form' ||
-             lower.includes('form') || lower.includes('task');
-    };
-    const completedFormTasks = tasks.filter(
-      t => isFormTaskType(t.type) && t.status === 'COMPLETED' && t.internalFormID
-    );
-    console.log('[workflow-tasks] Completed form tasks:', completedFormTasks.map(t => ({ name: t.name, type: t.type, internalFormID: t.internalFormID, email: t.submittedByEmail || t.assigneeEmail })));
-    const uniqueFormIDs = [...new Set(completedFormTasks.map(t => t.internalFormID))];
-
-    // Fetch submissions for each unique form ID in parallel
-    console.log('[workflow-tasks] Fetching submissions for form IDs:', uniqueFormIDs);
-    const formSubmissionsMap = new Map<string, Array<Record<string, unknown>>>();
-    await Promise.all(
-      uniqueFormIDs.map(async (formID) => {
+    // Optionally fetch form data in background (non-blocking) if requested
+    if (req.query.includeForms === 'true') {
+      // This is a non-blocking fetch - don't await it
+      (async () => {
         try {
-          const subUrl = `${JOTFORM_BASE}/form/${formID}/submissions?apiKey=${API_KEY}&teamID=${TEAM_ID}`;
-          const subRes = await fetch(subUrl);
-          console.log(`[workflow-tasks] Form ${formID} submissions response: status=${subRes.status}`);
-          if (subRes.ok) {
-            const subData = await subRes.json();
-            const submissions = Array.isArray(subData?.content) ? subData.content : [];
-            console.log(`[workflow-tasks] Form ${formID}: ${submissions.length} submissions found`);
-            formSubmissionsMap.set(formID, submissions);
-          } else {
-            const errText = await subRes.text().catch(() => '');
-            console.error(`[workflow-tasks] Form ${formID} submissions failed: ${subRes.status} ${errText.substring(0, 200)}`);
+          console.log('[workflow-tasks] Starting background form data fetch...');
+          const isFormTaskType = (type: string) => {
+            const lower = type.toLowerCase();
+            return lower === 'workflow_assign_task' || lower === 'workflow_assign_form' ||
+                   lower.includes('form') || lower.includes('task');
+          };
+          const completedFormTasks = tasks.filter(
+            t => isFormTaskType(t.type) && t.status === 'COMPLETED' && t.internalFormID
+          );
+          const uniqueFormIDs = [...new Set(completedFormTasks.map(t => t.internalFormID))];
+
+          const formSubmissionsMap = new Map<string, Array<Record<string, unknown>>>();
+          await Promise.all(
+            uniqueFormIDs.map(async (formID) => {
+              try {
+                const subUrl = `${JOTFORM_BASE}/form/${formID}/submissions?apiKey=${API_KEY}&teamID=${TEAM_ID}&limit=50`;
+                const subRes = await fetch(subUrl);
+                if (subRes.ok) {
+                  const subData = await subRes.json();
+                  const submissions = Array.isArray(subData?.content) ? subData.content : [];
+                  formSubmissionsMap.set(formID, submissions);
+                }
+              } catch (e) {
+                console.error(`[workflow-tasks] Background: Failed to fetch form ${formID}:`, e);
+              }
+            })
+          );
+
+          for (const task of tasks) {
+            if (!isFormTaskType(task.type) || task.status !== 'COMPLETED' || !task.internalFormID) continue;
+            const submissions = formSubmissionsMap.get(task.internalFormID);
+            if (!submissions || submissions.length === 0) continue;
+
+            let matched: Record<string, unknown>;
+            if (submissions.length === 1) {
+              matched = submissions[0];
+            } else {
+              const matchEmail = (task.submittedByEmail || task.assigneeEmail || '').toLowerCase();
+              const emailMatch = submissions.find((s: Record<string, unknown>) => {
+                const answers = s.answers as Record<string, Record<string, unknown>> | undefined;
+                const createdBy = String(s.created_by || '').toLowerCase();
+                if (matchEmail && createdBy === matchEmail) return true;
+                const sEmail = String((s as Record<string, unknown>).email || '').toLowerCase();
+                if (matchEmail && sEmail && sEmail === matchEmail) return true;
+                if (!answers) return false;
+                for (const ans of Object.values(answers)) {
+                  if (ans.type === 'control_email' && String(ans.answer || '').toLowerCase() === matchEmail) return true;
+                }
+                return false;
+              });
+              matched = emailMatch || submissions[0];
+            }
+
+            const answers = (matched as Record<string, unknown>).answers as Record<string, Record<string, unknown>> | undefined;
+            if (!answers) continue;
+
+            const formData: Record<string, { label: string; value: string }> = {};
+            for (const [qid, ans] of Object.entries(answers)) {
+              const label = String(ans.text || ans.name || '');
+              let value = '';
+              if (ans.answer != null) {
+                if (typeof ans.answer === 'object' && !Array.isArray(ans.answer)) {
+                  value = Object.values(ans.answer as Record<string, string>).filter(Boolean).join(' ');
+                } else if (Array.isArray(ans.answer)) {
+                  value = ans.answer.join(', ');
+                } else {
+                  value = String(ans.answer);
+                }
+              }
+              if (label && value) {
+                formData[qid] = { label, value };
+              }
+            }
+            if (Object.keys(formData).length > 0) {
+              task.formData = formData;
+            }
           }
+          console.log('[workflow-tasks] Background form data fetch completed');
         } catch (e) {
-          console.error(`[workflow-tasks] Failed to fetch submissions for form ${formID}:`, e);
+          console.error('[workflow-tasks] Background form data fetch failed:', e);
         }
-      })
-    );
-
-    // Match submissions to tasks by assigneeEmail and extract answers
-    for (const task of tasks) {
-      if (!isFormTaskType(task.type) || task.status !== 'COMPLETED' || !task.internalFormID) continue;
-      const submissions = formSubmissionsMap.get(task.internalFormID);
-      if (!submissions || submissions.length === 0) {
-        console.log(`[workflow-tasks] No submissions found for task "${task.name}" (formID=${task.internalFormID})`);
-        continue;
-      }
-
-      // If only one submission exists, use it directly — no need for email matching
-      let matched: Record<string, unknown>;
-      if (submissions.length === 1) {
-        matched = submissions[0];
-        console.log(`[workflow-tasks] Task "${task.name}": single submission, using it directly`);
-      } else {
-        // Find submission matching assignee email
-        const matchEmail = (task.submittedByEmail || task.assigneeEmail || '').toLowerCase();
-        console.log(`[workflow-tasks] Task "${task.name}": matching email="${matchEmail}" across ${submissions.length} submissions`);
-        const emailMatch = submissions.find((s: Record<string, unknown>) => {
-          const answers = s.answers as Record<string, Record<string, unknown>> | undefined;
-          // Check created_by field
-          const createdBy = String(s.created_by || '').toLowerCase();
-          if (matchEmail && createdBy === matchEmail) return true;
-          // Check top-level email if present
-          const sEmail = String((s as Record<string, unknown>).email || '').toLowerCase();
-          if (matchEmail && sEmail && sEmail === matchEmail) return true;
-          if (!answers) return false;
-          // Check any email-type answer field
-          for (const ans of Object.values(answers)) {
-            if (ans.type === 'control_email' && String(ans.answer || '').toLowerCase() === matchEmail) return true;
-          }
-          return false;
-        });
-        matched = emailMatch || submissions[0]; // fallback to first submission
-        console.log(`[workflow-tasks] Task "${task.name}": email match ${emailMatch ? 'found' : 'NOT found, using fallback'}`);
-      }
-
-      const answers = (matched as Record<string, unknown>).answers as Record<string, Record<string, unknown>> | undefined;
-      if (!answers) continue;
-
-      const formData: Record<string, { label: string; value: string }> = {};
-      for (const [qid, ans] of Object.entries(answers)) {
-        const label = String(ans.text || ans.name || '');
-        let value = '';
-        if (ans.answer != null) {
-          if (typeof ans.answer === 'object' && !Array.isArray(ans.answer)) {
-            // JotForm name/address fields return { first, last, ... }
-            value = Object.values(ans.answer as Record<string, string>).filter(Boolean).join(' ');
-          } else if (Array.isArray(ans.answer)) {
-            value = ans.answer.join(', ');
-          } else {
-            value = String(ans.answer);
-          }
-        }
-        if (label && value) {
-          formData[qid] = { label, value };
-        }
-      }
-      if (Object.keys(formData).length > 0) {
-        task.formData = formData;
-      }
-      const createdAt = String(matched.created_at || matched.timestamp || '');
-      if (createdAt) {
-        task.submissionDate = createdAt;
-      }
+      })();
     }
 
     return res.status(200).json({ tasks, workflowInstanceId: workflowInstanceID });

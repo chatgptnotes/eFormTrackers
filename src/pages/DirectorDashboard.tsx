@@ -238,6 +238,7 @@ export default function DirectorDashboard({ data }: Props) {
   const rowsPerPage = 10;
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
   const [expandedTasks, setExpandedTasks] = useState<WorkflowTask[]>([]);
+  const [workflowCache, setWorkflowCache] = useState<Map<string, WorkflowTask[]>>(new Map());
   const [expandLoading, setExpandLoading] = useState<string | null>(null);
   const [workflowModalSubmission, setWorkflowModalSubmission] = useState<Submission | null>(null);
   const [workflowSidebarSubmission, setWorkflowSidebarSubmission] = useState<Submission | null>(null);
@@ -290,6 +291,62 @@ export default function DirectorDashboard({ data }: Props) {
       }
     } catch { /* ignore */ }
   };
+
+  const openSidebarWithTasks = async (sub: Submission) => {
+    setWorkflowSidebarSubmission(sub);
+
+    // Check if already cached
+    if (workflowCache.has(sub.id)) {
+      setExpandedTasks(workflowCache.get(sub.id) || []);
+      return;
+    }
+
+    setExpandLoading(sub.id);
+    try {
+      // Pass workflowInstanceId to skip slow submission fetch in API
+      const url = `/api/workflow-tasks?submissionId=${sub.id}${sub.workflowInstanceId ? `&workflowInstanceId=${sub.workflowInstanceId}` : ''}`;
+      const res = await fetch(url);
+      if (!res.ok) { setExpandLoading(null); return; }
+      const json = await res.json();
+      const tasks = json.tasks || [];
+      setExpandedTasks(tasks);
+      setWorkflowCache(prev => new Map(prev).set(sub.id, tasks));
+    } catch {
+      setExpandedTasks([]);
+    } finally {
+      setExpandLoading(null);
+    }
+  };
+
+  // Pre-fetch workflows - Build cache
+  const preFetchWorkflows = useCallback(async (submissions: Submission[]) => {
+    if (submissions.length === 0) return;
+
+    // Fetch all workflows in parallel
+    const promises = submissions.map(async (sub) => {
+      try {
+        // Pass workflowInstanceId to skip slow submission fetch in API
+        const url = `/api/workflow-tasks?submissionId=${sub.id}${sub.workflowInstanceId ? `&workflowInstanceId=${sub.workflowInstanceId}` : ''}`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const json = await res.json();
+          const tasks = json.tasks || [];
+
+          setWorkflowCache(prevCache => {
+            if (prevCache.has(sub.id)) return prevCache; // Already cached
+            const newCache = new Map(prevCache);
+            newCache.set(sub.id, tasks);
+            return newCache;
+          });
+        }
+      } catch (err) {
+        console.warn(`Failed to pre-fetch ${sub.id}:`, err);
+      }
+    });
+
+    // Wait for all to complete
+    await Promise.all(promises);
+  }, []);
 
   const openWorkflowModal = async (sub: Submission) => {
     setWorkflowModalSubmission(sub);
@@ -664,6 +721,13 @@ export default function DirectorDashboard({ data }: Props) {
     (safeCurrentPage - 1) * rowsPerPage,
     safeCurrentPage * rowsPerPage
   );
+
+  // Pre-fetch workflows for current page
+  useEffect(() => {
+    if (paginatedSubmissions.length > 0) {
+      preFetchWorkflows(paginatedSubmissions);
+    }
+  }, [safeCurrentPage]);
 
   // Stats
   const syncNeededCount = parentSubmissions.filter(s => s.needsSync).length;
@@ -1143,12 +1207,13 @@ export default function DirectorDashboard({ data }: Props) {
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 50, height: 0 }}
                     transition={{ duration: 0.3 }}
+                    onClick={() => openSidebarWithTasks(sub)}
                     className="border-b border-white/8 hover:bg-gold/5 transition-colors duration-200 cursor-pointer"
                   >
                     <td className="px-4 py-3.5 text-sm text-gray-400 font-mono">{(safeCurrentPage - 1) * rowsPerPage + idx + 1}</td>
                     <td className="px-4 py-3.5 hidden">
                       <div className="flex items-center gap-1.5">
-                        <button
+                        {/* <button
                           onClick={() => toggleRowExpand(sub)}
                           className="p-0.5 rounded hover:bg-navy-light/20 text-gray-500 hover:text-gold transition-colors flex-shrink-0"
                           title={expandedRowId === sub.id ? 'Collapse' : 'Show workflow steps'}
@@ -1156,16 +1221,16 @@ export default function DirectorDashboard({ data }: Props) {
                           {expandLoading === sub.id
                             ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                             : <ChevronRight className={`w-3.5 h-3.5 transition-transform ${expandedRowId === sub.id ? 'rotate-90' : ''}`} />}
-                        </button>
-                        <button
+                        </button> */}
+                        {/* <button
                           onClick={() => { toggleRowExpand(sub); setWorkflowModalSubmission(sub); }}
                           className="p-0.5 rounded hover:bg-navy-light/20 text-gray-500 hover:text-gold transition-colors flex-shrink-0"
                           title="View in modal"
                         >
                           <Eye className="w-3.5 h-3.5" />
-                        </button>
+                        </button> */}
                         <button
-                          onClick={() => openModal(sub)}
+                          onClick={(e) => { e.stopPropagation(); openModal(sub); }}
                           className="text-sm font-bold text-gold hover:underline bg-navy-light/20 rounded-md px-2 py-0.5 inline-block"
                         >
                           {sub.referenceNumber.split('-').pop()}
@@ -1174,7 +1239,7 @@ export default function DirectorDashboard({ data }: Props) {
                     </td>
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-1.5">
-                        <button
+                        {/* <button
                           onClick={() => toggleRowExpand(sub)}
                           className="p-0.5 rounded hover:bg-navy-light/20 text-gray-500 hover:text-gold transition-colors flex-shrink-0"
                           title={expandedRowId === sub.id ? 'Collapse' : 'Show workflow steps'}
@@ -1182,26 +1247,27 @@ export default function DirectorDashboard({ data }: Props) {
                           {expandLoading === sub.id
                             ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                             : <ChevronRight className={`w-3.5 h-3.5 transition-transform ${expandedRowId === sub.id ? 'rotate-90' : ''}`} />}
-                        </button>
-                        <button
+                        </button> */}
+                        {/* <button
                           onClick={() => { toggleRowExpand(sub); setWorkflowModalSubmission(sub); }}
                           className="p-0.5 rounded hover:bg-navy-light/20 text-gray-500 hover:text-gold transition-colors flex-shrink-0"
                           title="View in modal"
                         >
                           <Eye className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => { toggleRowExpand(sub); setWorkflowSidebarSubmission(sub); }}
+                        </button> */}
+                        {/* <button
+                          onClick={(e) => { e.stopPropagation(); openSidebarWithTasks(sub); }}
                           className="p-0.5 rounded hover:bg-navy-light/20 text-gray-500 hover:text-gold transition-colors flex-shrink-0"
                           title="View in sidebar"
                         >
                           <ChevronRight className="w-3.5 h-3.5 rotate-180" />
-                        </button>
+                        </button> */}
                         <div>
                           <a
                             href={`https://eforms.mediaoffice.ae/inbox/${sub.formId}/${sub.id}`}
                             target="_blank"
                             rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
                             className="text-sm text-white hover:text-gold hover:underline inline-flex items-center gap-1 group"
                           >
                             {sub.title}

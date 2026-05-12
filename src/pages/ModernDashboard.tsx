@@ -1,8 +1,9 @@
-import { useState, useMemo, useTransition, useDeferredValue, useCallback, memo } from 'react';
+import React, { useState, useMemo, useTransition, useDeferredValue, useCallback, memo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, Search, AlertCircle, CheckCircle2, Clock, Zap, ExternalLink, User, Calendar, FileText, Briefcase, Download, ArrowUpDown } from 'lucide-react';
 import SubmissionModal from '../components/SubmissionModal';
 import WorkflowDetailsModal from '../components/WorkflowDetailsModal';
+import WorkflowDetailsSidebar from '../components/WorkflowDetailsSidebar';
 import { Submission, WorkflowTask } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { exportToExcel } from '../services/exportService';
@@ -267,8 +268,10 @@ export default function ModernDashboard({ data }: Props) {
 
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
   const [workflowModalSubmission, setWorkflowModalSubmission] = useState<Submission | null>(null);
+  const [workflowSidebarSubmission, setWorkflowSidebarSubmission] = useState<Submission | null>(null);
   const [expandedTasks, setExpandedTasks] = useState<WorkflowTask[]>([]);
   const [workflowLoading, setWorkflowLoading] = useState(false);
+  const [workflowCache, setWorkflowCache] = useState<Map<string, WorkflowTask[]>>(new Map());
   const [viewSignature, setViewSignature] = useState<{ url: string; approver: string; level: number } | null>(null);
   const [sigLoading, setSigLoading] = useState<string | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState('');
@@ -343,23 +346,9 @@ export default function ModernDashboard({ data }: Props) {
     setSelectedSubmission(submission);
   }, []);
 
-  const handleOpenWorkflow = useCallback(async (submission: Submission) => {
-    setWorkflowModalSubmission(submission);
-    setWorkflowLoading(true);
-    try {
-      const res = await fetch(`/api/workflow-tasks?submissionId=${submission.id}`);
-      if (res.ok) {
-        const json = await res.json();
-        setExpandedTasks(json.tasks || []);
-      } else {
-        setExpandedTasks([]);
-      }
-    } catch {
-      setExpandedTasks([]);
-    } finally {
-      setWorkflowLoading(false);
-    }
-  }, []);
+  const handleOpenWorkflow = useCallback((submission: Submission) => {
+    openSidebarWithTasks(submission);
+  }, [workflowCache]);
 
   const fetchAndShowSignature = useCallback(async (submissionId: string, level: number, taskId: string) => {
     setSigLoading(taskId);
@@ -382,6 +371,61 @@ export default function ModernDashboard({ data }: Props) {
       setSigLoading(undefined);
     }
   }, []);
+
+  // Open sidebar with cached workflows
+  const openSidebarWithTasks = async (sub: Submission) => {
+    setWorkflowSidebarSubmission(sub);
+
+    // Check if already cached
+    if (workflowCache.has(sub.id)) {
+      setExpandedTasks(workflowCache.get(sub.id) || []);
+      return;
+    }
+
+    setWorkflowLoading(true);
+    try {
+      // Pass workflowInstanceId to skip slow submission fetch in API
+      const url = `/api/workflow-tasks?submissionId=${sub.id}${sub.workflowInstanceId ? `&workflowInstanceId=${sub.workflowInstanceId}` : ''}`;
+      const res = await fetch(url);
+      if (!res.ok) { setWorkflowLoading(false); return; }
+      const json = await res.json();
+      const tasks = json.tasks || [];
+      setExpandedTasks(tasks);
+      setWorkflowCache(prev => new Map(prev).set(sub.id, tasks));
+    } catch {
+      setExpandedTasks([]);
+    } finally {
+      setWorkflowLoading(false);
+    }
+  };
+
+  // Pre-fetch workflows for visible submissions in background
+  const preFetchWorkflows = useCallback(async (submissions: Submission[]) => {
+    const promises = submissions.map(async (s) => {
+      try {
+        // Pass workflowInstanceId to skip slow submission fetch in API
+        const url = `/api/workflow-tasks?submissionId=${s.id}${s.workflowInstanceId ? `&workflowInstanceId=${s.workflowInstanceId}` : ''}`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const json = await res.json();
+          const tasks = json.tasks || [];
+          setWorkflowCache(prev => {
+            if (prev.has(s.id)) return prev; // Don't re-fetch if already cached
+            return new Map(prev).set(s.id, tasks);
+          });
+        }
+      } catch { /* ignore */ }
+    });
+
+    await Promise.all(promises);
+  }, []);
+
+  // Pre-fetch workflows for all submissions on load
+  useEffect(() => {
+    if (allSubmissions.length > 0) {
+      preFetchWorkflows(allSubmissions);
+    }
+  }, [allSubmissions.length]);
 
   // Stats cards with dynamic calculations
   const pendingCount = allSubmissions.filter(s => getSubmissionStatus(s) === 'pending').length;
@@ -438,7 +482,9 @@ export default function ModernDashboard({ data }: Props) {
   }
 
   return (
-    <div className="space-y-8 w-full px-4">
+    <div className="relative w-full min-h-screen">
+      {/* Main Content - Shrinks when sidebar opens */}
+      <div className={`space-y-8 w-full px-4 transition-all duration-300 ${workflowSidebarSubmission ? 'md:pr-[620px]' : ''}`}>
       {/* Header Section */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
@@ -643,21 +689,22 @@ export default function ModernDashboard({ data }: Props) {
           />
         )}
       </AnimatePresence>
+      </div>
+      {/* End Main Content */}
 
-      {/* Workflow Details Modal */}
-      <AnimatePresence>
-        {workflowModalSubmission && (
-          <WorkflowDetailsModal
-            submission={workflowModalSubmission}
-            expandedTasks={expandedTasks}
-            expandLoading={workflowLoading ? workflowModalSubmission.id : undefined}
-            onClose={() => setWorkflowModalSubmission(null)}
-            user={user}
-            onFetchSignature={fetchAndShowSignature}
-            sigLoading={sigLoading}
-          />
-        )}
-      </AnimatePresence>
+      {/* Workflow Details Sidebar - Absolute positioned, cards shrink */}
+      <WorkflowDetailsSidebar
+        isOpen={!!workflowSidebarSubmission}
+        submission={workflowSidebarSubmission}
+        expandedTasks={expandedTasks}
+        expandLoading={workflowLoading ? workflowSidebarSubmission?.id : undefined}
+        user={user}
+        showOverlay={false}
+        isAbsolute={true}
+        onClose={() => setWorkflowSidebarSubmission(null)}
+        onFetchSignature={fetchAndShowSignature}
+        sigLoading={sigLoading}
+      />
 
       {/* Signature Viewer Modal */}
       <AnimatePresence>
