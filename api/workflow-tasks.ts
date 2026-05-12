@@ -88,7 +88,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // - Step name: element.name or properties.taskName
     // - Assignee name: properties.assigneeUser.name or properties.recipients[0].name
     // - Assignee email: properties.assigneeEmail or properties.assigneeUser.email
-    const extractTask = (t: Record<string, unknown>, idx: number) => {
+    const extractTask = (t: Record<string, unknown>) => {
       const element = (t.element || {}) as Record<string, unknown>;
       const props = (t.properties || {}) as Record<string, unknown>;
       const assigneeUser = (props.assigneeUser || {}) as Record<string, unknown>;
@@ -96,12 +96,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const firstRecipient = (recipients[0] || {}) as Record<string, unknown>;
       const result = (t.result || {}) as Record<string, unknown>;
       const completedBy = (t.completedBy || t.completed_by || {}) as Record<string, unknown>;
-
-      // Debug: log raw task keys to discover submitter fields
-      console.log(`[workflow-tasks] Task #${idx} raw keys:`, Object.keys(t));
-      console.log(`[workflow-tasks] Task #${idx} props keys:`, Object.keys(props));
-      if (Object.keys(result).length > 0) console.log(`[workflow-tasks] Task #${idx} result keys:`, Object.keys(result));
-      if (Object.keys(completedBy).length > 0) console.log(`[workflow-tasks] Task #${idx} completedBy:`, completedBy);
 
       const name = String(element.name || props.taskName || t.name || '');
       const type = String(element.type || '');
@@ -123,109 +117,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
 
     // Filter out the initial "Form" submission step (COMPLETED with no assignee)
-    const filteredTasks = rawTaskList.filter((t, i) => {
-      const { name, status, assigneeEmail } = extractTask(t, i);
+    const filteredTasks = rawTaskList.filter((t) => {
+      const { name, status, assigneeEmail } = extractTask(t);
       if (name === 'Form' && status === 'COMPLETED' && !assigneeEmail) return false;
       return true;
     });
 
     // Normalize and number sequentially
     const tasks: WorkflowTask[] = filteredTasks.map((t, index) => {
-      const { name, type, status, assigneeName, assigneeEmail, updatedAt, taskId, internalFormID, accessLink, submittedBy, submittedByEmail } = extractTask(t, index);
+      const { name, type, status, assigneeName, assigneeEmail, updatedAt, taskId, internalFormID, accessLink, submittedBy, submittedByEmail } = extractTask(t);
       return { name, type, status, assigneeName, assigneeEmail, level: index + 1, updatedAt, taskId, internalFormID, accessLink, submittedBy, submittedByEmail };
     });
-
-    // Step 3: Return workflow tasks immediately (form data will be fetched in background if needed)
-    console.log('[workflow-tasks] Returning', tasks.length, 'workflow tasks (form data is optional/deferred)');
-
-    // Optionally fetch form data in background (non-blocking) if requested
-    if (req.query.includeForms === 'true') {
-      // This is a non-blocking fetch - don't await it
-      (async () => {
-        try {
-          console.log('[workflow-tasks] Starting background form data fetch...');
-          const isFormTaskType = (type: string) => {
-            const lower = type.toLowerCase();
-            return lower === 'workflow_assign_task' || lower === 'workflow_assign_form' ||
-                   lower.includes('form') || lower.includes('task');
-          };
-          const completedFormTasks = tasks.filter(
-            t => isFormTaskType(t.type) && t.status === 'COMPLETED' && t.internalFormID
-          );
-          const uniqueFormIDs = [...new Set(completedFormTasks.map(t => t.internalFormID))];
-
-          const formSubmissionsMap = new Map<string, Array<Record<string, unknown>>>();
-          await Promise.all(
-            uniqueFormIDs.map(async (formID) => {
-              try {
-                const subUrl = `${JOTFORM_BASE}/form/${formID}/submissions?apiKey=${API_KEY}&teamID=${TEAM_ID}&limit=50`;
-                const subRes = await fetch(subUrl);
-                if (subRes.ok) {
-                  const subData = await subRes.json();
-                  const submissions = Array.isArray(subData?.content) ? subData.content : [];
-                  formSubmissionsMap.set(formID, submissions);
-                }
-              } catch (e) {
-                console.error(`[workflow-tasks] Background: Failed to fetch form ${formID}:`, e);
-              }
-            })
-          );
-
-          for (const task of tasks) {
-            if (!isFormTaskType(task.type) || task.status !== 'COMPLETED' || !task.internalFormID) continue;
-            const submissions = formSubmissionsMap.get(task.internalFormID);
-            if (!submissions || submissions.length === 0) continue;
-
-            let matched: Record<string, unknown>;
-            if (submissions.length === 1) {
-              matched = submissions[0];
-            } else {
-              const matchEmail = (task.submittedByEmail || task.assigneeEmail || '').toLowerCase();
-              const emailMatch = submissions.find((s: Record<string, unknown>) => {
-                const answers = s.answers as Record<string, Record<string, unknown>> | undefined;
-                const createdBy = String(s.created_by || '').toLowerCase();
-                if (matchEmail && createdBy === matchEmail) return true;
-                const sEmail = String((s as Record<string, unknown>).email || '').toLowerCase();
-                if (matchEmail && sEmail && sEmail === matchEmail) return true;
-                if (!answers) return false;
-                for (const ans of Object.values(answers)) {
-                  if (ans.type === 'control_email' && String(ans.answer || '').toLowerCase() === matchEmail) return true;
-                }
-                return false;
-              });
-              matched = emailMatch || submissions[0];
-            }
-
-            const answers = (matched as Record<string, unknown>).answers as Record<string, Record<string, unknown>> | undefined;
-            if (!answers) continue;
-
-            const formData: Record<string, { label: string; value: string }> = {};
-            for (const [qid, ans] of Object.entries(answers)) {
-              const label = String(ans.text || ans.name || '');
-              let value = '';
-              if (ans.answer != null) {
-                if (typeof ans.answer === 'object' && !Array.isArray(ans.answer)) {
-                  value = Object.values(ans.answer as Record<string, string>).filter(Boolean).join(' ');
-                } else if (Array.isArray(ans.answer)) {
-                  value = ans.answer.join(', ');
-                } else {
-                  value = String(ans.answer);
-                }
-              }
-              if (label && value) {
-                formData[qid] = { label, value };
-              }
-            }
-            if (Object.keys(formData).length > 0) {
-              task.formData = formData;
-            }
-          }
-          console.log('[workflow-tasks] Background form data fetch completed');
-        } catch (e) {
-          console.error('[workflow-tasks] Background form data fetch failed:', e);
-        }
-      })();
-    }
 
     return res.status(200).json({ tasks, workflowInstanceId: workflowInstanceID });
   } catch (error) {

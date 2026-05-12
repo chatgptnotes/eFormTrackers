@@ -992,12 +992,15 @@ export function useSubmissions() {
   const scheduleRefreshAfterAction = useCallback(() => {
     // Start cooldown so real-time doesn't overwrite optimistic update
     startActionCooldown(4000);
-    // Staggered retries: 3s, 6s, 12s — webhook usually fires within 5-10s
+    // Invalidate localStorage cache so reload after action doesn't show stale data
+    try { localStorage.removeItem('jotflow_submissions_cache'); } catch { /* ignore */ }
+    // Staggered retries: 3s, 6s, 12s — webhook usually fires within 5-10s.
+    // Use loadData (full JotForm refetch) since loadFromSupabase is a no-op.
     const timers = [3000, 6000, 12000].map(ms =>
-      setTimeout(() => loadFromSupabase({ force: true }), ms)
+      setTimeout(() => loadData({ force: true }), ms)
     );
     return () => timers.forEach(t => clearTimeout(t));
-  }, [loadFromSupabase, startActionCooldown]);
+  }, [loadData, startActionCooldown]);
 
   return {
     allSubmissions, filteredSubmissions, paginatedSubmissions,

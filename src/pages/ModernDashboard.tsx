@@ -399,26 +399,26 @@ export default function ModernDashboard({ data }: Props) {
     }
   };
 
-  // Pre-fetch workflows for visible submissions in background
+  // Pre-fetch workflows for visible submissions in background. Skips
+  // submissions already cached so subsequent re-renders are a no-op.
   const preFetchWorkflows = useCallback(async (submissions: Submission[]) => {
-    const promises = submissions.map(async (s) => {
+    const toFetch = submissions.filter(s => !workflowCache.has(s.id));
+    if (toFetch.length === 0) return;
+    await Promise.all(toFetch.map(async (s) => {
       try {
-        // Pass workflowInstanceId to skip slow submission fetch in API
         const url = `/api/workflow-tasks?submissionId=${s.id}${s.workflowInstanceId ? `&workflowInstanceId=${s.workflowInstanceId}` : ''}`;
         const res = await fetch(url);
         if (res.ok) {
           const json = await res.json();
           const tasks = json.tasks || [];
           setWorkflowCache(prev => {
-            if (prev.has(s.id)) return prev; // Don't re-fetch if already cached
+            if (prev.has(s.id)) return prev;
             return new Map(prev).set(s.id, tasks);
           });
         }
       } catch { /* ignore */ }
-    });
-
-    await Promise.all(promises);
-  }, []);
+    }));
+  }, [workflowCache]);
 
   // Pre-fetch workflows for visible (paginated) submissions only — avoids
   // hundreds of parallel API calls when there are many submissions.

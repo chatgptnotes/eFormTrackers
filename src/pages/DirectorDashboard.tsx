@@ -288,8 +288,25 @@ export default function DirectorDashboard({ data }: Props) {
       if (res.ok) {
         const json = await res.json();
         setExpandedTasks(json.tasks || []);
+        setWorkflowCache(prev => {
+          const next = new Map(prev);
+          next.set(submissionId, json.tasks || []);
+          return next;
+        });
       }
     } catch { /* ignore */ }
+  };
+
+  // Drop a submission's cached workflow tasks so the next sidebar/row open
+  // forces a fresh fetch — call after approve/reject/complete actions.
+  const invalidateWorkflowCache = (submissionId: string) => {
+    setWorkflowCache(prev => {
+      if (!prev.has(submissionId)) return prev;
+      const next = new Map(prev);
+      next.delete(submissionId);
+      return next;
+    });
+    try { localStorage.removeItem('jotflow_submissions_cache'); } catch { /* ignore */ }
   };
 
   const openSidebarWithTasks = async (sub: Submission) => {
@@ -318,22 +335,23 @@ export default function DirectorDashboard({ data }: Props) {
     }
   };
 
-  // Pre-fetch workflows - Build cache
+  // Pre-fetch workflows - Build cache. Skips submissions already cached
+  // so re-running on filter/sort/page change is a no-op when nothing new
+  // entered the visible window.
   const preFetchWorkflows = useCallback(async (submissions: Submission[]) => {
     if (submissions.length === 0) return;
+    const toFetch = submissions.filter(s => !workflowCache.has(s.id));
+    if (toFetch.length === 0) return;
 
-    // Fetch all workflows in parallel
-    const promises = submissions.map(async (sub) => {
+    await Promise.all(toFetch.map(async (sub) => {
       try {
-        // Pass workflowInstanceId to skip slow submission fetch in API
         const url = `/api/workflow-tasks?submissionId=${sub.id}${sub.workflowInstanceId ? `&workflowInstanceId=${sub.workflowInstanceId}` : ''}`;
         const res = await fetch(url);
         if (res.ok) {
           const json = await res.json();
           const tasks = json.tasks || [];
-
           setWorkflowCache(prevCache => {
-            if (prevCache.has(sub.id)) return prevCache; // Already cached
+            if (prevCache.has(sub.id)) return prevCache;
             const newCache = new Map(prevCache);
             newCache.set(sub.id, tasks);
             return newCache;
@@ -342,11 +360,8 @@ export default function DirectorDashboard({ data }: Props) {
       } catch (err) {
         console.warn(`Failed to pre-fetch ${sub.id}:`, err);
       }
-    });
-
-    // Wait for all to complete
-    await Promise.all(promises);
-  }, []);
+    }));
+  }, [workflowCache]);
 
   const openWorkflowModal = async (sub: Submission) => {
     setWorkflowModalSubmission(sub);
@@ -395,7 +410,8 @@ export default function DirectorDashboard({ data }: Props) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error || `Approve failed: ${res.status}`);
       }
-      if (expandedRowId) await refreshExpandedTasks(expandedRowId);
+      invalidateWorkflowCache(submissionId);
+      await refreshExpandedTasks(submissionId);
       data.scheduleRefreshAfterAction();
     } catch (err) {
       alert(`Approve failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -419,7 +435,8 @@ export default function DirectorDashboard({ data }: Props) {
       setTaskRejectingId(null);
       setTaskRejectReason('');
       setTaskConfirmRejectId(null);
-      if (expandedRowId) await refreshExpandedTasks(expandedRowId);
+      invalidateWorkflowCache(submissionId);
+      await refreshExpandedTasks(submissionId);
       data.scheduleRefreshAfterAction();
     } catch (err) {
       alert(`Reject failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -440,7 +457,8 @@ export default function DirectorDashboard({ data }: Props) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error || `Complete failed: ${res.status}`);
       }
-      if (expandedRowId) await refreshExpandedTasks(expandedRowId);
+      invalidateWorkflowCache(submissionId);
+      await refreshExpandedTasks(submissionId);
       data.scheduleRefreshAfterAction();
     } catch (err) {
       alert(`Complete failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -733,12 +751,13 @@ export default function DirectorDashboard({ data }: Props) {
     safeCurrentPage * rowsPerPage
   );
 
-  // Pre-fetch workflows for current page
+  // Pre-fetch workflows for the visible page. Re-runs when filters/sort
+  // change the visible window, not only on page navigation.
   useEffect(() => {
     if (paginatedSubmissions.length > 0) {
       preFetchWorkflows(paginatedSubmissions);
     }
-  }, [safeCurrentPage]);
+  }, [paginatedSubmissions, preFetchWorkflows]);
 
   // Stats
   const syncNeededCount = parentSubmissions.filter(s => s.needsSync).length;
@@ -2052,8 +2071,8 @@ export default function DirectorDashboard({ data }: Props) {
             sigLoading={sigLoading || undefined}
             user={user}
             onClose={() => setWorkflowModalSubmission(null)}
-            onTaskApprove={(submissionId) => { if (expandedRowId) handleTaskApprove(expandedRowId); }}
-            onTaskReject={(submissionId, reason) => { if (expandedRowId) handleTaskReject(expandedRowId, reason); }}
+            onTaskApprove={(submissionId) => handleTaskApprove(submissionId)}
+            onTaskReject={(submissionId, reason) => handleTaskReject(submissionId, reason)}
             onFetchSignature={fetchAndShowSignature}
             onOpenTaskLink={openTaskLink}
             onSetTaskRejecting={setTaskRejectingId}
