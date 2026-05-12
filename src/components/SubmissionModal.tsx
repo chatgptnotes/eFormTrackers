@@ -19,12 +19,12 @@ interface Props {
 }
 
 const levelColors: Record<string, string> = {
-  '1': 'bg-blue-500',
-  '2': 'bg-amber-500',
-  '3': 'bg-purple-500',
-  '4': 'bg-red-500',
-  'completed': 'bg-emerald-500',
-  'rejected': 'bg-gray-500',
+  '1': 'bg-teal-500',
+  '2': 'bg-teal-600',
+  '3': 'bg-teal-700',
+  '4': 'bg-teal-800',
+  'completed': 'bg-emerald-600',
+  'rejected': 'bg-slate-500',
 };
 
 type FieldMap = { statusField: string; approverField: string | null; overallStatusField: string | null };
@@ -365,7 +365,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
           {/* Header */}
           <div className="p-6 border-b border-navy-light/20 flex items-start justify-between sticky top-0 bg-navy-dark/95 z-10">
             <div>
-              <p className="text-xs text-gold font-medium">{submission.referenceNumber}</p>
+              <p className="text-xs text-teal-600 font-medium">{submission.referenceNumber}</p>
               <h3 className="text-xl font-bold text-white mt-1">{submission.title}</h3>
               <p className="text-sm text-gray-400 mt-1">{submission.formTitle}</p>
             </div>
@@ -428,7 +428,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
             {typeof submission.currentApprovalLevel === 'number' && (
               <div className="bg-navy-light/30 rounded-xl p-4 border border-navy-light/20 space-y-4">
                 <h4 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
-                  <Send className="w-4 h-4 text-gold" />
+                  <Send className="w-4 h-4 text-teal-600" />
                   {submission.actionType === 'task' ? 'Task Action' :
                    submission.actionType === 'form' ? 'Complete Form' :
                    `Take Action — Level ${submission.currentApprovalLevel}`}
@@ -458,7 +458,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                       onChange={e => setComment(e.target.value)}
                       placeholder="Task completion note (optional)..."
                       rows={2}
-                      className="w-full px-3 py-2 rounded-lg bg-navy-light/30 border border-navy-light/40 text-white text-sm placeholder-gray-500 resize-none focus:outline-none focus:border-gold/40"
+                      className="w-full px-3 py-2 rounded-lg bg-navy-light/30 border border-navy-light/40 text-white text-sm placeholder-gray-500 resize-none focus:outline-none focus:border-teal-500/50"
                     />
                     {pushResult && (
                       <div className={`p-3 rounded-lg text-sm ${pushResult.success ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20' : 'bg-red-500/10 text-red-300 border border-red-500/20'}`}>
@@ -469,7 +469,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                       onClick={() => setConfirmPending('approve')}
                       disabled={!isDesignatedApprover || isSubmitting}
                       title={!isDesignatedApprover ? `Only ${designatedApproverEmail} can complete this task` : ''}
-                      className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-gold/20 hover:bg-gold/30 disabled:opacity-30 disabled:cursor-not-allowed text-gold rounded-xl font-semibold text-sm border border-gold/20 transition-all"
+                      className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-teal-600 hover:bg-teal-500 disabled:opacity-30 disabled:cursor-not-allowed text-white rounded-xl font-semibold text-sm border border-teal-600 transition-all"
                     >
                       {approving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}
                       {approving ? 'Marking Complete...' : 'Mark Task Complete'}
@@ -485,7 +485,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                     </p>
                     <button
                       onClick={openFormUrl}
-                      className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-xl font-semibold text-sm border border-blue-500/20 transition-all"
+                      className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-teal-500/15 hover:bg-teal-500/25 text-teal-600 rounded-xl font-semibold text-sm border border-teal-500/20 transition-all"
                     >
                       <FileEdit className="w-4 h-4" />
                       Complete Form in JotForm
@@ -497,23 +497,23 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                 {/* ── APPROVAL step ── (existing full flow) */}
                 {submission.actionType === 'approval' && (<>
 
-                {/* Steps indicator */}
+                {/* Steps indicator — teal/amber/emerald palette, no more purple/blue/orange mix */}
                 <div className="flex items-center gap-2 text-xs">
-                  <span className={`flex items-center gap-1 px-2 py-1 rounded-full font-medium ${comment.trim() ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
+                  <span className={`flex items-center gap-1 px-2 py-1 rounded-full font-medium ${comment.trim() ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/15 text-amber-400'}`}>
                     <span className="w-4 h-4 rounded-full border border-current flex items-center justify-center text-[10px]">{comment.trim() ? '✓' : '1'}</span>
                     Comment
                   </span>
                   {signatureRequired && (
                     <>
                       <span className="text-gray-600">→</span>
-                      <span className={`flex items-center gap-1 px-2 py-1 rounded-full font-medium ${signature ? 'bg-emerald-500/20 text-emerald-400' : 'bg-purple-500/20 text-purple-400'}`}>
+                      <span className={`flex items-center gap-1 px-2 py-1 rounded-full font-medium ${signature ? 'bg-emerald-500/20 text-emerald-400' : 'bg-teal-500/15 text-teal-400'}`}>
                         <span className="w-4 h-4 rounded-full border border-current flex items-center justify-center text-[10px]">{signature ? '✓' : '2'}</span>
                         Signature
                       </span>
                     </>
                   )}
                   <span className="text-gray-600">→</span>
-                  <span className={`flex items-center gap-1 px-2 py-1 rounded-full font-medium ${approveEnabled ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-500/20 text-gray-500'}`}>
+                  <span className={`flex items-center gap-1 px-2 py-1 rounded-full font-medium ${approveEnabled ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-500/15 text-slate-500'}`}>
                     <span className="w-4 h-4 rounded-full border border-current flex items-center justify-center text-[10px]">{signatureRequired ? '3' : '2'}</span>
                     Approve
                   </span>
@@ -530,7 +530,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                     onChange={e => setComment(e.target.value)}
                     placeholder="Enter your comment or reason for approval/rejection..."
                     rows={2}
-                    className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 focus:border-gold/50 text-sm text-white placeholder-gray-600 focus:outline-none resize-none transition-colors"
+                    className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 focus:border-teal-500/50 text-sm text-white placeholder-gray-600 focus:outline-none resize-none transition-colors"
                   />
                 </div>
 
@@ -538,8 +538,8 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                 {signatureRequired && (
                   <div>
                     <label className="flex items-center gap-1.5 text-xs font-medium text-gray-400 mb-1.5">
-                      <PenLine className="w-3.5 h-3.5 text-purple-400" />
-                      Step 2 — Digital Signature <span className="text-red-400 font-bold">*</span>
+                      <PenLine className="w-3.5 h-3.5 text-teal-500" />
+                      Step 2 — Digital Signature <span className="text-rose-500 font-bold">*</span>
                       <span className="text-gray-500 font-normal ml-1">required for Level {submission.currentApprovalLevel}</span>
                     </label>
                     {signature ? (
