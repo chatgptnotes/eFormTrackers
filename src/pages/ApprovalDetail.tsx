@@ -9,11 +9,11 @@ interface Props {
   data: ReturnType<typeof import('../hooks/useSubmissions').useSubmissions>;
 }
 
-const levelInfo: Record<string, { title: string; description: string; color: string; bg: string }> = {
-  '1': { title: 'Level 1 — Department Approval', description: 'Initial review by department head', color: 'text-blue-400', bg: 'bg-blue-500/20' },
-  '2': { title: 'Level 2 — Division Approval', description: 'Review by division manager', color: 'text-amber-400', bg: 'bg-amber-500/20' },
-  '3': { title: 'Level 3 — Director Approval', description: 'Review by director', color: 'text-purple-400', bg: 'bg-purple-500/20' },
-  '4': { title: 'Level 4 — Executive Approval', description: 'Final executive sign-off', color: 'text-red-400', bg: 'bg-red-500/20' },
+const levelInfo: Record<string, { title: string; description: string; color: string; bg: string; ring: string }> = {
+  '1': { title: 'Level 1 — Department Approval', description: 'Initial review by department head', color: 'text-teal-500', bg: 'bg-teal-500/15', ring: 'ring-teal-500/30' },
+  '2': { title: 'Level 2 — Division Approval', description: 'Review by division manager', color: 'text-teal-600', bg: 'bg-teal-600/15', ring: 'ring-teal-600/30' },
+  '3': { title: 'Level 3 — Director Approval', description: 'Review by director', color: 'text-teal-700', bg: 'bg-teal-700/15', ring: 'ring-teal-700/30' },
+  '4': { title: 'Level 4 — Executive Approval', description: 'Final executive sign-off', color: 'text-teal-800', bg: 'bg-teal-800/15', ring: 'ring-teal-800/30' },
 };
 
 export default function ApprovalDetail({ data }: Props) {
@@ -55,7 +55,7 @@ export default function ApprovalDetail({ data }: Props) {
         </div>
         <div className="glass-card p-5">
           <p className="text-sm text-gray-400">Critical (&gt;7 days)</p>
-          <p className="text-3xl font-bold text-red-400 mt-1">{submissions.filter(s => s.daysAtCurrentLevel > 7).length}</p>
+          <p className="text-3xl font-bold text-rose-500 mt-1">{submissions.filter(s => s.daysAtCurrentLevel > 7).length}</p>
         </div>
       </div>
 
@@ -77,7 +77,7 @@ export default function ApprovalDetail({ data }: Props) {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono text-gold">{sub.referenceNumber}</span>
+                    <span className="text-xs font-mono text-teal-600">{sub.referenceNumber}</span>
                     <span className={`px-2 py-0.5 rounded-full text-xs font-bold status-${sub.overallStatus}`}>
                       {sub.overallStatus}
                     </span>
@@ -91,7 +91,7 @@ export default function ApprovalDetail({ data }: Props) {
                 </div>
               </div>
               <div className="text-right ml-4">
-                <p className={`text-2xl font-bold ${sub.daysAtCurrentLevel > 14 ? 'text-red-400' : sub.daysAtCurrentLevel > 7 ? 'text-amber-400' : 'text-white'}`}>
+                <p className={`text-2xl font-bold ${sub.daysAtCurrentLevel > 14 ? 'text-rose-500' : sub.daysAtCurrentLevel > 7 ? 'text-amber-500' : 'text-white'}`}>
                   {sub.daysAtCurrentLevel}d
                 </p>
                 <p className="text-xs text-gray-500">at this level</p>
