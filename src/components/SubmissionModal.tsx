@@ -356,86 +356,105 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
         onClick={isSubmitting ? undefined : onClose}
       >
         <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.9, opacity: 0 }}
+          initial={{ scale: 0.95, opacity: 0, y: 8 }}
+          animate={{ scale: 1, opacity: 1, y: 0 }}
+          exit={{ scale: 0.95, opacity: 0, y: 8 }}
+          transition={{ type: 'spring', damping: 22, stiffness: 280 }}
           onClick={e => e.stopPropagation()}
-          className="glass-card w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+          className="glass-card w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl"
         >
-          {/* Header */}
-          <div className="p-6 border-b border-navy-light/20 flex items-start justify-between sticky top-0 bg-navy-dark/95 z-10">
-            <div>
-              <p className="text-xs text-teal-600 font-medium">{submission.referenceNumber}</p>
-              <h3 className="text-xl font-bold text-white mt-1">{submission.title}</h3>
-              <p className="text-sm text-gray-400 mt-1">{submission.formTitle}</p>
+          {/* Header — sticky, ref + title + form, with status chips inline on desktop */}
+          <div className="px-7 pt-6 pb-5 border-b border-slate-200/80 flex items-start justify-between sticky top-0 bg-white/95 backdrop-blur z-10">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] tracking-wider font-bold text-teal-600 uppercase">{submission.referenceNumber}</span>
+                <span className="text-slate-300">·</span>
+                <span className="text-[11px] text-slate-500">{submission.formTitle}</span>
+              </div>
+              <h3 className="text-[22px] font-bold text-slate-900 mt-1 leading-tight truncate">{submission.title}</h3>
             </div>
             <button
               onClick={onClose}
               disabled={isSubmitting}
-              className="p-2 rounded-lg hover:bg-navy-light/30 text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+              className="ml-4 p-2 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               title={isSubmitting ? 'Please wait until submission completes' : 'Close'}
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Details */}
-          <div className="p-6 space-y-6">
-            {/* Info Grid */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex items-center gap-3">
-                <User className="w-4 h-4 text-gray-500" />
-                <div>
-                  <p className="text-xs text-gray-500">Submitted By</p>
-                  <p className="text-sm text-white">{submission.submittedBy.name}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <Building2 className="w-4 h-4 text-gray-500" />
-                <div>
-                  <p className="text-xs text-gray-500">Department</p>
-                  <p className="text-sm text-white">{submission.submittedBy.department}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <Calendar className="w-4 h-4 text-gray-500" />
-                <div>
-                  <p className="text-xs text-gray-500">Submitted</p>
-                  <p className="text-sm text-white">{submission.submissionDate}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <FileText className="w-4 h-4 text-gray-500" />
-                <div>
-                  <p className="text-xs text-gray-500">Form ID</p>
-                  <p className="text-sm text-white">{submission.formId}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Status */}
-            <div className="flex items-center gap-4">
-              <span className={`px-3 py-1 rounded-full text-xs font-bold text-white ${levelColors[String(submission.currentApprovalLevel)]}`}>
+          {/* Body */}
+          <div className="px-7 py-6 space-y-6">
+            {/* Status chips — prominent, single row */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold text-white shadow-sm ${levelColors[String(submission.currentApprovalLevel)]}`}>
                 {levelLabel}
               </span>
-              <span className={`px-3 py-1 rounded-full text-xs font-bold status-${submission.overallStatus}`}>
+              <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold status-${submission.overallStatus}`}>
                 {submission.overallStatus}
               </span>
-              <span className="text-xs text-gray-500">{submission.totalDaysSinceSubmission} days total</span>
+              <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+                <Clock className="w-3 h-3" />
+                {submission.totalDaysSinceSubmission} days total
+              </span>
             </div>
 
-            {/* Action section */}
+            {/* Info grid — clean 2x2 with subtle icon backgrounds */}
+            <div className="grid grid-cols-2 gap-x-5 gap-y-4 p-4 rounded-xl bg-slate-50/60 border border-slate-200/60">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center shrink-0">
+                  <User className="w-4 h-4 text-slate-500" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] uppercase tracking-wide text-slate-500 font-medium">Submitted By</p>
+                  <p className="text-sm text-slate-900 font-medium truncate">{submission.submittedBy.name}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center shrink-0">
+                  <Building2 className="w-4 h-4 text-slate-500" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] uppercase tracking-wide text-slate-500 font-medium">Department</p>
+                  <p className="text-sm text-slate-900 font-medium truncate">{submission.submittedBy.department}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center shrink-0">
+                  <Calendar className="w-4 h-4 text-slate-500" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] uppercase tracking-wide text-slate-500 font-medium">Submitted</p>
+                  <p className="text-sm text-slate-900 font-medium truncate">{submission.submissionDate}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center shrink-0">
+                  <FileText className="w-4 h-4 text-slate-500" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] uppercase tracking-wide text-slate-500 font-medium">Form ID</p>
+                  <p className="text-sm text-slate-900 font-medium font-mono truncate">{submission.formId}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Action section — primary card, teal accent */}
             {typeof submission.currentApprovalLevel === 'number' && (
-              <div className="bg-navy-light/30 rounded-xl p-4 border border-navy-light/20 space-y-4">
-                <h4 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
-                  <Send className="w-4 h-4 text-teal-600" />
-                  {submission.actionType === 'task' ? 'Task Action' :
-                   submission.actionType === 'form' ? 'Complete Form' :
-                   `Take Action — Level ${submission.currentApprovalLevel}`}
-                  <span className="text-xs text-gray-500 font-normal ml-2">
-                    {submission.actionType === 'approval' ? '(Pushes to JotForm Enterprise)' : '(Opens in JotForm)'}
+              <div className="rounded-xl p-5 bg-gradient-to-br from-teal-50/60 to-white border border-teal-200/60 shadow-sm space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h4 className="text-[15px] font-bold text-slate-900 flex items-center gap-2">
+                    <span className="w-7 h-7 rounded-lg bg-teal-100 flex items-center justify-center">
+                      <Send className="w-3.5 h-3.5 text-teal-700" />
+                    </span>
+                    {submission.actionType === 'task' ? 'Task Action' :
+                     submission.actionType === 'form' ? 'Complete Form' :
+                     `Take Action — Level ${submission.currentApprovalLevel}`}
+                  </h4>
+                  <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold whitespace-nowrap">
+                    {submission.actionType === 'approval' ? 'JotForm Enterprise' : 'Opens in JotForm'}
                   </span>
-                </h4>
+                </div>
 
                 {/* ── TASK step ── */}
                 {submission.actionType === 'task' && (
@@ -497,87 +516,96 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                 {/* ── APPROVAL step ── (existing full flow) */}
                 {submission.actionType === 'approval' && (<>
 
-                {/* Steps indicator — teal/amber/emerald palette, no more purple/blue/orange mix */}
-                <div className="flex items-center gap-2 text-xs">
-                  <span className={`flex items-center gap-1 px-2 py-1 rounded-full font-medium ${comment.trim() ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/15 text-amber-400'}`}>
-                    <span className="w-4 h-4 rounded-full border border-current flex items-center justify-center text-[10px]">{comment.trim() ? '✓' : '1'}</span>
+                {/* Steps indicator — elegant progress pills */}
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-semibold transition-colors ${comment.trim() ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                    <span className="w-4 h-4 rounded-full bg-white/70 flex items-center justify-center text-[10px] font-bold">{comment.trim() ? '✓' : '1'}</span>
                     Comment
                   </span>
                   {signatureRequired && (
                     <>
-                      <span className="text-gray-600">→</span>
-                      <span className={`flex items-center gap-1 px-2 py-1 rounded-full font-medium ${signature ? 'bg-emerald-500/20 text-emerald-400' : 'bg-teal-500/15 text-teal-400'}`}>
-                        <span className="w-4 h-4 rounded-full border border-current flex items-center justify-center text-[10px]">{signature ? '✓' : '2'}</span>
+                      <span className="text-slate-300 mx-0.5">→</span>
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-semibold transition-colors ${signature ? 'bg-emerald-100 text-emerald-700' : 'bg-teal-50 text-teal-700 border border-teal-200'}`}>
+                        <span className="w-4 h-4 rounded-full bg-white/70 flex items-center justify-center text-[10px] font-bold">{signature ? '✓' : '2'}</span>
                         Signature
                       </span>
                     </>
                   )}
-                  <span className="text-gray-600">→</span>
-                  <span className={`flex items-center gap-1 px-2 py-1 rounded-full font-medium ${approveEnabled ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-500/15 text-slate-500'}`}>
-                    <span className="w-4 h-4 rounded-full border border-current flex items-center justify-center text-[10px]">{signatureRequired ? '3' : '2'}</span>
+                  <span className="text-slate-300 mx-0.5">→</span>
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-semibold transition-colors ${approveEnabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                    <span className="w-4 h-4 rounded-full bg-white/70 flex items-center justify-center text-[10px] font-bold">{signatureRequired ? '3' : '2'}</span>
                     Approve
                   </span>
                 </div>
 
                 {/* Step 1: Comment */}
                 <div>
-                  <label className="flex items-center gap-1.5 text-xs font-medium text-gray-400 mb-1.5">
-                    <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
-                    Step 1 — Comment <span className="text-gray-500 font-normal">(optional)</span>
+                  <label className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-700 mb-2">
+                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-amber-100 text-amber-700 text-[10px] font-bold">1</span>
+                    Comment
+                    <span className="text-slate-400 font-normal text-xs">(optional)</span>
                   </label>
                   <textarea
                     value={comment}
                     onChange={e => setComment(e.target.value)}
                     placeholder="Enter your comment or reason for approval/rejection..."
                     rows={2}
-                    className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 focus:border-teal-500/50 text-sm text-white placeholder-gray-600 focus:outline-none resize-none transition-colors"
+                    className="w-full px-3.5 py-2.5 rounded-lg bg-white border border-slate-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-100 text-sm text-slate-900 placeholder-slate-400 focus:outline-none resize-none transition-all"
                   />
                 </div>
 
                 {/* Step 2: Signature — required for Level 3 & 4 approvals */}
                 {signatureRequired && (
                   <div>
-                    <label className="flex items-center gap-1.5 text-xs font-medium text-gray-400 mb-1.5">
-                      <PenLine className="w-3.5 h-3.5 text-teal-500" />
-                      Step 2 — Digital Signature <span className="text-rose-500 font-bold">*</span>
-                      <span className="text-gray-500 font-normal ml-1">required for Level {submission.currentApprovalLevel}</span>
+                    <label className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-700 mb-2">
+                      <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-teal-100 text-teal-700">
+                        <PenLine className="w-3 h-3" />
+                      </span>
+                      Digital Signature
+                      <span className="text-rose-500 font-bold">*</span>
+                      <span className="text-slate-400 font-normal text-xs">required for Level {submission.currentApprovalLevel}</span>
                     </label>
                     {signature ? (
-                      <div className="relative border border-emerald-500/30 rounded-xl overflow-hidden bg-white">
-                        <img src={signature} alt="Signature" className="w-full object-contain" style={{ height: '150px' }} />
-                        <div className="absolute inset-0 flex items-center justify-end p-3">
-                          <button
-                            onClick={() => setSignature('')}
-                            className="px-2.5 py-1 rounded-lg bg-navy-dark/80 text-gray-400 hover:text-red-400 text-xs border border-navy-light/30 transition-colors"
-                          >
-                            Re-sign
-                          </button>
+                      <div className="relative border-2 border-emerald-300 rounded-xl overflow-hidden bg-white shadow-sm">
+                        <img src={signature} alt="Signature" className="w-full object-contain bg-slate-50/50" style={{ height: '150px' }} />
+                        <div className="absolute top-3 left-3 inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-100 border border-emerald-200">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-700" />
+                          <span className="text-[11px] text-emerald-700 font-bold">Signature captured</span>
                         </div>
-                        <div className="absolute top-2 left-3 px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/30">
-                          <span className="text-[10px] text-emerald-400 font-medium">✓ Signature captured</span>
-                        </div>
+                        <button
+                          onClick={() => setSignature('')}
+                          className="absolute top-3 right-3 px-2.5 py-1 rounded-md bg-white text-slate-600 hover:text-rose-600 hover:bg-slate-50 text-xs font-medium border border-slate-200 transition-colors shadow-sm"
+                        >
+                          Re-sign
+                        </button>
                       </div>
                     ) : (
-                      <SignaturePad onSign={setSignature} height={150} />
+                      <div className="rounded-xl border-2 border-dashed border-slate-300 bg-white overflow-hidden hover:border-teal-400 transition-colors">
+                        <SignaturePad onSign={setSignature} height={150} />
+                      </div>
                     )}
                   </div>
                 )}
 
                 {/* Step 3: Approve / Reject — two-click confirmation */}
                 {confirmPending ? (
-                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-2">
-                    <p className="text-xs text-amber-400 font-medium text-center">
-                      ⚠️ Confirm {(submission as Submission)?.actionType === 'task' ? 'Task Completion' : confirmPending === 'approve' ? 'Approval' : 'Rejection'} — this cannot be undone
-                    </p>
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                      <p className="text-sm text-amber-900 font-semibold">
+                        Confirm {(submission as Submission)?.actionType === 'task' ? 'Task Completion' : confirmPending === 'approve' ? 'Approval' : 'Rejection'}
+                        <span className="block text-xs text-amber-700 font-normal mt-0.5">This action cannot be undone.</span>
+                      </p>
+                    </div>
                     <div className="flex gap-2">
                       <button
                         type="button"
                         onClick={() => { setConfirmPending(null); handleApproval(confirmPending); }}
                         disabled={isSubmitting}
-                        className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all disabled:opacity-40 ${
+                        className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all disabled:opacity-40 shadow-sm ${
                           confirmPending === 'approve'
-                            ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                            : 'bg-red-600 hover:bg-red-500 text-white'
+                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                            : 'bg-rose-600 hover:bg-rose-700 text-white'
                         }`}
                       >
                         {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : confirmPending === 'approve' ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
@@ -587,7 +615,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                         type="button"
                         onClick={() => setConfirmPending(null)}
                         disabled={isSubmitting}
-                        className="px-4 py-2.5 rounded-xl font-semibold text-sm bg-navy-light/30 text-gray-400 hover:text-white transition-all disabled:opacity-40"
+                        className="px-4 py-2.5 rounded-lg font-semibold text-sm bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-all disabled:opacity-40"
                       >
                         Cancel
                       </button>
@@ -604,22 +632,22 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                         </p>
                       </div>
                     )}
-                  <div className="flex gap-3">
+                  <div className="flex gap-2.5 pt-1">
                     <button
                       type="button"
                       onClick={() => setConfirmPending('approve')}
                       disabled={!approveEnabled || isSubmitting}
                       title={!isDesignatedApprover ? `Only ${designatedApproverEmail} can approve at this level` : ''}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-all"
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white rounded-xl font-bold text-sm shadow-sm hover:shadow-md transition-all"
                     >
-                      <CheckCircle2 className="w-4 h-4" /> Approve & Sign
+                      <CheckCircle2 className="w-4 h-4" /> Approve &amp; Sign
                     </button>
                     <button
                       type="button"
                       onClick={() => setConfirmPending('reject')}
                       disabled={!rejectEnabled || isSubmitting}
                       title={!isDesignatedApprover ? `Only ${designatedApproverEmail} can reject at this level` : ''}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-red-600 hover:bg-red-500 disabled:opacity-30 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-all"
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white rounded-xl font-bold text-sm shadow-sm hover:shadow-md transition-all"
                     >
                       <XCircle className="w-4 h-4" /> Reject
                     </button>
@@ -629,8 +657,9 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
 
                 {/* What's still needed */}
                 {signatureRequired && !signature && (
-                  <div className="text-xs text-amber-400/80 bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-2">
-                    <p>→ Draw your signature above to enable Approve</p>
+                  <div className="flex items-center gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    <p className="font-medium">Draw your signature above to enable Approve</p>
                   </div>
                 )}
 
@@ -649,42 +678,51 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
 
             {/* Approval Timeline */}
             <div>
-              <h4 className="text-sm font-semibold text-gray-300 mb-4">Approval Timeline</h4>
+              <h4 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
+                <span className="w-1 h-4 bg-teal-600 rounded-full" />
+                Approval Timeline
+              </h4>
               <div className="space-y-0">
                 {submission.approvalHistory.map((entry, i) => (
                   <div key={i} className="flex items-start gap-4">
                     <div className="flex flex-col items-center">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                        entry.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' :
-                        entry.status === 'rejected' ? 'bg-red-500/20 text-red-400' :
-                        'bg-amber-500/20 text-amber-400'
+                      <div className={`w-9 h-9 rounded-full flex items-center justify-center ring-4 ${
+                        entry.status === 'approved' ? 'bg-emerald-500 text-white ring-emerald-100' :
+                        entry.status === 'rejected' ? 'bg-rose-500 text-white ring-rose-100' :
+                        'bg-amber-500 text-white ring-amber-100'
                       }`}>
                         {entry.status === 'approved' ? <CheckCircle2 className="w-4 h-4" /> :
                          entry.status === 'rejected' ? <XCircle className="w-4 h-4" /> :
                          <Clock className="w-4 h-4" />}
                       </div>
                       {i < submission.approvalHistory.length - 1 && (
-                        <div className="w-px h-10 bg-navy-light/30" />
+                        <div className="w-px h-12 bg-slate-200 mt-1" />
                       )}
                     </div>
-                    <div className="pb-6">
+                    <div className="pb-6 flex-1 min-w-0">
                       {(() => {
                         const isGeneric = /^Level \d+ Approver$/.test(entry.approverName) || entry.approverName === 'Approver';
                         return (
-                          <p className="text-sm font-medium text-white">
-                            Level {entry.level} — {isGeneric && entry.status === 'pending'
-                              ? <span className="text-amber-400 italic font-normal">Pending Review</span>
+                          <p className="text-sm font-semibold text-slate-900">
+                            <span className="text-teal-700">Level {entry.level}</span>
+                            <span className="text-slate-400 mx-1.5">·</span>
+                            {isGeneric && entry.status === 'pending'
+                              ? <span className="text-amber-700 italic font-medium">Pending Review</span>
                               : <>
                                   {entry.approverName}
                                   {entry.approverEmail && !entry.approverName.includes('@') && (
-                                    <span className="text-xs text-gray-400 font-normal ml-1">({entry.approverEmail})</span>
+                                    <span className="text-xs text-slate-500 font-normal ml-1">({entry.approverEmail})</span>
                                   )}
                                 </>
                             }
                           </p>
                         );
                       })()}
-                      <p className="text-xs text-gray-500 mt-0.5">
+                      <p className={`text-xs mt-1 font-medium ${
+                        entry.status === 'pending' ? 'text-amber-700' :
+                        entry.status === 'rejected' ? 'text-rose-700' :
+                        'text-emerald-700'
+                      }`}>
                         {entry.status === 'pending' ? 'Pending approval' : `${entry.status} on ${entry.date}`}
                       </p>
                       {entry.comments && (
@@ -696,10 +734,14 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
 
                             return (
                               <>
-                                {commentText && <p className="text-xs text-gray-400 italic">"{commentText}"</p>}
+                                {commentText && (
+                                  <div className="mt-2 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
+                                    <p className="text-xs text-slate-700 italic">"{commentText}"</p>
+                                  </div>
+                                )}
                                 {signatureUrl && entry.status === 'approved' && (
-                                  <div className="mt-2 border border-emerald-500/30 rounded-lg overflow-hidden">
-                                    <img src={signatureUrl} alt="Signature" className="max-w-xs h-auto" />
+                                  <div className="mt-2 border border-emerald-200 rounded-lg overflow-hidden bg-white p-2 max-w-xs">
+                                    <img src={signatureUrl} alt="Signature" className="w-full h-auto" />
                                   </div>
                                 )}
                               </>
