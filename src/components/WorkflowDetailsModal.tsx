@@ -104,14 +104,14 @@ export default function WorkflowDetailsModal({
           {/* 1. WORKFLOW STEPS */}
           {expandLoading ? (
             <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-6 h-6 text-gold animate-spin" />
+              <Loader2 className="w-6 h-6 text-amber-600 animate-spin" />
               <span className="text-sm text-gray-400 ml-3">Loading workflow steps...</span>
             </div>
           ) : expandedTasks.length === 0 ? (
             <span className="text-xs text-gray-500 italic">No workflow steps found</span>
           ) : (
             <div className="w-full">
-              <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-3">Workflow Steps</p>
+              <p className="text-xs uppercase tracking-widest text-gray-400 font-semibold mb-5">Workflow Steps</p>
               <div className="space-y-0">
                 {expandedTasks.map((task, idx) => {
                   const isCompleted = task.status === 'COMPLETED';
@@ -122,65 +122,178 @@ export default function WorkflowDetailsModal({
                   const typeBadge = task.type === 'workflow_approval' ? 'Approval' : task.type === 'workflow_assign_task' ? 'Task' : task.type === 'workflow_assign_form' ? 'Form' : task.type;
 
                   return (
-                    <div key={task.taskId || idx} className="flex items-start gap-3">
-                      <div className="flex flex-col items-center flex-shrink-0" style={{ minWidth: '16px' }}>
-                        {isCompleted ? <div className="w-3 h-3 rounded-full bg-emerald-500 mt-1.5" /> : isActive ? <div className="w-3 h-3 rounded-full bg-gold mt-1.5 animate-pulse" /> : <div className="w-3 h-3 rounded-full border-2 border-gray-600 mt-1.5" />}
-                        {!isLast && <div className={`w-0.5 flex-1 min-h-[24px] ${isCompleted ? 'bg-emerald-500/40' : 'bg-gray-700'}`} />}
+                    <div key={task.taskId || idx} className="flex items-start gap-5">
+                      <div className="flex flex-col items-center flex-shrink-0 pt-1" style={{ minWidth: '24px' }}>
+                        {isCompleted ? (
+                          <div className="w-5 h-5 rounded-full bg-emerald-600 flex items-center justify-center shadow-lg">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                          </div>
+                        ) : isActive ? (
+                          <div className="w-5 h-5 rounded-full bg-amber-600 animate-pulse shadow-lg" />
+                        ) : (
+                          <div className="w-5 h-5 rounded-full border-2.5 border-teal-600/40 bg-navy-dark" />
+                        )}
+                        {!isLast && (
+                          <div
+                            className={`w-0.5 flex-1 transition-colors duration-300 ${isCompleted ? 'bg-emerald-600/50' : isActive ? 'bg-amber-600/40' : 'bg-teal-600/20'}`}
+                            style={{ minHeight: '34px' }}
+                          />
+                        )}
                       </div>
 
-                      <div className="flex-1 flex items-start justify-between pb-3 min-w-0">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className={`text-sm font-medium ${isCompleted ? 'text-gray-400' : isActive ? 'text-white' : 'text-gray-500'}`}>{task.name}</span>
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${task.type === 'workflow_approval' ? 'bg-purple-500/20 text-purple-400' : task.type === 'workflow_assign_form' ? 'bg-blue-500/20 text-blue-400' : 'bg-amber-500/20 text-amber-400'}`}>{typeBadge}</span>
+                      <div className="flex-1 flex items-start justify-between pb-0 min-w-0 pt-0.5">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <span
+                              className={`text-base font-semibold transition-colors ${
+                                isCompleted ? 'text-gray-500' : isActive ? 'text-white' : 'text-gray-400'
+                              }`}
+                            >
+                              {task.name}
+                            </span>
+                            <span
+                              className={`text-xs px-2.5 py-1 rounded-lg font-medium border transition-colors ${
+                                task.type === 'workflow_approval'
+                                  ? 'bg-teal-600/20 text-teal-300 border-teal-600/40'
+                                  : task.type === 'workflow_assign_form'
+                                  ? 'bg-blue-600/20 text-blue-300 border-blue-600/40'
+                                  : 'bg-amber-600/20 text-amber-300 border-amber-600/40'
+                              }`}
+                            >
+                              {typeBadge}
+                            </span>
                           </div>
-                          {task.assigneeName && <p className="text-xs text-gray-500 mt-0.5">{task.assigneeName}{task.assigneeEmail ? ` (${task.assigneeEmail})` : ''}</p>}
+                          {task.assigneeName && (
+                            <p className="text-xs text-gray-500 mt-2">
+                              {task.assigneeName}
+                              {task.assigneeEmail ? <span className="text-gray-600 ml-1">({task.assigneeEmail})</span> : ''}
+                            </p>
+                          )}
                         </div>
 
-                        <div className="flex items-center gap-1.5 flex-shrink-0 ml-3 flex-wrap">
+                        <div className="flex items-center gap-2 flex-shrink-0 ml-5 flex-wrap justify-end">
                           {isCompleted ? (
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-400 text-xs font-medium flex items-center gap-1 border border-emerald-500/20"><CheckCircle2 className="w-3 h-3" /> Completed</span>
-                              {task.type === 'workflow_approval' && <button onClick={() => handleViewSignature(task)} title="View Signature" className="px-2 py-1 rounded-md bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 text-xs font-medium flex items-center gap-0.5 border border-purple-500/20"><Eye className="w-3 h-3" /> <span className="hidden sm:inline">View Sig</span></button>}
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="px-3 py-1.5 rounded-lg bg-emerald-600/20 text-emerald-400 text-xs font-semibold flex items-center gap-1.5 border border-emerald-600/40 hover:bg-emerald-600/30 transition-colors">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Completed
+                              </span>
+                              {task.type === 'workflow_approval' && (
+                                <button
+                                  onClick={() => handleViewSignature(task)}
+                                  title="View Signature"
+                                  className="px-3 py-1.5 rounded-lg bg-teal-600/20 text-teal-400 hover:bg-teal-600/30 text-xs font-semibold flex items-center gap-1 border border-teal-600/40 transition-colors cursor-pointer"
+                                >
+                                  <Eye className="w-3.5 h-3.5" /> <span className="hidden sm:inline">View Sig</span>
+                                </button>
+                              )}
                             </div>
                           ) : isPending ? (
-                            <span className="px-2 py-1 rounded-md bg-gray-500/10 text-gray-500 text-xs font-medium flex items-center gap-1 border border-gray-500/10"><Clock className="w-3 h-3" /> Waiting</span>
+                            <span className="px-3 py-1.5 rounded-lg bg-gray-600/20 text-gray-400 text-xs font-semibold flex items-center gap-1.5 border border-gray-600/30">
+                              <Clock className="w-3.5 h-3.5" /> Waiting
+                            </span>
                           ) : isActive && task.type === 'workflow_approval' ? (
                             emailMatch ? (
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-2">
                                 {taskConfirmRejectId === task.taskId ? (
-                                  <div className="flex items-center gap-1 rounded-lg bg-red-500/10 border border-red-500/30 px-2 py-1">
-                                    <span className="text-[11px] text-red-400">Confirm reject?</span>
-                                    <button onClick={() => onTaskReject?.(submission.id, taskRejectReason.trim())} disabled={taskActionLoading === submission.id} className="px-2 py-0.5 rounded bg-red-600 text-white text-xs hover:bg-red-500 disabled:opacity-50">{taskActionLoading === submission.id ? <Loader2 className="w-3 h-3 animate-spin" /> : null} Yes</button>
-                                    <button onClick={() => { onSetTaskConfirmReject?.(null); onSetTaskRejectReason?.(''); onSetTaskRejecting?.(null); }} className="px-2 py-0.5 rounded bg-gray-700 text-gray-300 text-xs hover:bg-gray-600">No</button>
+                                  <div className="flex items-center gap-1.5 rounded-lg bg-red-600/20 border border-red-600/40 px-3 py-1.5">
+                                    <span className="text-xs text-red-400 font-semibold">Confirm reject?</span>
+                                    <button
+                                      onClick={() => onTaskReject?.(submission.id, taskRejectReason.trim())}
+                                      disabled={taskActionLoading === submission.id}
+                                      className="px-2.5 py-1 rounded bg-red-700 text-white text-xs font-semibold hover:bg-red-600 disabled:opacity-50 transition-colors cursor-pointer"
+                                    >
+                                      {taskActionLoading === submission.id ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Yes'}
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        onSetTaskConfirmReject?.(null);
+                                        onSetTaskRejectReason?.('');
+                                        onSetTaskRejecting?.(null);
+                                      }}
+                                      className="px-2.5 py-1 rounded bg-gray-700 text-gray-300 text-xs font-semibold hover:bg-gray-600 transition-colors cursor-pointer"
+                                    >
+                                      No
+                                    </button>
                                   </div>
                                 ) : taskRejectingId === task.taskId ? (
-                                  <div className="flex items-center gap-1">
-                                    <input type="text" value={taskRejectReason} onChange={e => onSetTaskRejectReason?.(e.target.value)} placeholder="Reason (optional)" className="bg-navy-dark/50 border border-red-500/30 rounded px-2 py-0.5 text-xs text-gray-300 w-36 focus:outline-none focus:border-red-500/60" onKeyDown={e => { if (e.key === 'Enter') onSetTaskConfirmReject?.(task.taskId || ''); }} />
-                                    <button onClick={() => onSetTaskConfirmReject?.(task.taskId || '')} className="px-2 py-0.5 rounded bg-red-600/80 text-white text-xs hover:bg-red-500">OK</button>
-                                    <button onClick={() => { onSetTaskRejecting?.(null); onSetTaskRejectReason?.(''); }} className="text-xs text-gray-500 hover:text-gray-300">Cancel</button>
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      type="text"
+                                      value={taskRejectReason}
+                                      onChange={e => onSetTaskRejectReason?.(e.target.value)}
+                                      placeholder="Reason (optional)"
+                                      className="bg-navy-dark/50 border border-red-600/40 rounded-lg px-3 py-1.5 text-xs text-gray-300 w-40 focus:outline-none focus:border-red-500/60 focus:ring-1 focus:ring-red-500/30"
+                                      onKeyDown={e => {
+                                        if (e.key === 'Enter') onSetTaskConfirmReject?.(task.taskId || '');
+                                      }}
+                                    />
+                                    <button
+                                      onClick={() => onSetTaskConfirmReject?.(task.taskId || '')}
+                                      className="px-3 py-1.5 rounded-lg bg-red-700 text-white text-xs font-semibold hover:bg-red-600 transition-colors cursor-pointer"
+                                    >
+                                      OK
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        onSetTaskRejecting?.(null);
+                                        onSetTaskRejectReason?.('');
+                                      }}
+                                      className="text-xs text-gray-500 hover:text-gray-300 transition-colors cursor-pointer"
+                                    >
+                                      Cancel
+                                    </button>
                                   </div>
                                 ) : (
                                   <>
-                                    <button onClick={() => onTaskApprove?.(submission.id)} disabled={taskActionLoading === submission.id} className="px-2.5 py-1 rounded-md bg-gold/20 text-gold hover:bg-gold/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Approve</button>
-                                    <button onClick={() => onSetTaskRejecting?.(task.taskId || '')} disabled={taskActionLoading === submission.id} className="px-2.5 py-1 rounded-md bg-red-500/20 text-red-400 hover:bg-red-500/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1"><XCircle className="w-3 h-3" /> Reject</button>
+                                    <button
+                                      onClick={() => onTaskApprove?.(submission.id)}
+                                      disabled={taskActionLoading === submission.id}
+                                      className="px-3.5 py-1.5 rounded-lg bg-emerald-600/25 text-emerald-400 hover:bg-emerald-600/35 disabled:opacity-50 text-xs font-semibold flex items-center gap-1.5 border border-emerald-600/40 transition-colors cursor-pointer"
+                                    >
+                                      <CheckCircle2 className="w-3.5 h-3.5" /> Approve
+                                    </button>
+                                    <button
+                                      onClick={() => onSetTaskRejecting?.(task.taskId || '')}
+                                      disabled={taskActionLoading === submission.id}
+                                      className="px-3.5 py-1.5 rounded-lg bg-red-600/25 text-red-400 hover:bg-red-600/35 disabled:opacity-50 text-xs font-semibold flex items-center gap-1.5 border border-red-600/40 transition-colors cursor-pointer"
+                                    >
+                                      <XCircle className="w-3.5 h-3.5" /> Reject
+                                    </button>
                                   </>
                                 )}
                               </div>
                             ) : (
-                              <span className="px-2 py-1 rounded-md bg-gray-500/10 text-gray-600 text-xs font-medium flex items-center gap-1 border border-gray-500/10"><Lock className="w-3 h-3" /> Not assigned to you</span>
+                              <span className="px-3 py-1.5 rounded-lg bg-gray-600/20 text-gray-500 text-xs font-semibold flex items-center gap-1.5 border border-gray-600/30">
+                                <Lock className="w-3.5 h-3.5" /> Not assigned
+                              </span>
                             )
                           ) : isActive && task.type === 'workflow_assign_task' ? (
                             emailMatch ? (
-                              <button onClick={() => onOpenTaskLink?.(task)} disabled={!task.accessLink} className="px-2.5 py-1 rounded-md bg-gold/20 text-gold hover:bg-gold/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1"><ClipboardList className="w-3 h-3" /> View Task</button>
+                              <button
+                                onClick={() => onOpenTaskLink?.(task)}
+                                disabled={!task.accessLink}
+                                className="px-3.5 py-1.5 rounded-lg bg-amber-600/25 text-amber-400 hover:bg-amber-600/35 disabled:opacity-50 text-xs font-semibold flex items-center gap-1.5 border border-amber-600/40 transition-colors cursor-pointer"
+                              >
+                                <ClipboardList className="w-3.5 h-3.5" /> View Task
+                              </button>
                             ) : (
-                              <span className="px-2 py-1 rounded-md bg-gray-500/10 text-gray-600 text-xs font-medium flex items-center gap-1 border border-gray-500/10"><Lock className="w-3 h-3" /> Not assigned to you</span>
+                              <span className="px-3 py-1.5 rounded-lg bg-gray-600/20 text-gray-500 text-xs font-semibold flex items-center gap-1.5 border border-gray-600/30">
+                                <Lock className="w-3.5 h-3.5" /> Not assigned
+                              </span>
                             )
                           ) : isActive && task.type === 'workflow_assign_form' ? (
                             emailMatch ? (
-                              <button onClick={() => onOpenTaskLink?.(task)} disabled={!task.accessLink} className="px-2.5 py-1 rounded-md bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1"><FileEdit className="w-3 h-3" /> Complete Form</button>
+                              <button
+                                onClick={() => onOpenTaskLink?.(task)}
+                                disabled={!task.accessLink}
+                                className="px-3.5 py-1.5 rounded-lg bg-blue-600/25 text-blue-400 hover:bg-blue-600/35 disabled:opacity-50 text-xs font-semibold flex items-center gap-1.5 border border-blue-600/40 transition-colors cursor-pointer"
+                              >
+                                <FileEdit className="w-3.5 h-3.5" /> Complete Form
+                              </button>
                             ) : (
-                              <span className="px-2 py-1 rounded-md bg-gray-500/10 text-gray-600 text-xs font-medium flex items-center gap-1 border border-gray-500/10"><Lock className="w-3 h-3" /> Not assigned to you</span>
+                              <span className="px-3 py-1.5 rounded-lg bg-gray-600/20 text-gray-500 text-xs font-semibold flex items-center gap-1.5 border border-gray-600/30">
+                                <Lock className="w-3.5 h-3.5" /> Not assigned
+                              </span>
                             )
                           ) : null}
                         </div>
