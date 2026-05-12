@@ -111,17 +111,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (DEV_MOCK_AUTH) return; // Skip real auth in mock mode — demo as Director Huzaifa Dawasaz
 
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
+    const verifyWorkspaceAndApply = async (s: Session | null) => {
+      if (!s?.user?.email) {
+        setSession(s);
+        setUser(s?.user ?? null);
+        if (!s) { setProfile(null); setOrganization(null); }
+        return;
+      }
+      try {
+        const res = await fetch('/api/auth/verify-workspace-member', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: s.user.email }),
+        });
+        const data = await res.json();
+        if (!data?.isMember) {
+          sessionStorage.setItem('auth_rejection', 'not_workspace_member');
+          sessionStorage.setItem('auth_rejection_email', s.user.email);
+          await supabase.auth.signOut();
+          setSession(null); setUser(null); setProfile(null); setOrganization(null);
+          return;
+        }
+      } catch (err) {
+        console.error('Workspace verification failed:', err);
+        sessionStorage.setItem('auth_rejection', 'verification_error');
+        await supabase.auth.signOut();
+        setSession(null); setUser(null); setProfile(null); setOrganization(null);
+        return;
+      }
       setSession(s);
-      setUser(s?.user ?? null);
-      if (s?.user) fetchProfile(s.user.id).finally(() => setLoading(false));
-      else setLoading(false);
+      setUser(s.user);
+      fetchProfile(s.user.id);
+    };
+
+    supabase.auth.getSession().then(async ({ data: { session: s } }) => {
+      await verifyWorkspaceAndApply(s);
+      setLoading(false);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s);
-      setUser(s?.user ?? null);
-      if (s?.user) fetchProfile(s.user.id);
-      else { setProfile(null); setOrganization(null); }
+      verifyWorkspaceAndApply(s);
     });
     return () => subscription.unsubscribe();
   }, [fetchProfile]);
