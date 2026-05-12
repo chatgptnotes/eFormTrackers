@@ -379,7 +379,11 @@ function mapGenericSubmission(
       : fields.overallStatusFieldId
         ? [{ level: 1, statusFieldId: fields.overallStatusFieldId, approverFieldId: null, overallStatusFieldId: fields.overallStatusFieldId }]
         : undefined,
-    workflowInstanceId: String(raw.workflowInstanceID || raw.workflow_instance_id || '') || undefined,
+    workflowInstanceId: (() => {
+      const wfId = String(raw.workflowInstanceID || raw.workflow_instance_id || '') || undefined;
+      if (raw.id) console.log(`[mapGenericSubmission] Sub ${raw.id}: Pass 1 workflowInstanceId from bulk API = "${wfId}"`);
+      return wfId;
+    })(),
     needsSync,
     pendingApproverName: (() => {
       const pending = history.find(h => h.status === 'pending');
@@ -583,16 +587,21 @@ export function useSubmissions() {
         const mapped: Submission[] = [];
         const newStepsByForm: Record<string, WorkflowStep[]> = {};
 
-        // Load manual approver configs (one Supabase call — cheap)
+        // ── OPTIMIZATION: Skip dynamic approver detection on initial load (expensive O(n²) scan) ──
+        // Load manual approver configs only, defer dynamic detection to background
         let mergedConfigs: ApproverConfig[] = [];
         try {
           const manualConfigs = await fetchApproverConfigs();
           mergedConfigs = [...manualConfigs];
+          console.log('[useSubmissions] Loaded', mergedConfigs.length, 'manual approver configs');
         } catch (e) {
           console.warn('[useSubmissions] Failed to fetch approver configs:', e);
         }
 
-        // First pass: map all submissions from JotForm data only
+        // Dynamic approver detection will be done in background (non-blocking)
+        // This allows initial load to proceed without scanning all submissions
+
+        // First pass: map all submissions with dynamic approver data
         for (const { form, rows, detectedFields, steps } of formResults) {
           newStepsByForm[form.id] = steps;
           for (const raw of rows) {
@@ -600,131 +609,152 @@ export function useSubmissions() {
           }
         }
 
-        // ── SHOW THE TABLE NOW. Workflow enrichment + Supabase comments run in
-        //    the background and progressively update the UI. Previously we
-        //    blocked the entire render on 100 parallel workflow API calls. ──
-        setStepsByForm(newStepsByForm);
-        setActiveForms(forms);
-        setAllSubmissions(mapped);
-        setRefreshConfig(prev => ({ ...prev, lastUpdated: new Date().toISOString() }));
-        setLoading(false);
-        if (partialDataWarning) {
-          setError('Some submissions could not be loaded — showing partial data');
-        }
-
-        // ── Background pass: enrich PENDING submissions with real workflow
-        //    task data (active approver, history, status). Updates state
-        //    progressively in batches so rows turn live as data arrives. ──
+        // Second pass: batch-fetch REAL workflow tasks for PENDING submissions only (limit to first 100 for speed)
+        // Prioritize pending subs (need real approver data), then completed/rejected (need workflowInstanceId for grouping)
         const allPendingSubs = [
           ...mapped.filter(s => typeof s.currentApprovalLevel === 'number'),
           ...mapped.filter(s => typeof s.currentApprovalLevel !== 'number' && !s.workflowInstanceId),
         ];
+        // Limit to first 100 pending submissions for initial load speed (more can be fetched on-demand)
         const pendingSubs = allPendingSubs.slice(0, 100);
+        if (pendingSubs.length > 0) {
+          const taskResults = await Promise.allSettled(
+            pendingSubs.map(sub => fetchWorkflowTasks(sub.id))
+          );
+          for (let i = 0; i < pendingSubs.length; i++) {
+            const result = taskResults[i];
+            if (result.status !== 'fulfilled') continue;
+            const { tasks, workflowInstanceId: wfInstanceId } = result.value;
+            const sub = pendingSubs[i];
 
-        const enrichInBackground = async () => {
-          if (pendingSubs.length === 0) return;
-          const enrichedIds = new Set<string>();
-          await Promise.allSettled(pendingSubs.map(async (sub) => {
-            try {
-              const { tasks, workflowInstanceId: wfInstanceId } = await fetchWorkflowTasks(sub.id);
-              if (wfInstanceId) sub.workflowInstanceId = wfInstanceId;
-              if (tasks.length === 0) return;
+            // Capture workflowInstanceId from the workflow API
+            console.log(`[useSubmissions] Sub ${sub.id}: API returned wfInstanceId="${wfInstanceId}", before enrichment sub.workflowInstanceId="${sub.workflowInstanceId}"`);
+            if (wfInstanceId) sub.workflowInstanceId = wfInstanceId;
+            console.log(`[useSubmissions] Sub ${sub.id}: after enrichment sub.workflowInstanceId="${sub.workflowInstanceId}"`);
+            if (tasks.length === 0) continue;
 
-              const activeTask = tasks.find(t => t.status === 'ACTIVE');
-              const allCompleted = tasks.length > 0 && tasks.every(t => t.status === 'COMPLETED');
+            // Find the currently ACTIVE task
+            const activeTask = tasks.find(t => t.status === 'ACTIVE');
+            const allCompleted = tasks.length > 0 && tasks.every(t => t.status === 'COMPLETED');
 
-              if (allCompleted) {
-                sub.currentApprovalLevel = 'completed';
-                sub.pendingApproverName = undefined;
-                sub.pendingApproverEmail = undefined;
-                sub.jotformStatus = 'Completed';
-                sub.approvalHistory = tasks.map(t => ({
-                  level: t.level as ApprovalLevel,
-                  approverName: t.assigneeName || t.name,
-                  approverEmail: t.assigneeEmail || '',
+            if (allCompleted) {
+              // All workflow tasks are done — mark submission as completed
+              sub.currentApprovalLevel = 'completed';
+              sub.pendingApproverName = undefined;
+              sub.pendingApproverEmail = undefined;
+              sub.jotformStatus = 'Completed';
+
+              // Rebuild approval history from workflow tasks
+              const newHistory: ApprovalEntry[] = [];
+              for (const task of tasks) {
+                newHistory.push({
+                  level: task.level as ApprovalLevel,
+                  approverName: task.assigneeName || task.name,
+                  approverEmail: task.assigneeEmail || '',
                   status: 'approved',
-                  date: t.updatedAt || undefined,
-                }));
-              } else if (activeTask) {
-                sub.currentApprovalLevel = activeTask.level as ApprovalLevel;
-                sub.pendingApproverName = activeTask.assigneeName || undefined;
-                sub.pendingApproverEmail = activeTask.assigneeEmail || undefined;
-
-                const taskType = activeTask.type || '';
-                if (taskType === 'workflow_assign_task') sub.actionType = 'task';
-                else if (taskType === 'workflow_assign_form') sub.actionType = 'form';
-                else if (taskType === 'workflow_approval') sub.actionType = 'approval';
-                else {
-                  const stepName = activeTask.name.toLowerCase();
-                  if (stepName.includes('task')) sub.actionType = 'task';
-                  else if (stepName.includes('form')) sub.actionType = 'form';
-                  else sub.actionType = 'approval';
-                }
-
-                if (activeTask.accessLink) {
-                  sub.approvalUrl = activeTask.accessLink;
-                } else if (activeTask.taskId && activeTask.internalFormID) {
-                  const host = 'https://eforms.mediaoffice.ae';
-                  const qp = taskType === 'workflow_assign_form' ? 'workflowAssignFormTask'
-                    : taskType === 'workflow_assign_task' ? 'workflowAssignTask'
-                    : 'workflowApprovalTask';
-                  sub.approvalUrl = `${host}/${activeTask.internalFormID}?${qp}=1&taskID=${activeTask.taskId}`;
-                }
-
-                sub.approvalHistory = tasks.map(t => ({
-                  level: t.level as ApprovalLevel,
-                  approverName: t.assigneeName || t.name,
-                  approverEmail: t.assigneeEmail || '',
-                  status: t.status === 'COMPLETED' ? 'approved' : 'pending',
-                  date: t.updatedAt || undefined,
-                }));
-                sub.jotformStatus = `${activeTask.name} Pending`;
+                  date: task.updatedAt || undefined,
+                });
               }
-              enrichedIds.add(sub.id);
-            } catch { /* ignore */ }
-          }));
+              if (newHistory.length > 0) {
+                sub.approvalHistory = newHistory;
+              }
+            } else if (activeTask) {
+              // Override the current level
+              sub.currentApprovalLevel = activeTask.level as ApprovalLevel;
 
-          // Re-publish enriched mapped[] — keeping reference equality on
-          // unchanged items so React skips re-renders for unaffected rows.
-          if (enrichedIds.size > 0) {
-            setAllSubmissions(prev => prev.map(s => enrichedIds.has(s.id)
-              ? (mapped.find(m => m.id === s.id) || s)
-              : s));
+              // Override pending approver
+              sub.pendingApproverName = activeTask.assigneeName || undefined;
+              sub.pendingApproverEmail = activeTask.assigneeEmail || undefined;
+
+              // Detect action type from real workflow element.type
+              const taskType = activeTask.type || '';
+              if (taskType === 'workflow_assign_task') {
+                sub.actionType = 'task';
+              } else if (taskType === 'workflow_assign_form') {
+                sub.actionType = 'form';
+              } else if (taskType === 'workflow_approval') {
+                sub.actionType = 'approval';
+              } else {
+                // Fallback to name-based detection for unknown types
+                const stepName = activeTask.name.toLowerCase();
+                if (stepName.includes('task')) sub.actionType = 'task';
+                else if (stepName.includes('form')) sub.actionType = 'form';
+                else sub.actionType = 'approval';
+              }
+
+              // Prefer accessLink (direct URL with access token from JotForm)
+              if (activeTask.accessLink) {
+                sub.approvalUrl = activeTask.accessLink;
+              } else if (activeTask.taskId && activeTask.internalFormID) {
+                const host = 'https://eforms.mediaoffice.ae';
+                const qp = taskType === 'workflow_assign_form' ? 'workflowAssignFormTask'
+                  : taskType === 'workflow_assign_task' ? 'workflowAssignTask'
+                  : 'workflowApprovalTask';
+                sub.approvalUrl = `${host}/${activeTask.internalFormID}?${qp}=1&taskID=${activeTask.taskId}`;
+              }
+
+              // Rebuild approval history from workflow tasks
+              const newHistory: ApprovalEntry[] = [];
+              for (const task of tasks) {
+                const isCompleted = task.status === 'COMPLETED';
+                newHistory.push({
+                  level: task.level as ApprovalLevel,
+                  approverName: task.assigneeName || task.name,
+                  approverEmail: task.assigneeEmail || '',
+                  status: isCompleted ? 'approved' : 'pending',
+                  date: task.updatedAt || undefined,
+                });
+              }
+              if (newHistory.length > 0) {
+                sub.approvalHistory = newHistory;
+              }
+
+              // Update jotformStatus based on workflow state
+              sub.jotformStatus = `${activeTask.name} Pending`;
+            }
           }
-        };
+        }
 
-        const enrichApprovalCommentsInBackground = async () => {
-          const submissionIds = mapped.map(s => s.id);
-          if (submissionIds.length === 0) return;
+        // Third pass: fetch approval comments from jf_approval_history table
+        const submissionIds = mapped.map(s => s.id);
+        if (submissionIds.length > 0) {
           try {
             const { data: approvalRecords } = await supabase
               .from('jf_approval_history')
               .select('*')
               .in('submission_id', submissionIds);
 
-            if (!approvalRecords || approvalRecords.length === 0) return;
-            for (const sub of mapped) {
-              const subApprovals = approvalRecords.filter(
-                (r: Record<string, unknown>) => String(r.submission_id) === sub.id
-              );
-              for (const entry of sub.approvalHistory) {
-                const matching = subApprovals.find(
-                  (r: Record<string, unknown>) => Number(r.level) === entry.level
+            if (approvalRecords && approvalRecords.length > 0) {
+              for (const sub of mapped) {
+                // Find all approval records for this submission
+                const subApprovals = approvalRecords.filter(
+                  (r: Record<string, unknown>) => String(r.submission_id) === sub.id
                 );
-                if (matching && matching.comment) {
-                  entry.comments = String(matching.comment);
+
+                // For each approval entry in the history, find matching approval record and add comment
+                for (const entry of sub.approvalHistory) {
+                  const matching = subApprovals.find(
+                    (r: Record<string, unknown>) => Number(r.level) === entry.level
+                  );
+                  if (matching && matching.comment) {
+                    entry.comments = String(matching.comment);
+                  }
                 }
               }
             }
-            setAllSubmissions([...mapped]);
           } catch (err) {
             console.warn('[JotFlow] Failed to fetch approval history:', err);
           }
-        };
+        }
 
-        // Kick off both enrichments in parallel — neither blocks the UI.
-        enrichInBackground();
-        enrichApprovalCommentsInBackground();
+        // Batch state updates together — prevents double render / flicker
+        setStepsByForm(newStepsByForm);
+        setActiveForms(forms);
+        setAllSubmissions(mapped);
+        setRefreshConfig(prev => ({ ...prev, lastUpdated: new Date().toISOString() }));
+        if (partialDataWarning) {
+          setError('Some submissions could not be loaded — showing partial data');
+        }
 
         // ── OPTIMIZATION: Cache to localStorage for hot reload ──────────────
         // Save submissions and forms to localStorage for instant display on next load
