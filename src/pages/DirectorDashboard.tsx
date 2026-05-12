@@ -491,20 +491,38 @@ export default function DirectorDashboard({ data }: Props) {
     }
   };
 
-  const openTaskLink = (task: WorkflowTask) => {
-    let url = task.accessLink;
+  const openTaskLink = async (task: WorkflowTask) => {
+    // Find the submission this task belongs to so we can call /api/email-url,
+    // which builds the proper /approval-form/{formID}/task/{taskID}/access-token/{token}
+    // URL. Constructing the URL inline without the access token returns 404.
+    const sub =
+      workflowSidebarSubmission ||
+      workflowModalSubmission ||
+      data.allSubmissions.find(s => s.id === expandedRowId) ||
+      null;
 
-    // Fallback: construct URL if accessLink is not available
-    if (!url && task.internalFormID && task.taskId) {
+    if (sub) {
+      try {
+        const res = await fetch(`/api/email-url?formId=${sub.formId}&submissionId=${sub.id}`);
+        const json = await res.json();
+        if (json?.approvalUrl) {
+          window.open(json.approvalUrl, '_blank', 'noopener,noreferrer');
+          return;
+        }
+      } catch { /* fall through to legacy fallback */ }
+    }
+
+    // Last-resort fallback for cases where we have no submission context.
+    // These URLs will 404 without an access token but at least preserve
+    // the previous behavior rather than failing silently.
+    if (task.accessLink) {
+      window.open(task.accessLink, '_blank', 'noopener,noreferrer');
+    } else if (task.internalFormID && task.taskId) {
       const host = 'https://eforms.mediaoffice.ae';
       const qp = task.type === 'workflow_assign_form' ? 'workflowAssignFormTask'
         : task.type === 'workflow_assign_task' ? 'workflowAssignTask'
         : 'workflowApprovalTask';
-      url = `${host}/${task.internalFormID}?${qp}=1&taskID=${task.taskId}`;
-    }
-
-    if (url) {
-      window.open(url, '_blank', 'noopener,noreferrer');
+      window.open(`${host}/${task.internalFormID}?${qp}=1&taskID=${task.taskId}`, '_blank', 'noopener,noreferrer');
     }
   };
 

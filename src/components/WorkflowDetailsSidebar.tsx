@@ -223,8 +223,7 @@ export default function WorkflowDetailsSidebar({
                                   emailMatch ? (
                                     <button
                                       onClick={() => onOpenTaskLink?.(task)}
-                                      disabled={!task.accessLink}
-                                      className="text-[11px] px-3 py-1.5 rounded-md bg-amber-100 text-amber-700 hover:bg-amber-200 disabled:opacity-50 transition-colors cursor-pointer font-medium"
+                                      className="text-[11px] px-3 py-1.5 rounded-md bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors cursor-pointer font-medium"
                                     >
                                       <ClipboardList className="w-3.5 h-3.5 inline mr-1" /> Open Task
                                     </button>
@@ -237,8 +236,7 @@ export default function WorkflowDetailsSidebar({
                                   emailMatch ? (
                                     <button
                                       onClick={() => onOpenTaskLink?.(task)}
-                                      disabled={!task.accessLink}
-                                      className="text-[11px] px-3 py-1.5 rounded-md bg-cyan-100 text-cyan-700 hover:bg-cyan-200 disabled:opacity-50 transition-colors cursor-pointer font-medium"
+                                      className="text-[11px] px-3 py-1.5 rounded-md bg-cyan-100 text-cyan-700 hover:bg-cyan-200 transition-colors cursor-pointer font-medium"
                                     >
                                       <FileEdit className="w-3.5 h-3.5 inline mr-1" /> Fill Form
                                     </button>
