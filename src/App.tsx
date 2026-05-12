@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useMemo } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import Layout from './components/Layout';
@@ -7,6 +7,7 @@ import { useSubmissions } from './hooks/useSubmissions';
 import ErrorBoundary from './components/ErrorBoundary';
 import { Loader2 } from 'lucide-react';
 import { ToastProvider } from './components/ToastNotification';
+import { getUserConfig, isSubmissionVisible } from './config/currentUser';
 
 // Lazy-loaded pages — only downloaded when the user navigates to them
 const ModernDashboard = lazy(() => import('./pages/ModernDashboard'));
@@ -45,9 +46,21 @@ function RoleGuard({ allowed, children }: { allowed: string[]; children: React.R
 
 function ProtectedApp() {
   const data = useSubmissions();
+  const { user, orgRole } = useAuth();
+  const currentUser = getUserConfig(user?.email);
+
+  const visibleForms = useMemo(() => {
+    if (orgRole === 'super_admin' || currentUser.isAdmin) return data.activeForms;
+    const visibleFormIds = new Set(
+      data.allSubmissions
+        .filter(s => isSubmissionVisible(s, user?.email, currentUser, orgRole))
+        .map(s => s.formId)
+    );
+    return data.activeForms.filter(f => visibleFormIds.has(f.id));
+  }, [data.activeForms, data.allSubmissions, user?.email, currentUser, orgRole]);
 
   return (
-    <Layout refreshConfig={data.refreshConfig} setRefreshConfig={data.setRefreshConfig} onRefresh={data.refresh} activeForms={data.activeForms} activeDepartments={[...new Set(data.allSubmissions.map(s => s.submittedBy.department).filter(Boolean))]}>
+    <Layout refreshConfig={data.refreshConfig} setRefreshConfig={data.setRefreshConfig} onRefresh={data.refresh} activeForms={visibleForms} activeDepartments={[...new Set(data.allSubmissions.map(s => s.submittedBy.department).filter(Boolean))]}>
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/" element={<DirectorDashboard data={data} />} />

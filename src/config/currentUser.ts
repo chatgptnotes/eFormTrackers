@@ -1,3 +1,5 @@
+import type { Submission } from '../types';
+
 export interface UserConfig {
   name: string;
   role: string;
@@ -65,3 +67,46 @@ export function getUserConfig(email: string | null | undefined): UserConfig {
 }
 
 export const CURRENT_USER = USER_CONFIGS['huzaifa.dawasaz@mediaoffice.ae'];
+
+/**
+ * Single source of truth for "can this user see this submission?" used by both
+ * the submissions table (DirectorDashboard) and the sidebar workflow list (App/Layout).
+ *
+ * Rules (in order):
+ * - `super_admin` orgRole OR `isAdmin: true` in USER_CONFIGS: sees every submission.
+ *   No other role gets blanket visibility — every other user must justify access
+ *   per submission via approval level or direct assignment.
+ * - `viewer` orgRole or any user with no `approvalLevels` configured: only sees
+ *   submissions assigned to them or submitted by them. Never sees others' work.
+ * - Approver (has `approvalLevels`): sees completed/rejected items + pendings at
+ *   their level + anything assigned/submitted by them.
+ */
+export function isSubmissionVisible(
+  submission: Submission,
+  userEmail: string | null | undefined,
+  config: UserConfig,
+  orgRole: string,
+): boolean {
+  // Only super_admin (or an explicit USER_CONFIGS admin) gets full visibility.
+  if (orgRole === 'super_admin' || config.isAdmin) return true;
+
+  const myEmail = userEmail?.toLowerCase();
+  const pendingEntry = submission.approvalHistory?.find(a => a.status === 'pending');
+  const isAssignedOrMine = !!myEmail && (
+    submission.pendingApproverEmail?.toLowerCase() === myEmail ||
+    submission.approvalHistory?.some(a => a.approverEmail?.toLowerCase() === myEmail) ||
+    submission.submittedBy.email?.toLowerCase() === myEmail
+  );
+
+  const isViewer = orgRole === 'viewer';
+  if (isViewer || config.approvalLevels.length === 0) {
+    return isAssignedOrMine;
+  }
+
+  if (typeof submission.currentApprovalLevel !== 'number') return isAssignedOrMine;
+  const atDirectorLevel = config.approvalLevels.includes(submission.currentApprovalLevel as number);
+  const nameMatch = pendingEntry?.approverName && config.nameMatches.length > 0
+    ? config.nameMatches.some(m => pendingEntry.approverName.toLowerCase().includes(m))
+    : false;
+  return atDirectorLevel || nameMatch || isAssignedOrMine;
+}

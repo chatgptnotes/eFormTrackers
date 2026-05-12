@@ -13,7 +13,7 @@ import CommentPanel from '../components/CommentPanel';
 import SubmissionModal from '../components/SubmissionModal';
 import WorkflowDetailsModal from '../components/WorkflowDetailsModal';
 import WorkflowDetailsSidebar from '../components/WorkflowDetailsSidebar';
-import { getUserConfig } from '../config/currentUser';
+import { getUserConfig, isSubmissionVisible } from '../config/currentUser';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { exportToExcel } from '../services/exportService';
@@ -563,29 +563,7 @@ export default function DirectorDashboard({ data }: Props) {
   const directorSubmissions = useMemo(() => {
     let subs = data.allSubmissions.filter(s => {
       if (dismissedIds.has(s.id)) return false;
-
-      // Viewer: only sees submissions where they are the pending approver (assigned to them)
-      if (isViewer && user?.email) {
-        const myEmail = user.email.toLowerCase();
-        if (s.pendingApproverEmail?.toLowerCase() === myEmail) return true;
-        const pendingEntry = s.approvalHistory?.find(a => a.status === 'pending');
-        if (pendingEntry?.approverEmail?.toLowerCase() === myEmail) return true;
-        // Also show submissions they submitted
-        if (s.submittedBy.email?.toLowerCase() === myEmail) return true;
-        return false;
-      }
-
-      // Admin sees everything
-      if (currentUser.isAdmin) return true;
-      // Completed / rejected submissions are visible to everyone
-      if (typeof s.currentApprovalLevel !== 'number') return true;
-      // Pending submissions: show if at user's approval level
-      const atDirectorLevel = currentUser.approvalLevels.includes(s.currentApprovalLevel as number);
-      const pendingEntry = s.approvalHistory?.find(a => a.status === 'pending');
-      const nameMatch = pendingEntry?.approverName && currentUser.nameMatches.length > 0
-        ? currentUser.nameMatches.some(m => pendingEntry.approverName.toLowerCase().includes(m))
-        : false;
-      return atDirectorLevel || nameMatch;
+      return isSubmissionVisible(s, user?.email, currentUser, orgRole);
     });
 
     // Apply workflow (form) filter from sidebar
