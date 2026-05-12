@@ -1,6 +1,9 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import type { User, Session } from '@supabase/supabase-js';
+import { useIdleTimeout } from '../hooks/useIdleTimeout';
+
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
 export type OrgRole = 'super_admin' | 'admin' | 'approver' | 'viewer';
 
@@ -227,6 +230,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Clear persisted filters so the next user starts fresh
     try { localStorage.removeItem('jotflow_filters'); } catch {}
   };
+
+  useIdleTimeout(async () => {
+    if (!user) return;
+    sessionStorage.setItem('auth_rejection', 'idle_timeout');
+    await signOut();
+  }, IDLE_TIMEOUT_MS, !!user && !DEV_MOCK_AUTH);
 
   const resetPassword = async (email: string) => {
     const { error } = await supabase.auth.resetPasswordForEmail(email);

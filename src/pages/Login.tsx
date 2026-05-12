@@ -22,6 +22,8 @@ export default function Login() {
       );
     } else if (rejection === 'verification_error') {
       setError('Could not verify workspace membership. Please try again or contact admin@bettroi.com.');
+    } else if (rejection === 'idle_timeout') {
+      setError('You have been signed out due to 30 minutes of inactivity. Please sign in again.');
     }
     sessionStorage.removeItem('auth_rejection');
     sessionStorage.removeItem('auth_rejection_email');
