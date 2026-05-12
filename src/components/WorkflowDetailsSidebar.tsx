@@ -83,65 +83,162 @@ export default function WorkflowDetailsSidebar({
 
             {/* Content */}
             <div className="p-4 space-y-4">
-              {/* Card 1: Workflow Steps */}
-              <div className="bg-navy-dark/50 border border-navy-light/20 rounded-lg p-4">
-                <h3 className="text-sm font-bold text-white mb-3 uppercase tracking-wide">Workflow Steps</h3>
+              {/* Card 1: Process Activity Feed - Modern Enterprise Style */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold text-slate-300 uppercase tracking-widest px-1">Process Timeline</h3>
                 {expandedTasks.length === 0 ? (
-                  <span className="text-xs text-gray-500 italic">No workflow steps found</span>
+                  <span className="text-xs text-slate-500 italic block px-4">No workflow steps found</span>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {expandedTasks.map((task, idx) => {
                       const isCompleted = task.status === 'COMPLETED';
                       const isActive = task.status === 'ACTIVE';
                       const isPending = task.status === 'PENDING';
-                      const isLast = idx === expandedTasks.length - 1;
                       const emailMatch = user?.email && task.assigneeEmail?.toLowerCase() === user.email.toLowerCase();
                       const typeBadge = task.type === 'workflow_approval' ? 'Approval' : task.type === 'workflow_assign_task' ? 'Task' : task.type === 'workflow_assign_form' ? 'Form' : task.type;
 
+                      // Status color & badge styling
+                      const statusColor = isCompleted ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : isActive ? 'bg-blue-500/20 text-blue-300 border-blue-500/40' : 'bg-slate-600/10 text-slate-400 border-slate-600/30';
+                      const statusBgIcon = isCompleted ? 'bg-emerald-500/30' : isActive ? 'bg-blue-500/30' : 'bg-slate-600/20';
+                      const iconColor = isCompleted ? 'text-emerald-400' : isActive ? 'text-blue-400' : 'text-slate-500';
+
                       return (
-                        <div key={task.taskId || idx} className="flex gap-3">
-                          <div className="flex flex-col items-center flex-shrink-0">
-                            {isCompleted ? <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> : isActive ? <div className="w-2.5 h-2.5 rounded-full bg-gold animate-pulse" /> : <div className="w-2.5 h-2.5 rounded-full border border-gray-600" />}
-                            {!isLast && <div className={`w-0.5 h-12 ${isCompleted ? 'bg-emerald-500/40' : 'bg-gray-700'}`} />}
-                          </div>
-
-                          <div className="flex-1 pb-2">
-                            <div className="flex items-center gap-2 flex-wrap mb-1">
-                              <span className={`text-xs font-medium ${isCompleted ? 'text-gray-400' : isActive ? 'text-white' : 'text-gray-500'}`}>{task.name}</span>
-                              <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${task.type === 'workflow_approval' ? 'bg-purple-500/20 text-purple-400' : task.type === 'workflow_assign_form' ? 'bg-blue-500/20 text-blue-400' : 'bg-amber-500/20 text-amber-400'}`}>{typeBadge}</span>
+                        <div
+                          key={task.taskId || idx}
+                          className={`rounded-lg border transition-all ${
+                            isActive
+                              ? 'bg-slate-700/30 border-slate-600/50 shadow-lg shadow-blue-500/10'
+                              : 'bg-slate-800/30 border-slate-700/30'
+                          } p-4 hover:bg-slate-700/40 hover:border-slate-600/60`}
+                        >
+                          <div className="flex items-start gap-3">
+                            {/* Icon/Avatar */}
+                            <div className={`${statusBgIcon} rounded-lg p-2 flex-shrink-0 flex items-center justify-center`}>
+                              {task.type === 'workflow_approval' ? (
+                                <CheckCircle2 className={`w-5 h-5 ${iconColor}`} />
+                              ) : task.type === 'workflow_assign_task' ? (
+                                <ClipboardList className={`w-5 h-5 ${iconColor}`} />
+                              ) : task.type === 'workflow_assign_form' ? (
+                                <FileEdit className={`w-5 h-5 ${iconColor}`} />
+                              ) : (
+                                <Clock className={`w-5 h-5 ${iconColor}`} />
+                              )}
                             </div>
-                            {task.assigneeName && <p className="text-[11px] text-gray-500 mb-2">{task.assigneeName}{task.assigneeEmail ? ` (${task.assigneeEmail})` : ''}</p>}
 
-                            <div className="flex flex-wrap gap-1">
-                              {isCompleted ? (
-                                <>
-                                  <span className="px-2 py-1 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1"><CheckCircle2 className="w-2.5 h-2.5" /> Completed</span>
-                                  {task.type === 'workflow_approval' && <button onClick={() => onFetchSignature?.(submission?.id || '', task.level || 0, task.taskId || '')} disabled={sigLoading === task.taskId} className="px-2 py-1 rounded text-[10px] font-medium bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 border border-purple-500/20 disabled:opacity-50">{sigLoading === task.taskId ? <Loader2 className="w-2.5 h-2.5 animate-spin inline" /> : <Eye className="w-2.5 h-2.5 inline mr-0.5" />} Sig</button>}
-                                </>
-                              ) : isPending ? (
-                                <span className="px-2 py-1 rounded text-[10px] font-medium bg-gray-500/10 text-gray-500 border border-gray-500/10 flex items-center gap-1"><Clock className="w-2.5 h-2.5" /> Waiting</span>
-                              ) : isActive && task.type === 'workflow_approval' ? (
-                                emailMatch ? (
+                            {/* Content */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2 mb-1">
+                                <h4 className="text-sm font-semibold text-white truncate">{task.name}</h4>
+                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border whitespace-nowrap ${statusColor}`}>
+                                  {isCompleted ? 'Complete' : isActive ? 'In Progress' : 'Pending'}
+                                </span>
+                              </div>
+
+                              {task.assigneeName && (
+                                <p className="text-xs text-slate-400 mb-2">
+                                  {task.assigneeName}
+                                  {task.assigneeEmail && <span className="text-slate-600"> • {task.assigneeEmail}</span>}
+                                </p>
+                              )}
+
+                              {/* Type Badge */}
+                              <div className="flex items-center gap-2 mb-3">
+                                <span
+                                  className={`text-[10px] px-2 py-1 rounded-full font-semibold border ${
+                                    task.type === 'workflow_approval'
+                                      ? 'bg-indigo-600/20 text-indigo-300 border-indigo-600/40'
+                                      : task.type === 'workflow_assign_form'
+                                      ? 'bg-cyan-600/20 text-cyan-300 border-cyan-600/40'
+                                      : 'bg-amber-600/20 text-amber-300 border-amber-600/40'
+                                  }`}
+                                >
+                                  {typeBadge}
+                                </span>
+                              </div>
+
+                              {/* Action Buttons */}
+                              <div className="flex flex-wrap gap-2">
+                                {isCompleted ? (
                                   <>
-                                    <button onClick={() => onTaskApprove?.(submission?.id || '')} disabled={taskActionLoading === submission?.id} className="px-2 py-1 rounded text-[10px] font-medium bg-gold/20 text-gold hover:bg-gold/30 disabled:opacity-50"><CheckCircle2 className="w-2.5 h-2.5 inline mr-0.5" /> Approve</button>
-                                    <button onClick={() => onSetTaskRejecting?.(task.taskId || '')} disabled={taskActionLoading === submission?.id} className="px-2 py-1 rounded text-[10px] font-medium bg-red-500/20 text-red-400 hover:bg-red-500/30 disabled:opacity-50"><XCircle className="w-2.5 h-2.5 inline mr-0.5" /> Reject</button>
+                                    <button className="text-[11px] px-3 py-1.5 rounded-md bg-emerald-600/20 text-emerald-400 border border-emerald-600/40 hover:bg-emerald-600/30 transition-colors cursor-default flex items-center gap-1">
+                                      <CheckCircle2 className="w-3.5 h-3.5" /> Completed
+                                    </button>
+                                    {task.type === 'workflow_approval' && (
+                                      <button
+                                        onClick={() =>
+                                          onFetchSignature?.(submission?.id || '', task.level || 0, task.taskId || '')
+                                        }
+                                        disabled={sigLoading === task.taskId}
+                                        className="text-[11px] px-3 py-1.5 rounded-md bg-cyan-600/20 text-cyan-400 border border-cyan-600/40 hover:bg-cyan-600/30 disabled:opacity-50 transition-colors cursor-pointer"
+                                      >
+                                        {sigLoading === task.taskId ? (
+                                          <Loader2 className="w-3.5 h-3.5 animate-spin inline mr-1" />
+                                        ) : (
+                                          <>
+                                            <Eye className="w-3.5 h-3.5 inline mr-1" />
+                                          </>
+                                        )}
+                                        Signature
+                                      </button>
+                                    )}
                                   </>
-                                ) : (
-                                  <span className="px-2 py-1 rounded text-[10px] font-medium bg-gray-500/10 text-gray-600 border border-gray-500/10 flex items-center gap-1"><Lock className="w-2.5 h-2.5" /> Not assigned</span>
-                                )
-                              ) : isActive && task.type === 'workflow_assign_task' ? (
-                                emailMatch ? (
-                                  <button onClick={() => onOpenTaskLink?.(task)} disabled={!task.accessLink} className="px-2 py-1 rounded text-[10px] font-medium bg-gold/20 text-gold hover:bg-gold/30 disabled:opacity-50"><ClipboardList className="w-2.5 h-2.5 inline mr-0.5" /> View Task</button>
-                                ) : (
-                                  <span className="px-2 py-1 rounded text-[10px] font-medium bg-gray-500/10 text-gray-600 border border-gray-500/10"><Lock className="w-2.5 h-2.5 inline mr-0.5" /> Not assigned</span>
-                                )
-                              ) : isActive && task.type === 'workflow_assign_form' ? (
-                                emailMatch ? (
-                                  <button onClick={() => onOpenTaskLink?.(task)} disabled={!task.accessLink} className="px-2 py-1 rounded text-[10px] font-medium bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 disabled:opacity-50"><FileEdit className="w-2.5 h-2.5 inline mr-0.5" /> Form</button>
-                                ) : (
-                                  <span className="px-2 py-1 rounded text-[10px] font-medium bg-gray-500/10 text-gray-600 border border-gray-500/10"><Lock className="w-2.5 h-2.5 inline mr-0.5" /> Not assigned</span>
-                                )
-                              ) : null}
+                                ) : isPending ? (
+                                  <span className="text-[11px] px-3 py-1.5 rounded-md bg-slate-600/10 text-slate-400 border border-slate-600/30 flex items-center gap-1">
+                                    <Clock className="w-3.5 h-3.5" /> Awaiting
+                                  </span>
+                                ) : isActive && task.type === 'workflow_approval' ? (
+                                  emailMatch ? (
+                                    <>
+                                      <button
+                                        onClick={() => onTaskApprove?.(submission?.id || '')}
+                                        disabled={taskActionLoading === submission?.id}
+                                        className="text-[11px] px-3 py-1.5 rounded-md bg-emerald-600/20 text-emerald-400 border border-emerald-600/40 hover:bg-emerald-600/30 disabled:opacity-50 transition-colors cursor-pointer"
+                                      >
+                                        <CheckCircle2 className="w-3.5 h-3.5 inline mr-1" /> Approve
+                                      </button>
+                                      <button
+                                        onClick={() => onSetTaskRejecting?.(task.taskId || '')}
+                                        disabled={taskActionLoading === submission?.id}
+                                        className="text-[11px] px-3 py-1.5 rounded-md bg-red-600/20 text-red-400 border border-red-600/40 hover:bg-red-600/30 disabled:opacity-50 transition-colors cursor-pointer"
+                                      >
+                                        <XCircle className="w-3.5 h-3.5 inline mr-1" /> Reject
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <span className="text-[11px] px-3 py-1.5 rounded-md bg-slate-600/10 text-slate-500 border border-slate-600/30 flex items-center gap-1">
+                                      <Lock className="w-3.5 h-3.5" /> Not Assigned
+                                    </span>
+                                  )
+                                ) : isActive && task.type === 'workflow_assign_task' ? (
+                                  emailMatch ? (
+                                    <button
+                                      onClick={() => onOpenTaskLink?.(task)}
+                                      disabled={!task.accessLink}
+                                      className="text-[11px] px-3 py-1.5 rounded-md bg-amber-600/20 text-amber-400 border border-amber-600/40 hover:bg-amber-600/30 disabled:opacity-50 transition-colors cursor-pointer"
+                                    >
+                                      <ClipboardList className="w-3.5 h-3.5 inline mr-1" /> Open Task
+                                    </button>
+                                  ) : (
+                                    <span className="text-[11px] px-3 py-1.5 rounded-md bg-slate-600/10 text-slate-500 border border-slate-600/30 flex items-center gap-1">
+                                      <Lock className="w-3.5 h-3.5" /> Not Assigned
+                                    </span>
+                                  )
+                                ) : isActive && task.type === 'workflow_assign_form' ? (
+                                  emailMatch ? (
+                                    <button
+                                      onClick={() => onOpenTaskLink?.(task)}
+                                      disabled={!task.accessLink}
+                                      className="text-[11px] px-3 py-1.5 rounded-md bg-cyan-600/20 text-cyan-400 border border-cyan-600/40 hover:bg-cyan-600/30 disabled:opacity-50 transition-colors cursor-pointer"
+                                    >
+                                      <FileEdit className="w-3.5 h-3.5 inline mr-1" /> Fill Form
+                                    </button>
+                                  ) : (
+                                    <span className="text-[11px] px-3 py-1.5 rounded-md bg-slate-600/10 text-slate-500 border border-slate-600/30 flex items-center gap-1">
+                                      <Lock className="w-3.5 h-3.5" /> Not Assigned
+                                    </span>
+                                  )
+                                ) : null}
+                              </div>
                             </div>
                           </div>
                         </div>
