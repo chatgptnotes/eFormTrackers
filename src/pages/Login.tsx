@@ -4,7 +4,7 @@ import { Mail, Lock, ArrowRight, Loader2, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
-  const { signIn, signInWithMagicLink, signInWithMicrosoft } = useAuth();
+  const { signIn, signInWithMagicLink } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -27,13 +27,6 @@ export default function Login() {
       if (err) setError(String(err));
       else navigate('/app');
     }
-    setLoading(false);
-  };
-
-  const handleMicrosoft = async () => {
-    setLoading(true);
-    const { error: err } = await signInWithMicrosoft();
-    if (err) setError(String(err));
     setLoading(false);
   };
 
@@ -66,18 +59,6 @@ export default function Login() {
             </div>
           ) : (
             <>
-              <button onClick={handleMicrosoft} disabled={loading}
-                className="w-full flex items-center justify-center gap-3 px-4 py-3.5 rounded-2xl border border-slate-300 text-slate-800 hover:border-blue-500/50 hover:bg-blue-50 transition-all mb-6 font-semibold">
-                <svg className="w-5 h-5" viewBox="0 0 21 21"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>
-                Sign in with Microsoft
-              </button>
-
-              <div className="flex items-center gap-4 mb-6">
-                <div className="flex-1 h-px bg-gradient-to-r from-transparent via-slate-300 to-transparent" />
-                <span className="text-xs text-slate-500 uppercase tracking-widest font-semibold">or</span>
-                <div className="flex-1 h-px bg-gradient-to-r from-transparent via-slate-300 to-transparent" />
-              </div>
-
               <div className="flex gap-3 mb-6 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
                 <button onClick={() => setMode('password')} className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all duration-300 ${mode === 'password' ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-lg shadow-blue-500/30' : 'text-slate-600 hover:text-slate-900'}`}>Password</button>
                 <button onClick={() => setMode('magic')} className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all duration-300 ${mode === 'magic' ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-lg shadow-blue-500/30' : 'text-slate-600 hover:text-slate-900'}`}>Magic Link</button>
@@ -109,9 +90,6 @@ export default function Login() {
                         {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                       </button>
                     </div>
-                    <div className="mt-3 text-right">
-                      <Link to="/forgot-password" className="text-sm text-blue-600 hover:text-blue-700 transition-colors font-semibold">Forgot password?</Link>
-                    </div>
                   </div>
                 )}
                 {error && <p className="text-red-600 text-sm font-semibold bg-red-100 px-4 py-2.5 rounded-xl border border-red-300">{error}</p>}
@@ -124,9 +102,6 @@ export default function Login() {
           )}
         </div>
 
-        <p className="text-center text-slate-700 mt-8 text-lg">
-          New here? <Link to="/signup" className="text-transparent bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text font-bold hover:from-blue-700 hover:to-purple-700 transition-all duration-300">Create account</Link>
-        </p>
       </div>
     </div>
   );
