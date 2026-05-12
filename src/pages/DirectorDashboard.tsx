@@ -474,8 +474,19 @@ export default function DirectorDashboard({ data }: Props) {
   };
 
   const openTaskLink = (task: WorkflowTask) => {
-    if (task.accessLink) {
-      window.open(task.accessLink, '_blank', 'noopener,noreferrer');
+    let url = task.accessLink;
+
+    // Fallback: construct URL if accessLink is not available
+    if (!url && task.internalFormID && task.taskId) {
+      const host = 'https://eforms.mediaoffice.ae';
+      const qp = task.type === 'workflow_assign_form' ? 'workflowAssignFormTask'
+        : task.type === 'workflow_assign_task' ? 'workflowAssignTask'
+        : 'workflowApprovalTask';
+      url = `${host}/${task.internalFormID}?${qp}=1&taskID=${task.taskId}`;
+    }
+
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
     }
   };
 
