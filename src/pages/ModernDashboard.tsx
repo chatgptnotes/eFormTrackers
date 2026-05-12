@@ -471,7 +471,7 @@ export default function ModernDashboard({ data }: Props) {
     },
   ];
 
-  if (loading) {
+  if (loading && allSubmissions.length === 0) {
     return (
       <div className="flex items-center justify-center py-32">
         <motion.div className="text-center space-y-4">
