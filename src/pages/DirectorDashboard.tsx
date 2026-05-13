@@ -559,10 +559,11 @@ export default function DirectorDashboard({ data }: Props) {
     }
   };
 
-  // Show all submissions — pending, completed, and rejected
+  // Show only active submissions — pending and rejected. Completed belong on /app/completed
   const directorSubmissions = useMemo(() => {
     let subs = data.allSubmissions.filter(s => {
       if (dismissedIds.has(s.id)) return false;
+      if (s.currentApprovalLevel === 'completed') return false;
       return isSubmissionVisible(s, user?.email, currentUser, orgRole);
     });
 
@@ -713,7 +714,9 @@ export default function DirectorDashboard({ data }: Props) {
   const uniqueLevels = useMemo(() => {
     const lvls = new Set<string>();
     data.allSubmissions.forEach(s => {
-      lvls.add(String(s.currentApprovalLevel));
+      if (s.currentApprovalLevel !== 'completed') {
+        lvls.add(String(s.currentApprovalLevel));
+      }
     });
     return Array.from(lvls).sort();
   }, [data.allSubmissions]);
@@ -758,7 +761,7 @@ export default function DirectorDashboard({ data }: Props) {
   // Stats
   const syncNeededCount = parentSubmissions.filter(s => s.needsSync).length;
   const pendingCount = parentSubmissions.filter(s => typeof s.currentApprovalLevel === 'number').length;
-  const completedCount = parentSubmissions.filter(s => s.currentApprovalLevel === 'completed').length;
+  const completedCount = data.allSubmissions.filter(s => s.currentApprovalLevel === 'completed').length;
   const rejectedCount = parentSubmissions.filter(s => s.currentApprovalLevel === 'rejected').length;
   const criticalCount = parentSubmissions.filter(s => s.daysAtCurrentLevel > 7 && typeof s.currentApprovalLevel === 'number').length;
   const avgWait = pendingCount > 0
@@ -968,7 +971,7 @@ export default function DirectorDashboard({ data }: Props) {
         {[
           { label: 'Total Requests', value: parentSubmissions.length, icon: TrendingUp, color: 'text-indigo-400', bg: 'bg-indigo-500/10' },
           { label: syncNeededCount > 0 ? `Pending (${syncNeededCount} sync)` : 'Pending Approval', value: pendingCount, icon: FileText, color: 'text-blue-400', bg: 'bg-blue-500/10' },
-          { label: 'Completed', value: completedCount + approvedToday, icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+          { label: 'Completed', value: completedCount + approvedToday, icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-500/10', link: '/app/completed' },
           { label: 'Rejected', value: rejectedCount, icon: XCircle, color: 'text-red-400', bg: 'bg-red-500/10' },
           { label: 'Critical (>7d)', value: criticalCount, icon: AlertTriangle, color: 'text-amber-400', bg: 'bg-amber-500/10' },
         ].map((stat, i) => (
@@ -977,7 +980,8 @@ export default function DirectorDashboard({ data }: Props) {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.05 }}
-            className="glass-card p-4"
+            onClick={() => { if ('link' in stat && stat.link) window.location.href = stat.link; }}
+            className={`glass-card p-4 ${'link' in stat && stat.link ? 'cursor-pointer hover:border-emerald-400/50 transition-colors' : ''}`}
           >
             <div className="flex items-center gap-3">
               <div className={`p-2 rounded-lg ${stat.bg}`}>
@@ -1140,7 +1144,6 @@ export default function DirectorDashboard({ data }: Props) {
                   >
                     <option value="">All Statuses</option>
                     <option value="pending">Pending</option>
-                    <option value="completed">Completed</option>
                     <option value="rejected">Rejected</option>
                   </select>
                 </div>

@@ -29,6 +29,7 @@ const HelpSupport = lazy(() => import('./pages/HelpSupport'));
 const AdvancedAnalytics = lazy(() => import('./pages/AdvancedAnalytics'));
 const KanbanBoard = lazy(() => import('./pages/KanbanBoard'));
 const SubmitRequest = lazy(() => import('./pages/SubmitRequest'));
+const CompletedPage = lazy(() => import('./pages/CompletedPage'));
 
 function PageLoader() {
   return (
@@ -79,6 +80,7 @@ function ProtectedApp() {
           <Route path="/kanban" element={<RoleGuard allowed={['super_admin', 'admin', 'approver']}><KanbanBoard data={data} /></RoleGuard>} />
           <Route path="/director" element={<DirectorDashboard data={data} />} />
           <Route path="/submit-request" element={<SubmitRequest activeForms={data.activeForms} />} />
+          <Route path="/completed" element={<CompletedPage data={data} />} />
         </Routes>
       </Suspense>
     </Layout>

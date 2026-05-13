@@ -6,7 +6,7 @@ import {
   Users, FileText, CreditCard, HelpCircle, Building2, BarChart3, Kanban,
   FolderOpen, Folder, ChevronRight, ChevronDown, LayoutGrid, Package,
   DollarSign, Monitor, Scale, Briefcase, Megaphone, ShieldCheck, PlusCircle,
-  ClipboardList, Layers, Sun, Moon, ExternalLink,
+  ClipboardList, Layers, Sun, Moon, ExternalLink, CheckCircle2,
 } from 'lucide-react';
 import { RefreshConfig, SidebarCategory } from '../types';
 import { JFFormMeta } from '../services/formDiscovery';
@@ -94,6 +94,8 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
     ? "Dashboard"
     : location.pathname === '/app/modern'
     ? "Modern Dashboard"
+    : location.pathname === '/app/completed'
+    ? "Completed Requests"
     : TOOL_NAV.find(i => i.path === location.pathname)?.label || 'Dashboard';
 
   return (
@@ -165,6 +167,20 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
               >
                 <LayoutGrid className="w-4.5 h-4.5" style={{ color: '#ffffff' }} />
                 <span className="text-sm font-medium" style={{ color: '#ffffff' }}>Modern Dashboard</span>
+              </Link>
+
+              {/* Completed Requests link */}
+              <Link
+                to="/app/completed"
+                onClick={() => { setActiveSidebarCategory(null); setSidebarOpen(false); }}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl mb-1 transition-all duration-200 ${
+                  location.pathname === '/app/completed'
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                    : 'text-white hover:bg-slate-800'
+                }`}
+              >
+                <CheckCircle2 className="w-4.5 h-4.5" style={{ color: '#ffffff' }} />
+                <span className="text-sm font-medium" style={{ color: '#ffffff' }}>Completed</span>
               </Link>
 
               {/* Category items */}
