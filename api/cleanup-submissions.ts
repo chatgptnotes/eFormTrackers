@@ -5,7 +5,7 @@ const API_KEY = process.env.JOTFORM_API_KEY;
 const TEAM_ID = process.env.JOTFORM_TEAM_ID || '';
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
 
-const KEEP_EMAIL = 'huzaifa.dawasaz@mediaoffice.ae';
+const KEEP_EMAIL: string = 'huzaifa.dawasaz@mediaoffice.ae';
 
 interface SubmissionInfo {
   id: string;
