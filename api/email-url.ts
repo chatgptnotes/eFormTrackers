@@ -3,7 +3,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 const JOTFORM_BASE = process.env.JOTFORM_BASE || 'https://eforms.mediaoffice.ae/API';
 const JOTFORM_HOST = process.env.JOTFORM_HOST || 'https://eforms.mediaoffice.ae';
 const JOTFORM_API_KEY = process.env.JOTFORM_API_KEY || '';
-const TEAM_ID = process.env.JOTFORM_TEAM_ID || '260541093809054';
+const TEAM_ID = process.env.JOTFORM_TEAM_ID || '';
 
 /**
  * GET /api/email-url?formId={id}&submissionId={id}

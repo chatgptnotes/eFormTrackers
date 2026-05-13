@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const JOTFORM_BASE = 'https://eforms.mediaoffice.ae/API';
 const API_KEY = process.env.JOTFORM_API_KEY;
-const TEAM_ID = process.env.JOTFORM_TEAM_ID || '260541093809054';
+const TEAM_ID = process.env.JOTFORM_TEAM_ID || '';
 
 // All approval levels require a digital signature
 const SIGNATURE_REQUIRED_LEVELS = [1, 2, 3, 4];

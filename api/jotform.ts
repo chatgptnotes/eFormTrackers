@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const JOTFORM_BASE = 'https://eforms.mediaoffice.ae/API';
 const API_KEY = process.env.JOTFORM_API_KEY;
-const TEAM_ID = process.env.JOTFORM_TEAM_ID || '260541093809054'; // GDMO-Bettroi team
+const TEAM_ID = process.env.JOTFORM_TEAM_ID || '';
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*'; // Set to your domain in production
 
 // Whitelist of query params that may be forwarded to JotForm API
@@ -25,8 +25,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const url = new URL(`${JOTFORM_BASE}/${apiPath}`);
   url.searchParams.set('apiKey', API_KEY);
 
-  // Always pass teamID so all requests are scoped to the GDMO-Bettroi team
-  url.searchParams.set('teamID', TEAM_ID);
+  // Only scope to a specific team when JOTFORM_TEAM_ID is set
+  if (TEAM_ID) url.searchParams.set('teamID', TEAM_ID);
 
   // Forward only whitelisted query params
   for (const [key, val] of Object.entries(req.query)) {

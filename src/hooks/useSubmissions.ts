@@ -135,7 +135,7 @@ function agingStatus(days: number): 'on-track' | 'delayed' | 'critical' {
 }
 
 // ─── Workspace version — bump when switching teams to force full cache clear ──
-const WORKSPACE_VERSION = 'gdmo-bettroi-v3'; // bumped: force cache clear after new Vercel deploy
+const WORKSPACE_VERSION = 'gdmo-bettroi-v4'; // bumped: new API key — force cache clear
 const WS_VERSION_KEY = 'jotflow_workspace_version';
 
 function checkAndClearWorkspaceCaches() {

@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const JOTFORM_BASE = 'https://eforms.mediaoffice.ae/API';
 const API_KEY = process.env.JOTFORM_API_KEY;
-const TEAM_ID = process.env.JOTFORM_TEAM_ID || '260541093809054';
+const TEAM_ID = process.env.JOTFORM_TEAM_ID || '';
 
 // Parse "Action: Approved | By: Name (email) | ..." text
 function parseApprover(text: string): { name: string; email: string } | null {

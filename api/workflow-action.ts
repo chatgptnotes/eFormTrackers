@@ -15,7 +15,7 @@ async function insertNotification(supabaseClient: any, params: {
 
 const JOTFORM_BASE = 'https://eforms.mediaoffice.ae/API';
 const API_KEY = process.env.JOTFORM_API_KEY;
-const TEAM_ID = process.env.JOTFORM_TEAM_ID || '260541093809054';
+const TEAM_ID = process.env.JOTFORM_TEAM_ID || '';
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://eekudqlzzklhyhwkqvme.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';

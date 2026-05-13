@@ -56,7 +56,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ formId, steps: [], source: 'no-api-key' });
   }
 
-  const TEAM_ID = process.env.JOTFORM_TEAM_ID || '260541093809054';
+  const TEAM_ID = process.env.JOTFORM_TEAM_ID || '';
 
   try {
     const qRes = await fetch(`${JOTFORM_BASE}/form/${formId}/questions?apiKey=${API_KEY}&teamID=${TEAM_ID}`);
