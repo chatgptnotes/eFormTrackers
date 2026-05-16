@@ -150,6 +150,34 @@ function checkAndClearWorkspaceCaches() {
   }
 }
 
+// ─── Delta-sync fingerprint — covers only fields that drive the dashboard ────
+function fingerprintSyncRecord(r: {
+  id: string;
+  currentLevel: number | 'completed' | 'rejected';
+  status: string;
+  jotformStatus: string;
+  pendingApproverName?: string;
+  pendingApproverEmail?: string;
+  approvalUrl?: string;
+  workflowInstanceId?: string;
+  approvalHistory: Array<{ level: number; status: string; approverEmail?: string; date?: string }>;
+}): string {
+  const key = [
+    r.id,
+    r.currentLevel,
+    r.status,
+    r.jotformStatus,
+    r.pendingApproverName || '',
+    r.pendingApproverEmail || '',
+    r.approvalUrl || '',
+    r.workflowInstanceId || '',
+    r.approvalHistory.map(h => `${h.level}:${h.status}:${h.approverEmail || ''}:${h.date || ''}`).join('|'),
+  ].join('::');
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = ((h << 5) - h + key.charCodeAt(i)) | 0;
+  return String(h);
+}
+
 // ─── Clear all JotFlow caches (called after any write action) ─────────────────
 function clearAllJotFlowCaches() {
   // Clear localStorage caches used by formDiscovery
@@ -609,14 +637,19 @@ export function useSubmissions() {
           }
         }
 
-        // Second pass: batch-fetch REAL workflow tasks for PENDING submissions only (limit to first 100 for speed)
-        // Prioritize pending subs (need real approver data), then completed/rejected (need workflowInstanceId for grouping)
-        const allPendingSubs = [
-          ...mapped.filter(s => typeof s.currentApprovalLevel === 'number'),
-          ...mapped.filter(s => typeof s.currentApprovalLevel !== 'number' && !s.workflowInstanceId),
-        ];
-        // Limit to first 100 pending submissions for initial load speed (more can be fetched on-demand)
-        const pendingSubs = allPendingSubs.slice(0, 100);
+        // Second pass: batch-fetch REAL workflow tasks for PENDING submissions only.
+        // Skip rows that already have complete approver data from Supabase first-paint /
+        // the bulk submissions API — webhook keeps these fresh, so re-fetching is waste.
+        const needsEnrichment = (s: Submission): boolean => {
+          if (typeof s.currentApprovalLevel === 'number') {
+            // Pending: only fetch if real approver email is missing or workflow instance unknown
+            if (!s.pendingApproverEmail || !s.workflowInstanceId) return true;
+            return false;
+          }
+          // Completed/rejected: only fetch when workflow instance ID is missing (grouping)
+          return !s.workflowInstanceId;
+        };
+        const pendingSubs = mapped.filter(needsEnrichment).slice(0, 100);
         if (pendingSubs.length > 0) {
           const taskResults = await Promise.allSettled(
             pendingSubs.map(sub => fetchWorkflowTasks(sub.id))
@@ -769,9 +802,10 @@ export function useSubmissions() {
           console.warn('[useSubmissions] Failed to cache to localStorage:', e);
         }
 
-        // ── Sync enriched data to Supabase (fire-and-forget) ──────────────
-        // Push ALL submissions with workflow-enriched data so Supabase
-        // always mirrors the latest state from JotForm + workflow API.
+        // ── Delta sync to Supabase — only push records that actually changed ──
+        // Webhook keeps Supabase live for individual events; this catches anything
+        // the webhook missed (e.g., backfills, missed deliveries). We hash each
+        // record by the fields that drive the dashboard and skip unchanged rows.
         try {
           const syncRecords = mapped.map(s => ({
             id: s.id,
@@ -795,12 +829,33 @@ export function useSubmissions() {
             approvalUrl: s.approvalUrl,
             workflowInstanceId: s.workflowInstanceId,
           }));
-          // Fire-and-forget — don't block the UI
-          fetch('/api/sync-to-supabase', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ records: syncRecords }),
-          }).catch(err => console.warn('[JotFlow] Sync to Supabase failed:', err));
+
+          const FP_KEY = 'jotflow_sync_fingerprints';
+          let prevFp: Record<string, string> = {};
+          try { prevFp = JSON.parse(localStorage.getItem(FP_KEY) || '{}'); } catch {}
+
+          const changed: typeof syncRecords = [];
+          const nextFp: Record<string, string> = {};
+          for (const r of syncRecords) {
+            const fp = fingerprintSyncRecord(r);
+            nextFp[r.id] = fp;
+            if (prevFp[r.id] !== fp) changed.push(r);
+          }
+
+          if (changed.length > 0) {
+            // Fire-and-forget — don't block the UI
+            fetch('/api/sync-to-supabase', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ records: changed }),
+            })
+              .then(() => { try { localStorage.setItem(FP_KEY, JSON.stringify(nextFp)); } catch {} })
+              .catch(err => console.warn('[JotFlow] Sync to Supabase failed:', err));
+            console.log(`[useSubmissions] Delta sync: ${changed.length}/${syncRecords.length} changed`);
+          } else {
+            // Persist fingerprints anyway so first-load after cache clear establishes baseline
+            try { localStorage.setItem(FP_KEY, JSON.stringify(nextFp)); } catch {}
+          }
         } catch {} // ignore sync errors — dashboard still works from JotForm API
       } else if (forms.length === 0 && !hasCachedData) {
         setError('No JotForm workflows found. Please ensure your JotForm account has enabled forms.');
@@ -826,15 +881,35 @@ export function useSubmissions() {
     actionCooldownUntil.current = Date.now() + durationMs;
   }, []);
 
-  // ─── Supabase read disabled — dashboard data comes only from JotForm API ───
-  // We no longer read from Supabase jf_submissions table in the dashboard.
-  // Real-time and auto-refresh rely on loadData() (JotForm API) triggered by manual refresh.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const loadFromSupabase = useCallback(async (_opts?: { force?: boolean }) => {
-    // No-op: Supabase reads removed per project requirements
+  // ─── Supabase live-mirror read — fast first paint + webhook-driven refresh ──
+  // Webhook keeps jf_submissions live; reading it is ~100ms vs seconds for JotForm.
+  // Used for: initial paint, real-time event refresh, 1-min auto-refresh.
+  // JotForm remains the source of truth via loadData() — Supabase is the cache.
+  const loadFromSupabase = useCallback(async (opts?: { force?: boolean }) => {
+    // Skip while action cooldown is active so optimistic updates aren't overwritten
+    if (!opts?.force && Date.now() < actionCooldownUntil.current) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('jf_submissions')
+        .select('*')
+        .order('submission_date', { ascending: false })
+        .limit(2000);
+      if (error || !data || data.length === 0) return; // never wipe state with empty result
+
+      const mapped = data.map(row => mapSupabaseRow(row as Record<string, unknown>));
+      setAllSubmissions(mapped);
+      setRefreshConfig(prev => ({ ...prev, lastUpdated: new Date().toISOString() }));
+    } catch (err) {
+      console.warn('[useSubmissions] Supabase refresh failed:', err);
+    }
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  // On mount: paint from Supabase immediately (fast), then refresh from JotForm
+  useEffect(() => {
+    loadFromSupabase();
+    loadData();
+  }, [loadData, loadFromSupabase]);
 
   // ─── Auto-register webhooks on mount (cached for 24h) ─────────────────────
   useEffect(() => {
