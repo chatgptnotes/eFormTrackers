@@ -566,6 +566,11 @@ export function useSubmissions() {
     try {
       // Discover all enabled JotForm workflows for this account (no fire-and-forget sync)
       const forms = await fetchUserForms();
+      // Persist this account's form IDs so loadFromSupabase can scope its query
+      // and never paint rows belonging to a previous JOTFORM_API_KEY.
+      try {
+        localStorage.setItem('jotflow_active_form_ids', JSON.stringify(forms.map(f => f.id)));
+      } catch { /* ignore */ }
       // Don't setActiveForms yet — wait until submissions are ready to avoid mid-load flicker
 
       // ── OPTIMIZATION: Fetch questions + submissions + workflow steps in parallel ──
@@ -885,14 +890,29 @@ export function useSubmissions() {
   // Webhook keeps jf_submissions live; reading it is ~100ms vs seconds for JotForm.
   // Used for: initial paint, real-time event refresh, 1-min auto-refresh.
   // JotForm remains the source of truth via loadData() — Supabase is the cache.
+  //
+  // CRITICAL: scope by active form IDs so rows written under a previous
+  // JOTFORM_API_KEY (e.g. GDMO data still in Supabase) don't leak into the
+  // dashboard when the current key only has access to a smaller form set.
   const loadFromSupabase = useCallback(async (opts?: { force?: boolean }) => {
     // Skip while action cooldown is active so optimistic updates aren't overwritten
     if (!opts?.force && Date.now() < actionCooldownUntil.current) return;
+
+    // Read the current account's accessible form IDs. If we don't know them yet
+    // (cold start, before loadData has run), skip — better to wait for JotForm
+    // than paint stale rows belonging to a different API key.
+    let activeFormIds: string[] = [];
+    try {
+      const raw = localStorage.getItem('jotflow_active_form_ids');
+      if (raw) activeFormIds = JSON.parse(raw);
+    } catch { /* ignore */ }
+    if (activeFormIds.length === 0) return;
 
     try {
       const { data, error } = await supabase
         .from('jf_submissions')
         .select('*')
+        .in('form_id', activeFormIds)
         .order('submission_date', { ascending: false })
         .limit(2000);
       if (error || !data || data.length === 0) return; // never wipe state with empty result
