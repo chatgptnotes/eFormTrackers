@@ -33,6 +33,10 @@ node_modules
 *.msi
 *.zip
 
+# Whitelist the installer download directory (negation)
+!frontend/public/installer/
+!frontend/public/installer/**
+
 # Local env
 .env
 .env.*
