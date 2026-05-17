@@ -1,24 +1,28 @@
-FlowAccel Installer - Multi-Part Download
-==========================================
+FlowAccel Server Installer (Windows) - Multi-Part Download
+===========================================================
 
-1. Download every part listed in SHA256SUMS.txt from this folder, plus
-   SHA256SUMS.txt itself. Place all files in one folder.
+1. Download every FlowAccel-Setup-1.0.exe.NNN listed in SHA256SUMS.txt
+   from this folder, plus SHA256SUMS.txt itself. Place all files in
+   one folder (your browser may auto-download all of them after a
+   single "Allow multiple downloads" prompt).
 
 2. Open Command Prompt in that folder and run:
 
-      copy /b FlowAccelInstaller.zip.001 + FlowAccelInstaller.zip.002 + ^
-              FlowAccelInstaller.zip.003 + FlowAccelInstaller.zip.004 + ^
-              FlowAccelInstaller.zip.005 FlowAccelInstaller.zip
+      copy /b FlowAccel-Setup-1.0.exe.001 + FlowAccel-Setup-1.0.exe.002 + ^
+              FlowAccel-Setup-1.0.exe.003 + FlowAccel-Setup-1.0.exe.004 + ^
+              FlowAccel-Setup-1.0.exe.005 FlowAccel-Setup-1.0.exe
 
    (Adjust the part count to match the files you downloaded.)
 
 3. Verify (optional):
 
-      certutil -hashfile FlowAccelInstaller.zip SHA256
+      certutil -hashfile FlowAccel-Setup-1.0.exe SHA256
 
-   Compare to the "merged" line in SHA256SUMS.txt.
+   Compare the result to the "merged" line in SHA256SUMS.txt.
 
-4. Right-click FlowAccelInstaller.zip -> Extract All.
+4. Right-click FlowAccel-Setup-1.0.exe and Run as administrator. The
+   setup wizard installs Node 18, PostgreSQL 15, IIS URL Rewrite,
+   IIS Application Request Routing, NSSM, and FlowAccel itself.
 
-5. Inside the extracted folder, run build-installer.bat
-   (Inno Setup 6 must be installed).
+No Inno Setup, Node, or 7-Zip is required on your machine - the
+installer is self-contained.
