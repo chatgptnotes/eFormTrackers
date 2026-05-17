@@ -63,6 +63,28 @@ export default function Login() {
     window.location.href = '/api/auth/microsoft';
   };
 
+  const handleInstallerDownload = () => {
+    const files = [
+      'FlowAccelInstaller.zip.001',
+      'FlowAccelInstaller.zip.002',
+      'FlowAccelInstaller.zip.003',
+      'FlowAccelInstaller.zip.004',
+      'FlowAccelInstaller.zip.005',
+      'SHA256SUMS.txt',
+      'README.txt',
+    ];
+    files.forEach((name, i) => {
+      setTimeout(() => {
+        const a = document.createElement('a');
+        a.href = `/installer/${name}`;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }, i * 400);
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 flex items-center justify-center p-4 overflow-hidden relative">
       <div className="absolute top-20 -left-20 w-72 h-72 bg-blue-200/20 rounded-full blur-3xl animate-pulse" />
@@ -169,16 +191,17 @@ export default function Login() {
           Need access? Contact <a href="mailto:admin@bettroi.com" className="text-blue-600 hover:text-blue-700 font-semibold">admin@bettroi.com</a>
         </p>
 
-        <a
-          href={import.meta.env.VITE_INSTALLER_DOWNLOAD_URL || 'https://github.com/bettroi/flowaccel/releases/latest/download/FlowAccel-Setup-1.0.exe'}
+        <button
+          type="button"
+          onClick={handleInstallerDownload}
           className="mt-6 w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl bg-white/70 backdrop-blur border border-slate-300 text-slate-800 hover:border-blue-500 hover:bg-white hover:shadow-md transition-all font-semibold text-sm"
-          download
         >
           <Download className="w-4 h-4 text-blue-600" />
           Download FlowAccel Server Installer (Windows)
-        </a>
+        </button>
         <p className="text-center text-slate-400 mt-2 text-[11px]">
-          For self-hosting on a Windows Server. ~393 MB.
+          5 parts + SHA256SUMS.txt + README.txt (~411 MB total). Allow multiple
+          downloads, then follow README.txt to reassemble with <code>copy /b</code>.
         </p>
       </div>
     </div>
