@@ -215,7 +215,7 @@ export default function Login() {
           Installation Instructions (PDF)
         </a>
         <p className="text-center text-slate-400 mt-2 text-[11px]">
-          Step-by-step setup wizard walkthrough with screenshots (~620 KB).
+          README walkthrough + setup wizard screenshots (~610 KB).
         </p>
       </div>
     </div>
