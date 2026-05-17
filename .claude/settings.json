@@ -1,0 +1,82 @@
+{
+  "version": "1.0",
+  "project": "JotFlow Dashboard",
+  "description": "Integrated with Everything Claude Code (ECC) - AI agent harness framework",
+  
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(git *)",
+      "Bash(pkill -f *)",
+      "Bash(killall *)",
+      "Bash(curl -s *)",
+      "Bash(curl -v *)",
+      "Bash(netstat *)",
+      "Bash(lsof -ti:*)",
+      "Bash(grep *)",
+      "Bash(find *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(cp -r *)",
+      "Bash(rm -rf *)",
+      "Read(//tmp/**)",
+      "WebFetch(domain:eforms.mediaoffice.ae)",
+      "WebFetch(domain:github.com)"
+    ]
+  },
+
+  "ecc": {
+    "enabled": true,
+    "version": "1.0",
+    "components": {
+      "skills": true,
+      "rules": true,
+      "commands": true,
+      "hooks": true,
+      "mcp": true
+    },
+    "paths": {
+      "skills": ".claude/skills",
+      "rules": ".claude/rules",
+      "commands": ".claude/commands",
+      "hooks": ".claude/root-hooks",
+      "schemas": ".claude/schemas"
+    }
+  },
+
+  "tools": {
+    "enabled": true,
+    "extensions": [
+      "ecc-universal",
+      "ecc-agentshield",
+      "ecc-tools"
+    ]
+  },
+
+  "features": {
+    "statusline": {
+      "enabled": true,
+      "format": "[ECC] {project} • {status}"
+    },
+    "hooks": {
+      "pre-commit": true,
+      "post-commit": true,
+      "pre-push": true
+    },
+    "mcp": {
+      "enabled": true,
+      "config": ".claude/.mcp.json"
+    }
+  },
+
+  "development": {
+    "frontend": {
+      "port": 5173,
+      "command": "npm run dev"
+    },
+    "api": {
+      "port": 3000,
+      "command": "vercel dev"
+    }
+  }
+}

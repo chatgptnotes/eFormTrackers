@@ -1,7 +1,11 @@
 node_modules
 dist
+deploy-output
 .env
+.env.production
+.env.vercel-check
 *.local
 .vercel
 .env*.local
 everything-claude-code/
+backend/.env.production

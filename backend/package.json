@@ -1,0 +1,26 @@
+{
+  "name": "jotflow-backend",
+  "version": "1.0.0",
+  "description": "JotFlow backend — Express + PostgreSQL replacement for Supabase",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "build": "node -e \"require('fs').mkdirSync('logs',{recursive:true})\" && echo Backend ready",
+    "migrate": "node db/migrate.js"
+  },
+  "dependencies": {
+    "@azure/msal-node": "^5.2.1",
+    "bcrypt": "^5.1.1",
+    "connect-pg-simple": "^10.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "helmet": "^8.0.0",
+    "multer": "^1.4.5-lts.1",
+    "pg": "^8.13.1",
+    "socket.io": "^4.8.1",
+    "uuid": "^11.0.5"
+  }
+}

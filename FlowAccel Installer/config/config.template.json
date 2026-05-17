@@ -1,0 +1,37 @@
+{
+  "_comment": "FlowAccel installer config template. Edit and pass via FlowAccel-Setup.exe /SILENT /CONFIG=path\\to\\this.json. All fields read by install.ps1 / uninstall.ps1.",
+
+  "InstallDir": "C:\\inetpub\\flowaccel",
+
+  "ServerIP": "10.0.0.10",
+  "HttpPort": 80,
+  "HttpsPort": 443,
+  "BackendPort": 3001,
+
+  "PgPort": 5432,
+  "DbName": "jotflow",
+  "DbUser": "jotflow",
+  "PgSuperPassword": "CHANGE_ME_min_12_chars",
+  "AppDbPassword": "CHANGE_ME_min_12_chars",
+
+  "SessionSecret": "",
+
+  "JotformApiKey": "",
+  "JotformTeamId": "",
+  "JotformBase": "https://eforms.mediaoffice.ae/API",
+  "JotformHost": "https://eforms.mediaoffice.ae",
+  "JotformWebhookSecret": "",
+
+  "MicrosoftClientId": "",
+  "MicrosoftTenantId": "",
+  "MicrosoftClientSecret": "",
+  "MicrosoftRedirectUri": "",
+
+  "CertStrategy": "SelfSignedCA",
+  "PfxPath": "",
+  "PfxPassword": "",
+  "CertCN": "",
+  "CertExtraSANs": "",
+
+  "AllowIcmp": true
+}

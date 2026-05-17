@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FlowAccel — Server Specification & Deployment Architecture</title>
+<style>
+  @page {
+    size: A4;
+    margin: 20mm 18mm;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-size: 11pt;
+    line-height: 1.6;
+    color: #1a1a2e;
+    max-width: 210mm;
+    margin: 0 auto;
+    padding: 40px 50px;
+  }
+  .cover {
+    text-align: center;
+    padding: 60px 0 50px;
+    border-bottom: 4px solid #2563eb;
+    margin-bottom: 40px;
+  }
+  .cover h1 { font-size: 28pt; color: #1e3a5f; margin-bottom: 8px; letter-spacing: -0.5px; }
+  .cover .subtitle { font-size: 14pt; color: #2563eb; font-weight: 600; margin-bottom: 4px; }
+  .cover .meta { font-size: 10pt; color: #64748b; margin-top: 24px; }
+  .cover .meta table { margin: 0 auto; text-align: left; }
+  .cover .meta td { padding: 2px 12px; }
+  .cover .meta td:first-child { font-weight: 600; color: #475569; text-align: right; }
+
+  h2 { font-size: 16pt; color: #1e3a5f; border-bottom: 2px solid #2563eb; padding-bottom: 4px; margin: 32px 0 14px; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #2563eb; margin: 18px 0 8px; page-break-after: avoid; }
+  h4 { font-size: 11pt; color: #1e3a5f; margin: 12px 0 6px; }
+
+  p { margin-bottom: 8px; }
+  ul, ol { margin: 6px 0 12px 20px; }
+  li { margin-bottom: 4px; }
+
+  table.data { width: 100%; border-collapse: collapse; margin: 10px 0 16px; font-size: 10pt; page-break-inside: avoid; }
+  table.data th { background: #2563eb; color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+  table.data td { padding: 7px 10px; border: 1px solid #cbd5e1; }
+  table.data tr:nth-child(even) { background: #f1f5f9; }
+  table.data tr:nth-child(odd) { background: #ffffff; }
+
+  code { background: #f1f5f9; padding: 1px 5px; border-radius: 3px; font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 9.5pt; }
+  pre { background: #0f172a; color: #e2e8f0; padding: 14px 16px; border-radius: 6px; font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 9pt; line-height: 1.5; overflow-x: auto; margin: 8px 0 14px; }
+  pre .c { color: #94a3b8; }
+  pre .k { color: #c084fc; }
+  pre .v { color: #67e8f9; }
+
+  .note { background: #eff6ff; border-left: 4px solid #2563eb; padding: 10px 14px; margin: 12px 0; font-size: 10pt; border-radius: 0 4px 4px 0; }
+  .note strong { color: #1e40af; }
+  .warn { background: #fefce8; border-left: 4px solid #f59e0b; padding: 10px 14px; margin: 12px 0; font-size: 10pt; border-radius: 0 4px 4px 0; }
+
+  .arch-diagram { background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 14px 0; text-align: center; font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 9pt; line-height: 2; }
+  .arch-diagram .box { display: inline-block; border: 2px solid #2563eb; border-radius: 6px; padding: 8px 16px; margin: 4px 8px; background: white; font-weight: 600; }
+  .arch-diagram .arrow { color: #64748b; }
+  .arch-diagram .lb { display: inline-block; border: 2px dashed #94a3b8; border-radius: 6px; padding: 6px 12px; margin: 4px; background: #f1f5f9; }
+
+  .footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid #cbd5e1; font-size: 9pt; color: #94a3b8; text-align: center; }
+  .page-break { page-break-before: always; }
+
+  @media print {
+    body { padding: 0; max-width: none; }
+    .page-break { page-break-before: always; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══ COVER ═══ -->
+<div class="cover">
+  <h1>FlowAccel</h1>
+  <div class="subtitle">Server Specification &amp; Deployment Architecture</div>
+  <div class="meta">
+    <table>
+      <tr><td>Prepared For:</td><td>Client Infrastructure Team</td></tr>
+      <tr><td>Date:</td><td>13 May 2026</td></tr>
+      <tr><td>Version:</td><td>1.1</td></tr>
+      <tr><td>Classification:</td><td>Confidential</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ═══ 1. EXECUTIVE SUMMARY ═══ -->
+<h2>1. Executive Summary</h2>
+<p>FlowAccel is an enterprise workflow management dashboard that integrates with the JotForm Workflow Engine API to manage multi-level approval workflows across 36 forms and 6,800+ submissions. It currently runs on Vercel serverless infrastructure. This document defines the on-premise server specification required to deploy FlowAccel on Windows IIS infrastructure, replacing the Vercel serverless architecture with a self-hosted Node.js backend.</p>
+
+<table class="data">
+  <tr><th>Item</th><th>Value</th></tr>
+  <tr><td>Application</td><td>FlowAccel Workflow Dashboard</td></tr>
+  <tr><td>Frontend</td><td>React 18 + TypeScript + Vite (2.4 MB static build)</td></tr>
+  <tr><td>Backend</td><td>Node.js Express (converted from 22 Vercel serverless functions)</td></tr>
+  <tr><td>Database</td><td>PostgreSQL 15+ (self-hosted on-premise on Server 1)</td></tr>
+  <tr><td>External APIs</td><td>JotForm Enterprise API (eforms.mediaoffice.ae), Microsoft Azure AD</td></tr>
+  <tr><td>Servers Required</td><td>2 &times; Windows Server (Production + Backup)</td></tr>
+  <tr><td>Total Storage</td><td>500 GB per server (1 TB total)</td></tr>
+</table>
+
+<!-- ═══ 2. SERVER HARDWARE ═══ -->
+<div class="page-break"></div>
+<h2>2. Server Hardware Specification</h2>
+
+<h3>2.1 Physical / Virtual Machine Specification</h3>
+<table class="data">
+  <tr><th>Component</th><th>Minimum</th><th>Recommended</th></tr>
+  <tr><td>CPU</td><td>4 vCPU (Intel Xeon E5 2.4 GHz or equivalent)</td><td>8 vCPU (Intel Xeon Gold 3.0 GHz+)</td></tr>
+  <tr><td>RAM</td><td>16 GB DDR4 ECC</td><td>32 GB DDR4 ECC</td></tr>
+  <tr><td>OS Disk</td><td>100 GB SSD (SATA) — Windows Server OS + IIS + Node.js</td><td>200 GB NVMe SSD — OS + application + logs</td></tr>
+  <tr><td>Data Disk</td><td>500 GB SSD — application data, uploads, backups, logs</td><td>500 GB NVMe SSD — high I/O for logs and uploads</td></tr>
+  <tr><td>Network</td><td>1 Gbps NIC</td><td>10 Gbps NIC (especially if serving external users)</td></tr>
+  <tr><td>Redundancy</td><td>RAID 1 for OS disk</td><td>RAID 1 for OS, RAID 5 for data</td></tr>
+  <tr><td>Power</td><td>Dual PSU (if physical)</td><td>Dual PSU + UPS</td></tr>
+</table>
+
+<div class="note">
+  <strong>Important:</strong> Hyper-threading should be enabled. If virtualized (VMware/Hyper-V), ensure CPU and RAM reservation, not shared allocation. The Node.js event loop is single-threaded but benefits from multiple cores for concurrent requests and worker threads.
+</div>
+
+<h3>2.2 Server Count & Roles</h3>
+<table class="data">
+  <tr><th>Server</th><th>Role</th><th>Hostname (example)</th><th>Purpose</th></tr>
+  <tr><td>Server 1</td><td>Production</td><td>FLOWACCEL-PROD-01</td><td>Primary application server — IIS + Node.js backend + static content</td></tr>
+  <tr><td>Server 2</td><td>Backup / Staging</td><td>FLOWACCEL-BACKUP-01</td><td>Backup server — replicated configuration for disaster recovery; also serves as pre-production staging environment</td></tr>
+</table>
+
+<div class="note">
+  <strong>High Availability:</strong> If zero-downtime failover is required, add a load balancer (hardware or Windows NLB) in front of both servers in an active-passive or active-active configuration. This specification covers the two-server baseline. For active-active, double the RAM to 32 GB per server.
+</div>
+
+<!-- ═══ 3. SOFTWARE ═══ -->
+<div class="page-break"></div>
+<h2>3. Software Stack Requirements</h2>
+
+<h3>3.1 Operating System</h3>
+<table class="data">
+  <tr><th>Component</th><th>Version</th><th>Notes</th></tr>
+  <tr><td>Windows Server</td><td>2022 Standard Edition (64-bit)</td><td>Or Windows Server 2019 with latest updates. Datacenter edition if running &gt;2 VMs per host.</td></tr>
+  <tr><td>Windows Updates</td><td>Fully patched</td><td>All critical and security updates applied before deployment.</td></tr>
+</table>
+
+<h3>3.2 Web Server — IIS</h3>
+<table class="data">
+  <tr><th>Component</th><th>Required</th><th>Purpose</th></tr>
+  <tr><td>IIS 10</td><td>Yes (built-in with Windows Server 2022)</td><td>Web server — hosts static React files and reverse-proxies API requests</td></tr>
+  <tr><td>IIS URL Rewrite Module 2.1</td><td>Required</td><td>SPA routing — rewrites all non-file paths to index.html; also used for reverse proxy rules</td></tr>
+  <tr><td>IIS Application Request Routing (ARR) 3.0</td><td>Required</td><td>Reverse proxy module — forwards /api/* requests to the local Node.js process</td></tr>
+  <tr><td>IISNode</td><td>Required</td><td>Hosts Node.js application within IIS process, providing process management, auto-restart, and Windows-integrated logging</td></tr>
+  <tr><td>WebSocket Protocol</td><td>Enable</td><td>Required for real-time features and live data subscriptions</td></tr>
+</table>
+
+<h3>3.3 Runtime Dependencies</h3>
+<table class="data">
+  <tr><th>Component</th><th>Version</th><th>Purpose</th></tr>
+  <tr><td>Node.js LTS</td><td>18.x or 20.x LTS</td><td>JavaScript runtime for the backend API server</td></tr>
+  <tr><td>npm</td><td>9.x+</td><td>Package manager (bundled with Node.js)</td></tr>
+  <tr><td>URL Rewrite Module</td><td>2.1</td><td>Download from Microsoft IIS.net</td></tr>
+  <tr><td>ARR 3.0</td><td>3.0</td><td>Download from Microsoft IIS.net</td></tr>
+  <tr><td>IISNode</td><td>0.2.21+</td><td>Download from GitHub: azure/iisnode</td></tr>
+  <tr><td>Visual C++ Redistributable</td><td>2015-2022</td><td>Required by Node.js native modules; install both x86 and x64</td></tr>
+</table>
+
+<div class="note">
+  <strong>Installation Order:</strong> (1) Windows Updates → (2) IIS Role + WebSocket → (3) URL Rewrite → (4) ARR 3.0 → (5) Visual C++ Redist → (6) Node.js → (7) IISNode → (8) Deploy Application.
+</div>
+
+<!-- ═══ 4. ARCHITECTURE ═══ -->
+<div class="page-break"></div>
+<h2>4. Application Architecture on IIS</h2>
+
+<h3>4.1 Architecture Diagram</h3>
+<div class="arch-diagram">
+  <div style="margin-bottom:8px;color:#64748b;font-weight:600;">EXTERNAL</div>
+  <span class="lb">User Browser</span>
+  <span class="arrow">→ HTTPS (443) →</span>
+  <span class="lb">Windows Server / IIS</span>
+  <br><br>
+  <div style="margin-bottom:8px;color:#64748b;font-weight:600;">IIS PIPELINE</div>
+  <span class="box">Static Files<br>React SPA</span>
+  <span style="margin:0 8px;">|</span>
+  <span class="box">URL Rewrite<br>/api/* → localhost:3001</span>
+  <span style="margin:0 8px;">|</span>
+  <span class="box">ARR Reverse Proxy<br>→ Node.js</span>
+  <br><br>
+  <div style="margin-bottom:8px;color:#64748b;font-weight:600;">IISNODE PROCESS</div>
+  <span class="box">Express.js Server<br>Port 3001</span>
+  <span class="arrow">→</span>
+  <span class="box">API Routes<br>(auth, workflow, submissions)</span>
+  <br><br>
+  <div style="margin-bottom:8px;color:#64748b;font-weight:600;">EXTERNAL SERVICES</div>
+  <span class="lb">PostgreSQL Database</span>
+  <span style="margin:0 8px;">|</span>
+  <span class="lb">JotForm Enterprise API</span>
+  <span style="margin:0 8px;">|</span>
+  <span class="lb">Microsoft Azure AD</span>
+</div>
+
+<h3>4.2 Request Flow</h3>
+<ol>
+  <li><strong>Browser</strong> sends HTTPS request to <code>https://flowaccel.work</code></li>
+  <li><strong>IIS</strong> receives request on port 443 (HTTPS with SSL certificate)</li>
+  <li><strong>Static file:</strong> If the request matches a file on disk (.js, .css, .png, etc.), IIS serves it directly from the <code>dist/</code> folder</li>
+  <li><strong>SPA route:</strong> If the path does not match a file (e.g., <code>/dashboard</code>), URL Rewrite sends <code>index.html</code> — the React SPA handles client-side routing</li>
+  <li><strong>API request:</strong> If the path starts with <code>/api/*</code>, ARR reverse-proxies the request to <code>http://localhost:3001/api/*</code> where the Express.js server handles it</li>
+  <li><strong>Express server</strong> calls external services (JotForm API, Azure AD) and queries the local PostgreSQL database, returning JSON responses back through IIS to the browser</li>
+</ol>
+
+<h3>4.3 Key Architectural Change: Vercel Serverless → Express.js</h3>
+<p>The current application uses 22 Vercel serverless functions (TypeScript files in <code>/api</code>). For IIS deployment, these must be consolidated into a single Express.js application (~3,076 lines of API logic across 22 routes). The code conversion is straightforward — each serverless handler becomes an Express route handler with identical business logic:</p>
+
+<pre>
+<span class="c">// Current: Vercel serverless (api/workflow-action.ts)</span>
+export default async function handler(req: VercelRequest, res: VercelResponse) { ... }
+
+<span class="c">// New: Express.js route (server.js)</span>
+app.post(<span class="v">'/api/workflow-action'</span>, async (req, res) => { ... })
+</pre>
+
+<!-- ═══ 5. IIS CONFIGURATION ═══ -->
+<div class="page-break"></div>
+<h2>5. IIS Configuration Details</h2>
+
+<h3>5.1 IIS Site Configuration</h3>
+<table class="data">
+  <tr><th>Setting</th><th>Value</th></tr>
+  <tr><td>Site Name</td><td>FlowAccel</td></tr>
+  <tr><td>Physical Path</td><td><code>C:\inetpub\wwwroot\flowaccel\dist</code></td></tr>
+  <tr><td>Application Pool</td><td>FlowAccelAppPool (.NET CLR Version: No Managed Code)</td></tr>
+  <tr><td>Bindings</td><td>HTTPS : 443 : flowaccel.work (with SSL certificate)</td></tr>
+  <tr><td>Authentication</td><td>Anonymous Authentication: Enabled; All others: Disabled</td></tr>
+  <tr><td>Default Document</td><td>index.html</td></tr>
+</table>
+
+<h3>5.2 Application Pool Configuration</h3>
+<table class="data">
+  <tr><th>Setting</th><th>Value</th><th>Reason</th></tr>
+  <tr><td>.NET CLR Version</td><td>No Managed Code</td><td>Node.js application, not .NET</td></tr>
+  <tr><td>Managed Pipeline Mode</td><td>Integrated</td><td>Required for URL Rewrite and ARR</td></tr>
+  <tr><td>Identity</td><td>NetworkService (or custom domain account)</td><td>Needs outbound internet access for JotForm API and Azure AD; needs local access to PostgreSQL</td></tr>
+  <tr><td>Idle Time-out</td><td>0 (Never time out)</td><td>Prevents Node.js process from being terminated during idle periods</td></tr>
+  <tr><td>Recycling — Regular Time Interval</td><td>0 (Disabled)</td><td>Let IISNode manage process lifecycle</td></tr>
+  <tr><td>Recycling — Private Memory Limit</td><td>1,048,576 KB (1 GB)</td><td>Recycle if Node.js exceeds 1 GB memory</td></tr>
+  <tr><td>Rapid-Fail Protection</td><td>Disabled</td><td>Prevents IIS from disabling the app pool if Node.js restarts during deployment</td></tr>
+  <tr><td>Start Mode</td><td>AlwaysRunning</td><td>Ensures Node.js starts immediately on server boot</td></tr>
+</table>
+
+<h3>5.3 IIS Node.js Process Management (IISNode)</h3>
+<p>Create <code>iisnode.yml</code> in the application root:</p>
+<pre>
+<span class="c"># iisnode.yml — Node.js process configuration</span>
+nodeProcessCountPerApplication: 0        <span class="c"># One process per CPU core (0 = auto)</span>
+maxConcurrentRequestsPerProcess: 1024     <span class="c"># Max concurrent HTTP requests per worker</span>
+node_env: production
+loggingEnabled: true
+logDirectory: C:\inetpub\logs\flowaccel\iisnode
+maxLogFileSizeInKB: 10240                <span class="c"># 10 MB per log file</span>
+maxTotalLogFileSizeInKB: 524288           <span class="c"># 500 MB total logs</span>
+devErrorsEnabled: false                   <span class="c"># Never show stack traces in production</span>
+flushResponse: true
+watchedFiles: web.config;*.js;iisnode.yml
+gracefulShutdownTimeout: 10000            <span class="c"># 10s grace period for in-flight requests</span>
+</pre>
+
+<h3>5.4 web.config — Complete IIS Configuration</h3>
+<pre>
+&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;configuration&gt;
+  &lt;system.webServer&gt;
+
+    <span class="c">&lt;!-- IISNode: Route server.js through IISNode module --&gt;</span>
+    &lt;handlers&gt;
+      &lt;add name="iisnode" path="server.js" verb="*" modules="iisnode"
+           resourceType="Unspecified" requireAccess="Script" /&gt;
+    &lt;/handlers&gt;
+
+    <span class="c">&lt;!-- Default document --&gt;</span>
+    &lt;defaultDocument&gt;
+      &lt;files&gt;
+        &lt;clear /&gt;
+        &lt;add value="index.html" /&gt;
+      &lt;/files&gt;
+    &lt;/defaultDocument&gt;
+
+    <span class="c">&lt;!-- URL Rewrite Rules --&gt;</span>
+    &lt;rewrite&gt;
+      &lt;rules&gt;
+
+        <span class="c">&lt;!-- Rule 1: API requests → reverse proxy to Node.js --&gt;</span>
+        &lt;rule name="API Proxy" stopProcessing="true"&gt;
+          &lt;match url="^api/(.*)" /&gt;
+          &lt;action type="Rewrite" url="http://localhost:3001/api/{R:1}" /&gt;
+        &lt;/rule&gt;
+
+        <span class="c">&lt;!-- Rule 2: Static files → serve directly if exists --&gt;</span>
+        &lt;rule name="Static Content" stopProcessing="true"&gt;
+          &lt;match url="(.*)" /&gt;
+          &lt;conditions logicalGrouping="MatchAny"&gt;
+            &lt;add input="{REQUEST_FILENAME}" matchType="IsFile" /&gt;
+            &lt;add input="{REQUEST_FILENAME}" matchType="IsDirectory" /&gt;
+          &lt;/conditions&gt;
+          &lt;action type="None" /&gt;
+        &lt;/rule&gt;
+
+        <span class="c">&lt;!-- Rule 3: SPA fallback — all other routes → index.html --&gt;</span>
+        &lt;rule name="SPA Fallback" stopProcessing="true"&gt;
+          &lt;match url="(.*)" /&gt;
+          &lt;action type="Rewrite" url="/index.html" /&gt;
+        &lt;/rule&gt;
+
+      &lt;/rules&gt;
+    &lt;/rewrite&gt;
+
+    <span class="c">&lt;!-- Security headers --&gt;</span>
+    &lt;httpProtocol&gt;
+      &lt;customHeaders&gt;
+        &lt;add name="X-Content-Type-Options" value="nosniff" /&gt;
+        &lt;add name="X-Frame-Options" value="DENY" /&gt;
+        &lt;add name="X-XSS-Protection" value="1; mode=block" /&gt;
+        &lt;add name="Referrer-Policy" value="strict-origin-when-cross-origin" /&gt;
+        &lt;add name="Strict-Transport-Security" value="max-age=31536000; includeSubDomains" /&gt;
+      &lt;/customHeaders&gt;
+    &lt;/httpProtocol&gt;
+
+    <span class="c">&lt;!-- CORS: allow frontend origin --&gt;</span>
+    &lt;httpProtocol&gt;
+      &lt;customHeaders&gt;
+        &lt;add name="Access-Control-Allow-Origin" value="https://flowaccel.work" /&gt;
+      &lt;/customHeaders&gt;
+    &lt;/httpProtocol&gt;
+
+    <span class="c">&lt;!-- Gzip compression for static assets --&gt;</span>
+    &lt;urlCompression doStaticCompression="true" doDynamicCompression="true" /&gt;
+
+    <span class="c">&lt;!-- Cache static assets for 30 days --&span>&gt;</span>
+    &lt;staticContent&gt;
+      &lt;clientCache cacheControlMode="UseMaxAge" cacheControlMaxAge="30.00:00:00" /&gt;
+    &lt;/staticContent&gt;
+
+  &lt;/system.webServer&gt;
+&lt;/configuration&gt;
+</pre>
+
+<!-- ═══ 6. APPLICATION DEPLOYMENT ═══ -->
+<div class="page-break"></div>
+<h2>6. Application Deployment Steps</h2>
+
+<h3>6.1 Directory Structure on Server</h3>
+<pre>
+C:\inetpub\wwwroot\flowaccel\
+├── dist/                      <span class="c"># Vite build output (static React SPA)</span>
+│   ├── index.html
+│   └── assets/
+│       ├── index-*.js
+│       ├── index-*.css
+│       └── ...
+├── server.js                  <span class="c"># Express.js backend (converted from /api)</span>
+├── node_modules/              <span class="c"># Production dependencies only</span>
+├── iisnode.yml                <span class="c"># IISNode configuration</span>
+├── web.config                 <span class="c"># IIS configuration</span>
+├── .env                       <span class="c"># Environment variables (secured)</span>
+└── logs/                      <span class="c"># Application logs</span>
+</pre>
+
+<h3>6.2 Environment Variables (.env)</h3>
+<table class="data">
+  <tr><th>Variable</th><th>Description</th><th>Example Value</th></tr>
+  <tr><td><code>JOTFORM_API_KEY</code></td><td>JotForm Enterprise API key</td><td><em>(secure — provided separately)</em></td></tr>
+  <tr><td><code>JOTFORM_TEAM_ID</code></td><td>JotForm team ID (leave empty for full access)</td><td></td></tr>
+  <tr><td><code>DATABASE_URL</code></td><td>PostgreSQL connection string</td><td>postgresql://user:password@localhost:5432/flowaccel</td></tr>
+  <tr><td><code>DB_HOST</code></td><td>PostgreSQL host</td><td>localhost</td></tr>
+  <tr><td><code>DB_PORT</code></td><td>PostgreSQL port</td><td>5432</td></tr>
+  <tr><td><code>DB_NAME</code></td><td>PostgreSQL database name</td><td>flowaccel</td></tr>
+  <tr><td><code>DB_USER</code></td><td>PostgreSQL user</td><td>flowaccel_app</td></tr>
+  <tr><td><code>DB_PASSWORD</code></td><td>PostgreSQL password</td><td><em>(secure — provided separately)</em></td></tr>
+  <tr><td><code>AZURE_CLIENT_ID</code></td><td>Microsoft Azure AD app registration client ID</td><td><em>(secure — provided separately)</em></td></tr>
+  <tr><td><code>AZURE_TENANT_ID</code></td><td>Microsoft Azure AD tenant ID</td><td><em>(secure — provided separately)</em></td></tr>
+  <tr><td><code>AZURE_CLIENT_SECRET</code></td><td>Microsoft Azure AD client secret</td><td><em>(secure — provided separately)</em></td></tr>
+  <tr><td><code>ALLOWED_ORIGIN</code></td><td>CORS origin</td><td>https://flowaccel.work</td></tr>
+  <tr><td><code>PORT</code></td><td>Node.js backend port (internal only)</td><td>3001</td></tr>
+  <tr><td><code>NODE_ENV</code></td><td>Runtime environment</td><td>production</td></tr>
+</table>
+
+<div class="warn">
+  <strong>Security:</strong> The <code>.env</code> file must be protected with strict NTFS permissions — only the Application Pool identity and Administrators should have read access. Never commit this file to source control or expose it via IIS.
+</div>
+
+<h3>6.3 Build & Deployment Commands</h3>
+<pre>
+<span class="c"># 1. Build the React frontend</span>
+npm install
+npm run build                    <span class="c"># Runs tsc -b && vite build → outputs to dist/</span>
+
+<span class="c"># 2. Install production dependencies only</span>
+npm ci --production              <span class="c"># ~15-20 MB for production deps</span>
+
+<span class="c"># 3. Copy to IIS directory</span>
+robocopy dist C:\inetpub\wwwroot\flowaccel\dist /E /MIR
+copy server.js C:\inetpub\wwwroot\flowaccel\
+copy web.config C:\inetpub\wwwroot\flowaccel\
+copy iisnode.yml C:\inetpub\wwwroot\flowaccel\
+copy .env C:\inetpub\wwwroot\flowaccel\
+
+<span class="c"># 4. Set NTFS permissions (PowerShell)</span>
+icacls C:\inetpub\wwwroot\flowaccel\.env /inheritance:r /grant "IIS AppPool\FlowAccelAppPool":(R)
+icacls C:\inetpub\wwwroot\flowaccel\logs /grant "IIS AppPool\FlowAccelAppPool":(M)
+
+<span class="c"># 5. Restart IIS site</span>
+iisreset /restart
+</pre>
+
+<!-- ═══ 7. SSL ═══ -->
+<div class="page-break"></div>
+<h2>7. SSL Certificate & HTTPS Configuration</h2>
+
+<h3>7.1 SSL Certificate Requirements</h3>
+<table class="data">
+  <tr><th>Requirement</th><th>Details</th></tr>
+  <tr><td>Certificate Type</td><td>Standard SSL (DV) or Organization Validation (OV) SSL</td></tr>
+  <tr><td>Domain(s)</td><td>flowaccel.work (primary); optionally www.flowaccel.work as SAN</td></tr>
+  <tr><td>CA Recommendations</td><td>DigiCert, Sectigo, or Let's Encrypt (automated renewal via win-acme)</td></tr>
+  <tr><td>Key Length</td><td>RSA 2048-bit minimum; ECDSA P-256 preferred</td></tr>
+  <tr><td>TLS Version</td><td>TLS 1.2 minimum; TLS 1.3 preferred (disable TLS 1.0/1.1)</td></tr>
+  <tr><td>Renewal</td><td>90-day auto-renewal with win-acme (Let's Encrypt) or manual annual renewal</td></tr>
+</table>
+
+<h3>7.2 IIS SSL Binding (PowerShell)</h3>
+<pre>
+<span class="c"># Import certificate (PFX format)</span>
+Import-PfxCertificate -FilePath C:\certs\flowaccel.pfx `
+  -CertStoreLocation Cert:\LocalMachine\My -Password (Read-Host -AsSecureString)
+
+<span class="c"># Add HTTPS binding</span>
+New-IISSiteBinding -Name "FlowAccel" `
+  -BindingInformation "*:443:flowaccel.work" `
+  -CertificateThumbprint "THUMBPRINT_HERE" `
+  -CertStoreLocation "Cert:\LocalMachine\My" `
+  -Protocol https
+</pre>
+
+<div class="note">
+  <strong>Auto-renewal with Let's Encrypt:</strong> Install <a href="https://www.win-acme.com/">win-acme</a> (Windows ACME client). Configure it to auto-renew every 60 days and update the IIS binding automatically. This eliminates manual certificate renewal.
+</div>
+
+<!-- ═══ 8. DATABASE ═══ -->
+<h2>8. Database Architecture</h2>
+
+<h3>8.1 PostgreSQL — Self-Hosted on Server 1</h3>
+<p>FlowAccel uses <strong>PostgreSQL 15+</strong> installed directly on the production server. The database stores workflow submissions, approval history, approver configurations, and notifications. The Express.js backend connects to PostgreSQL via the <code>pg</code> Node.js driver using a local connection string.</p>
+
+<table class="data">
+  <tr><th>Component</th><th>Details</th></tr>
+  <tr><td>Database</td><td>PostgreSQL 15+ (self-hosted on Server 1)</td></tr>
+  <tr><td>Connection</td><td>Local TCP connection (localhost:5432) via pg driver</td></tr>
+  <tr><td>Tables</td><td>jf_submissions, jf_approval_history, jf_approver_config, notifications, user_profiles</td></tr>
+  <tr><td>Auth</td><td>JWT-based authentication with bcrypt password hashing; Microsoft Azure AD SSO via OAuth 2.0</td></tr>
+  <tr><td>Data Volume</td><td>~6,800+ submissions, ~1,500+ approval records, growing</td></tr>
+  <tr><td>Port</td><td>5432 (local only — not exposed to network)</td></tr>
+</table>
+
+<h3>8.2 PostgreSQL Installation on Windows Server</h3>
+<pre>
+<span class="c"># 1. Download PostgreSQL 15 installer from https://www.postgresql.org/download/windows/</span>
+<span class="c"># 2. Run installer with following options:</span>
+<span class="c">#    - Install directory: C:\Program Files\PostgreSQL\15</span>
+<span class="c">#    - Data directory: D:\PostgreSQL\15\data  (on the 500 GB data disk)</span>
+<span class="c">#    - Port: 5432</span>
+<span class="c">#    - Locale: English, UTF-8</span>
+
+<span class="c"># 3. Create application database and user (PowerShell as Administrator)</span>
+cd "C:\Program Files\PostgreSQL\15\bin"
+psql -U postgres -c "CREATE DATABASE flowaccel;"
+psql -U postgres -c "CREATE USER flowaccel_app WITH ENCRYPTED PASSWORD 'strong_password_here';"
+psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE flowaccel TO flowaccel_app;"
+
+<span class="c"># 4. Configure pg_hba.conf — allow local connections only</span>
+<span class="c"># Add to C:\Program Files\PostgreSQL\15\data\pg_hba.conf:</span>
+<span class="c"># host    flowaccel    flowaccel_app    127.0.0.1/32    scram-sha-256</span>
+
+<span class="c"># 5. Run schema setup script (provided in deployment package)</span>
+psql -U flowaccel_app -d flowaccel -f schema.sql
+
+<span class="c"># 6. Configure PostgreSQL service for automatic startup</span>
+sc config postgresql-x64-15 start= auto
+</pre>
+
+<h3>8.3 Table Schema Summary</h3>
+<table class="data">
+  <tr><th>Table</th><th>Purpose</th><th>Key Columns</th></tr>
+  <tr><td>jf_submissions</td><td>Core submission data from JotForm</td><td>jotform_submission_id (PK), form_id, title, status, current_level, pending_approver_email, submitter_email, submission_date</td></tr>
+  <tr><td>jf_approval_history</td><td>Audit trail for workflow approvals</td><td>id (PK), submission_id (FK), level, action, approver_name, approver_email, comment, created_at</td></tr>
+  <tr><td>jf_approver_config</td><td>Manual approver assignments per form/level</td><td>id (PK), form_id, level, approver_name, approver_email</td></tr>
+  <tr><td>notifications</td><td>User notification inbox</td><td>id (PK), user_email, type, title, message, read, created_at</td></tr>
+  <tr><td>user_profiles</td><td>User profiles and auth data</td><td>id (PK), email, name, role, azure_oid, password_hash, created_at</td></tr>
+</table>
+
+<div class="note">
+  <strong>PostgreSQL Configuration:</strong> Set <code>shared_buffers = 512MB</code>, <code>effective_cache_size = 4GB</code>, and <code>work_mem = 16MB</code> in <code>postgresql.conf</code> for optimal performance with the expected workload. Enable <code>pg_stat_statements</code> extension for query performance monitoring.
+</div>
+
+<!-- ═══ 9. FIREWALL ═══ -->
+<div class="page-break"></div>
+<h2>9. Firewall & Network Requirements</h2>
+
+<h3>9.1 Inbound Rules (Internet → Server)</h3>
+<table class="data">
+  <tr><th>Port</th><th>Protocol</th><th>Source</th><th>Destination</th><th>Purpose</th></tr>
+  <tr><td>443</td><td>TCP</td><td>Any (or specific IP ranges if VPN)</td><td>Server IP</td><td>HTTPS — user access to the application</td></tr>
+  <tr><td>3389</td><td>TCP</td><td>Admin IP range only</td><td>Server IP</td><td>RDP — remote administration (restrict tightly)</td></tr>
+</table>
+
+<h3>9.2 Outbound Rules (Server → Internet)</h3>
+<table class="data">
+  <tr><th>Port</th><th>Protocol</th><th>Destination</th><th>Purpose</th></tr>
+  <tr><td>443</td><td>TCP</td><td>eforms.mediaoffice.ae</td><td>JotForm Enterprise API — fetch forms, submissions, workflow data</td></tr>
+  <tr><td>5432</td><td>TCP</td><td>localhost only (127.0.0.1)</td><td>PostgreSQL — local database connection (not exposed to network)</td></tr>
+  <tr><td>443</td><td>TCP</td><td>login.microsoftonline.com</td><td>Microsoft Azure AD OAuth token exchange</td></tr>
+  <tr><td>443</td><td>TCP</td><td>graph.microsoft.com</td><td>Microsoft Graph API — user profile lookup (optional)</td></tr>
+  <tr><td>80 / 443</td><td>TCP</td><td>acme-v02.api.letsencrypt.org</td><td>SSL certificate auto-renewal (if using Let's Encrypt)</td></tr>
+</table>
+
+<div class="warn">
+  <strong>Critical:</strong> If the client's network uses an HTTP proxy for outbound traffic, the Node.js process must be configured to use it via <code>HTTP_PROXY</code> and <code>HTTPS_PROXY</code> environment variables. All outbound API calls are HTTPS-only.
+</div>
+
+<!-- ═══ 10. MONITORING ═══ -->
+<h2>10. Monitoring & Maintenance</h2>
+
+<h3>10.1 Log Files</h3>
+<table class="data">
+  <tr><th>Log Type</th><th>Location</th><th>Retention</th></tr>
+  <tr><td>IIS Access Logs</td><td><code>C:\inetpub\logs\LogFiles\W3SVC*</code></td><td>Rolling 90 days (compress after 30)</td></tr>
+  <tr><td>IISNode Logs</td><td><code>C:\inetpub\logs\flowaccel\iisnode\</code></td><td>Rolling 30 days</td></tr>
+  <tr><td>Application Logs</td><td><code>C:\inetpub\wwwroot\flowaccel\logs\</code></td><td>Rolling 60 days</td></tr>
+  <tr><td>Windows Event Log</td><td>Event Viewer → Application</td><td>System default</td></tr>
+  <tr><td>Failed Request Traces</td><td><code>C:\inetpub\logs\FailedReqLogFiles\</code></td><td>Enable on-demand for debugging</td></tr>
+</table>
+
+<h3>10.2 Health Checks</h3>
+<table class="data">
+  <tr><th>Endpoint</th><th>Expected</th><th>Frequency</th></tr>
+  <tr><td><code>GET /api/jotform?path=user/forms</code></td><td>HTTP 200 with JSON response</td><td>Every 5 minutes</td></tr>
+  <tr><td><code>GET /</code></td><td>HTTP 200, returns index.html</td><td>Every 1 minute</td></tr>
+  <tr><td>Node.js process running</td><td>1+ iisnode.exe processes</td><td>Continuous (IISNode auto-monitors)</td></tr>
+</table>
+
+<h3>10.3 IIS App Pool Monitoring Script (PowerShell)</h3>
+<pre>
+<span class="c"># check-flowaccel.ps1 — Health check script (run as scheduled task every 5 min)</span>
+<span class="k">$response</span> = Invoke-WebRequest -Uri http://localhost:3001/api/jotform?path=user/forms -UseBasicParsing
+<span class="k">if</span> (<span class="k">$response</span>.StatusCode -ne 200) {
+    Write-EventLog -LogName Application -Source "FlowAccel" -EventId 1001 `
+        -EntryType Error -Message "FlowAccel API health check failed"
+}
+</pre>
+
+<!-- ═══ 11. BACKUP ═══ -->
+<div class="page-break"></div>
+<h2>11. Backup Strategy</h2>
+
+<table class="data">
+  <tr><th>What</th><th>Method</th><th>Frequency</th><th>Retention</th></tr>
+  <tr><td>Application Code & Config</td><td>Robocopy to Backup server + offsite</td><td>After each deployment</td><td>Keep last 5 versions</td></tr>
+  <tr><td>IIS Configuration</td><td><code>appcmd list config -section:system.webServer</code> output</td><td>Weekly</td><td>3 months</td></tr>
+  <tr><td>SSL Certificate</td><td>Export PFX with private key</td><td>On renewal</td><td>Keep current + previous</td></tr>
+  <tr><td>.env Configuration</td><td>Encrypted copy to secure vault</td><td>On any change</td><td>Permanent</td></tr>
+  <tr><td>Windows Server</td><td>Windows Server Backup (wbadmin) to network share</td><td>Daily incremental, weekly full</td><td>4 weekly full backups</td></tr>
+</table>
+
+<div class="note">
+  <strong>PostgreSQL backups:</strong> Schedule daily backups via Windows Task Scheduler using <code>pg_dump</code>. Store backup files on the 500 GB data disk and replicate to the Backup server weekly. Command: <code>"C:\Program Files\PostgreSQL\15\bin\pg_dump.exe" -U flowaccel_app -d flowaccel -F c -f "D:\Backups\flowaccel_%date:~-4,4%%date:~-10,2%%date:~-7,2%.dump"</code>. Retention: 7 daily + 4 weekly backups.
+</div>
+
+<!-- ═══ 12. COST ESTIMATE ═══ -->
+<h2>12. Estimated Resource Utilization & Costs</h2>
+
+<h3>12.1 Expected Server Load</h3>
+<table class="data">
+  <tr><th>Metric</th><th>Value</th></tr>
+  <tr><td>Concurrent Users</td><td>50–200 (approvers + admins within the organization)</td></tr>
+  <tr><td>Requests per Minute</td><td>~100–500 (dashboard loads, API calls, real-time sync)</td></tr>
+  <tr><td>Average Response Time</td><td>&lt; 200ms for API calls; &lt; 2s for full dashboard load</td></tr>
+  <tr><td>Memory Usage (Node.js)</td><td>150–350 MB per IISNode worker process (2-4 workers)</td></tr>
+  <tr><td>Total RAM Usage</td><td>~2 GB (IIS + Node.js) + OS overhead (~3 GB) = ~5 GB baseline</td></tr>
+  <tr><td>Disk Growth Rate</td><td>~500 MB/month (logs + uploaded signatures)</td></tr>
+  <tr><td>Outbound Bandwidth</td><td>~50–200 GB/month (JotForm API data, submission enrichment)</td></tr>
+</table>
+
+<h3>12.2 Estimated Licensing Costs (Indicative)</h3>
+<table class="data">
+  <tr><th>Item</th><th>Qty</th><th>Est. Annual Cost (USD)</th></tr>
+  <tr><td>Windows Server 2022 Standard (16-core)</td><td>2</td><td>$1,948 ($974 &times; 2)</td></tr>
+  <tr><td>SSL Certificate (DV)</td><td>1</td><td>$0 (Let's Encrypt) or ~$200/year (Sectigo/DigiCert)</td></tr>
+  <tr><td>PostgreSQL</td><td>1</td><td>$0 (open-source, self-hosted on Server 1)</td></tr>
+  <tr><td>JotForm Enterprise</td><td>1</td><td>Already licensed (existing GDMO contract)</td></tr>
+  <tr><td><strong>Total Annual (Excluding Hardware)</strong></td><td></td><td><strong>~$1,948–$2,148</strong></td></tr>
+</table>
+
+<div class="note">
+  <strong>Note:</strong> Hardware costs are not included as they depend on whether the servers are physical, virtualized on existing infrastructure, or cloud VMs (Azure/AWS). If using Azure VMs (D4s v3, 4 vCPU, 16 GB RAM), the estimated cost is ~$310/month per VM (~$7,440/year for 2 VMs).
+</div>
+
+<!-- ═══ 13. SUPPORT ═══ -->
+<h2>13. Support & Handover Requirements</h2>
+
+<table class="data">
+  <tr><th>Deliverable</th><th>Provided By</th><th>Timeline</th></tr>
+  <tr><td>Express.js backend server.js (converted from Vercel functions)</td><td>Development Team</td><td>2-3 business days after server provisioning</td></tr>
+  <tr><td>web.config + iisnode.yml configuration files</td><td>Development Team</td><td>Included in deployment package</td></tr>
+  <tr><td>Environment variable values (secure handover)</td><td>Development Team</td><td>Via encrypted channel on deployment day</td></tr>
+  <tr><td>Windows Server + IIS installation</td><td>Client IT Team</td><td>Before deployment date</td></tr>
+  <tr><td>SSL certificate procurement and installation</td><td>Client IT Team</td><td>Before deployment date</td></tr>
+  <tr><td>Firewall rule configuration</td><td>Client IT Team</td><td>Before deployment date</td></tr>
+  <tr><td>NTFS permissions + security hardening</td><td>Client IT Team</td><td>After deployment</td></tr>
+</table>
+
+<!-- ═══ FOOTER ═══ -->
+<div class="footer">
+  <p>FlowAccel Server Specification v1.1 — 13 May 2026 — Confidential</p>
+  <p>Prepared for Client Infrastructure Team</p>
+</div>
+
+</body>
+</html>
