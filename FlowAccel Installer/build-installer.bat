@@ -80,7 +80,7 @@ if !MISSING! GTR 0 (
 REM ---- 4. Generate SHA256SUMS.txt for runtime integrity check ----
 echo [4/5] Generating SHA256SUMS.txt...
 pushd "%INSTALLERS%"
-powershell -NoProfile -Command "Get-ChildItem -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' -and $_.Name -ne 'README.txt' } | ForEach-Object { '{0} {1}' -f ((Get-FileHash $_.FullName -Algorithm SHA256).Hash), $_.Name } | Set-Content -Path SHA256SUMS.txt -Encoding ASCII"
+powershell -NoProfile -Command "$bundled = @('VC_redist.x64.exe','node-v18.20.4-x64.msi','postgresql-15.8-1-windows-x64.exe','rewrite_amd64_en-US.msi','requestRouter_amd64.msi','nssm-2.24.zip'); $bundled | ForEach-Object { '{0} {1}' -f ((Get-FileHash $_ -Algorithm SHA256).Hash), $_ } | Set-Content -Path SHA256SUMS.txt -Encoding ASCII"
 popd
 
 REM ---- 5. Compile Inno Setup script ----
