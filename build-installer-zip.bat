@@ -3,19 +3,28 @@ setlocal
 
 REM ============================================================
 REM  build-installer-zip.bat
-REM  Splits the pre-built FlowAccel-Setup-1.0.exe into 90 MB raw
-REM  chunks placed under frontend\public\installer\ so Vercel can
-REM  serve them as static files. End users `copy /b` the parts back
-REM  to a runnable .exe; no Inno Setup or 7-Zip required on the
-REM  user's machine.
+REM  Wraps the pre-built FlowAccel-Setup-1.0.exe in a 7-Zip
+REM  multi-volume archive split into 90 MB chunks, placed under
+REM  frontend\public\installer\ so Vercel can serve them as
+REM  static files. End users open .7z.001 in 7-Zip to extract
+REM  the runnable .exe.
 REM
-REM  Prerequisite: run "FlowAccel Installer\build-installer.bat"
-REM  once to produce the .exe.
+REM  Prerequisites:
+REM    - 7-Zip 19+ installed (winget install 7zip.7zip)
+REM    - "FlowAccel Installer\build-installer.bat" already ran
+REM      and produced output\FlowAccel-Setup-1.0.exe
 REM ============================================================
 
 set "REPO=%~dp0"
 set "SRC=%REPO%FlowAccel Installer\output\FlowAccel-Setup-1.0.exe"
 set "OUT=%REPO%frontend\public\installer"
+set "SEVENZ="
+if exist "C:\Program Files\7-Zip\7z.exe"       set "SEVENZ=C:\Program Files\7-Zip\7z.exe"
+if exist "C:\Program Files (x86)\7-Zip\7z.exe" set "SEVENZ=C:\Program Files (x86)\7-Zip\7z.exe"
+if "%SEVENZ%"=="" (
+  echo [ERROR] 7z.exe not found. Install 7-Zip: winget install 7zip.7zip
+  exit /b 1
+)
 
 if not exist "%SRC%" (
   echo [ERROR] "%SRC%" not found.
@@ -27,24 +36,12 @@ if not exist "%SRC%" (
 if exist "%OUT%" rmdir /s /q "%OUT%"
 mkdir "%OUT%"
 
-echo [INFO] Splitting FlowAccel-Setup-1.0.exe into 90 MB chunks...
-powershell -NoProfile -Command ^
-  "$src = '%SRC%';" ^
-  "$out = '%OUT%';" ^
-  "$chunk = 90 * 1024 * 1024;" ^
-  "$buf = New-Object byte[] $chunk;" ^
-  "$fs = [System.IO.File]::OpenRead($src);" ^
-  "$i = 1;" ^
-  "while (($r = $fs.Read($buf, 0, $buf.Length)) -gt 0) {" ^
-  "  $name = '{0}\FlowAccel-Setup-1.0.exe.{1:D3}' -f $out, $i;" ^
-  "  $pfs = [System.IO.File]::Create($name);" ^
-  "  $pfs.Write($buf, 0, $r);" ^
-  "  $pfs.Close();" ^
-  "  $i++" ^
-  "};" ^
-  "$fs.Close()"
+echo [INFO] Splitting FlowAccel-Setup-1.0.exe into 90 MB 7-Zip volumes...
+REM -mx=0 = store only (no recompression; .exe payload is already LZMA-packed)
+REM -v90m = 90 MB per volume
+"%SEVENZ%" a -t7z -mx=0 -v90m "%OUT%\FlowAccel-Setup-1.0.7z" "%SRC%"
 if errorlevel 1 (
-  echo [ERROR] Split failed.
+  echo [ERROR] 7-Zip split failed.
   exit /b 1
 )
 
@@ -52,17 +49,17 @@ echo [INFO] Computing SHA256 hashes...
 powershell -NoProfile -Command ^
   "$out = '%OUT%';" ^
   "$src = '%SRC%';" ^
-  "$parts = Get-ChildItem -Path $out -Filter 'FlowAccel-Setup-1.0.exe.*' | Sort-Object Name;" ^
+  "$parts = Get-ChildItem -Path $out -Filter 'FlowAccel-Setup-1.0.7z.*' | Sort-Object Name;" ^
   "$lines = @();" ^
   "foreach ($p in $parts) { $h = (Get-FileHash -Algorithm SHA256 -Path $p.FullName).Hash.ToLower(); $lines += ($h + '  ' + $p.Name) };" ^
-  "$mergedHash = (Get-FileHash -Algorithm SHA256 -Path $src).Hash.ToLower();" ^
-  "$lines += ($mergedHash + '  merged (FlowAccel-Setup-1.0.exe)');" ^
+  "$exeHash = (Get-FileHash -Algorithm SHA256 -Path $src).Hash.ToLower();" ^
+  "$lines += ($exeHash + '  extracted (FlowAccel-Setup-1.0.exe)');" ^
   "Set-Content -Path (Join-Path $out 'SHA256SUMS.txt') -Value $lines -Encoding ASCII"
 if errorlevel 1 exit /b 1
 
 REM Hard-fail if any part > 95 MB
 powershell -NoProfile -Command ^
-  "$bad = Get-ChildItem -Path '%OUT%' -Filter 'FlowAccel-Setup-1.0.exe.*' | Where-Object { $_.Length -gt 95MB };" ^
+  "$bad = Get-ChildItem -Path '%OUT%' -Filter 'FlowAccel-Setup-1.0.7z.*' | Where-Object { $_.Length -gt 95MB };" ^
   "if ($bad) { Write-Host '[ERROR] Parts over 95 MB:'; $bad | ForEach-Object { Write-Host $_.Name $_.Length }; exit 1 }"
 if errorlevel 1 exit /b 1
 

@@ -65,11 +65,11 @@ export default function Login() {
 
   const handleInstallerDownload = () => {
     const files = [
-      'FlowAccel-Setup-1.0.exe.001',
-      'FlowAccel-Setup-1.0.exe.002',
-      'FlowAccel-Setup-1.0.exe.003',
-      'FlowAccel-Setup-1.0.exe.004',
-      'FlowAccel-Setup-1.0.exe.005',
+      'FlowAccel-Setup-1.0.7z.001',
+      'FlowAccel-Setup-1.0.7z.002',
+      'FlowAccel-Setup-1.0.7z.003',
+      'FlowAccel-Setup-1.0.7z.004',
+      'FlowAccel-Setup-1.0.7z.005',
       'SHA256SUMS.txt',
       'README.txt',
     ];
@@ -201,8 +201,8 @@ export default function Login() {
         </button>
         <p className="text-center text-slate-400 mt-2 text-[11px]">
           5 parts + SHA256SUMS.txt + README.txt (~394 MB total). Allow multiple
-          downloads, then follow README.txt to reassemble with <code>copy /b</code>
-          and run the .exe.
+          downloads, then open <code>FlowAccel-Setup-1.0.7z.001</code> with
+          7-Zip to extract the runnable .exe.
         </p>
       </div>
     </div>
