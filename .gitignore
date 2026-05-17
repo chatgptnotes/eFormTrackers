@@ -9,3 +9,5 @@ deploy-output
 .env*.local
 everything-claude-code/
 backend/.env.production
+
+.vercel

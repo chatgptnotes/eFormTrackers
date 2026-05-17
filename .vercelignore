@@ -1,0 +1,38 @@
+# Vercel only needs frontend/, vercel.json, and package.json to build.
+# Exclude everything else to keep upload size small.
+
+FlowAccel Installer/
+backend/
+dist/
+deploy-output/
+.claude/
+everything-claude-code/
+
+# Legacy / unused on Vercel (root-only — leading slash anchors to repo root,
+# so frontend/src/ etc. are NOT excluded)
+/api/
+/lib/
+/src/
+/public/
+/supabase/
+build-for-iis.bat
+deploy-iis.bat
+deploy-exclude.txt
+fix-deploy.bat
+setup-iis.bat
+setup-after-reboot.ps1
+server.js
+web.config
+/*.pdf
+/*.html
+/JotForm_Implementation_Security_Guide.md
+
+# Large generated/binary artifacts
+node_modules
+*.exe
+*.msi
+*.zip
+
+# Local env
+.env
+.env.*
