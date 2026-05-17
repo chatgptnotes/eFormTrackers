@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, ArrowRight, Loader2, Eye, EyeOff, AlertCircle, ShieldCheck, Download } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Loader2, Eye, EyeOff, AlertCircle, ShieldCheck, Download, FileText } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
@@ -203,6 +203,19 @@ export default function Login() {
           5 parts + SHA256SUMS.txt + README.txt (~394 MB total). Allow multiple
           downloads, then open <code>FlowAccel-Setup-1.0.7z.001</code> with
           7-Zip to extract the runnable .exe.
+        </p>
+
+        <a
+          href="/installer/FlowAccel-Installation-Guide.pdf"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl bg-white/70 backdrop-blur border border-slate-300 text-slate-800 hover:border-purple-500 hover:bg-white hover:shadow-md transition-all font-semibold text-sm"
+        >
+          <FileText className="w-4 h-4 text-purple-600" />
+          Installation Instructions (PDF)
+        </a>
+        <p className="text-center text-slate-400 mt-2 text-[11px]">
+          Step-by-step setup wizard walkthrough with screenshots (~620 KB).
         </p>
       </div>
     </div>
