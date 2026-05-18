@@ -19,7 +19,7 @@ Set-StrictMode -Version Latest
 # ----- Bootstrap: dot-source libraries -----
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $libDir = Join-Path $here 'lib'
-foreach ($mod in 'log','prereq','iis','node','postgres','ssl','site','service','firewall','verify') {
+foreach ($mod in 'log','prereq','iis','node','postgres','ssl','site','service','firewall','verify','admin-seed','auto-remediate') {
     . (Join-Path $libDir "$mod.ps1")
 }
 
@@ -55,6 +55,9 @@ $config = @{
     JotformBase           = $cfg.JotformBase
     JotformHost           = $cfg.JotformHost
     JotformWebhookSecret  = $cfg.JotformWebhookSecret
+    AdminEmail            = if ($cfg.AdminEmail) { ($cfg.AdminEmail).ToLower() } else { '' }
+    AdminPassword         = $cfg.AdminPassword
+    AdminName             = if ($cfg.AdminName) { $cfg.AdminName } else { 'Administrator' }
     MicrosoftClientId     = $cfg.MicrosoftClientId
     MicrosoftTenantId     = $cfg.MicrosoftTenantId
     MicrosoftClientSecret = $cfg.MicrosoftClientSecret
@@ -144,6 +147,20 @@ Invoke-NpmInstall -BackendPath (Join-Path $config.InstallDir 'backend')
 # ===== STEP 13: DB migration =====
 Invoke-DbMigration -BackendPath (Join-Path $config.InstallDir 'backend')
 
+# ===== STEP 13b: Seed admin user (super_admin) =====
+if ($config.AdminEmail -and $config.AdminPassword) {
+    Seed-AdminUser -BackendPath    (Join-Path $config.InstallDir 'backend') `
+                   -AdminEmail     $config.AdminEmail `
+                   -AdminPassword  $config.AdminPassword `
+                   -AdminName      $config.AdminName `
+                   -DbName         $config.DbName `
+                   -DbUser         $config.DbUser `
+                   -AppDbPassword  $config.AppDbPassword `
+                   -Port           $config.PgPort
+} else {
+    Write-Log -Level WARN -Message 'AdminEmail/AdminPassword not in config.json - skipping admin seed. First login will fail until a user row is created manually.'
+}
+
 # ===== STEP 14: NTFS perms =====
 Set-NTFSPermissions -InstallDir $config.InstallDir
 
@@ -209,11 +226,32 @@ Start-BackendService -ServiceName $config.ServiceName -Port $config.BackendPort
 # ===== STEP 23: Start site =====
 Start-FlowAccelSite -SiteName $config.SiteName
 
-# ===== STEP 24: Verify =====
-$result = Invoke-Verification -ServerIP $config.ServerIP `
-    -HttpsPort $config.HttpsPort `
-    -BackendPort $config.BackendPort `
-    -ServiceName $config.ServiceName
+# ===== STEP 24: Verify (Tier 1 infra + Tier 2 auth) =====
+$verifyArgs = @{
+    ServerIP      = $config.ServerIP
+    HttpPort      = $config.HttpPort
+    HttpsPort     = $config.HttpsPort
+    BackendPort   = $config.BackendPort
+    PgPort        = $config.PgPort
+    ServiceName   = $config.ServiceName
+    DbName        = $config.DbName
+    DbUser        = $config.DbUser
+    AppDbPassword = $config.AppDbPassword
+    AdminEmail    = $config.AdminEmail
+    AdminPassword = $config.AdminPassword
+    JsonReportDir = (Join-Path $config.InstallDir 'logs')
+}
+$result = Invoke-Verification @verifyArgs
+
+# ===== STEP 24b: Auto-remediate known failures, then re-verify once =====
+if ($result.Fail -gt 0) {
+    Write-Log -Level WARN -Message "$($result.Fail) check(s) failed - attempting deterministic auto-remediation."
+    $remediation = Invoke-AutoRemediate -VerifyResult $result -Config $config -InstallDir $config.InstallDir
+    if ($remediation.CuresAttempted.Count -gt 0) {
+        Write-Log -Level INFO -Message "Re-running verification after auto-remediation."
+        $result = Invoke-Verification @verifyArgs
+    }
+}
 
 # ===== STEP 25: Finish =====
 Write-StepHeader -Number 25 -Total 25 -Title 'Installation complete'

@@ -54,6 +54,7 @@ Source: "payload\app\*";       DestDir: "{app}\_payload\app";       Flags: recur
 Source: "scripts\*";           DestDir: "{app}\_payload\scripts";   Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "config\config.template.json"; DestDir: "{app}\_payload\config"; Flags: ignoreversion
 Source: "docs\*";              DestDir: "{app}\_payload\docs";      Flags: recursesubdirs ignoreversion
+Source: "..\frontend\public\installer\FlowAccel-Azure-AD-Information-Required.pdf"; DestDir: "{app}\_payload\docs"; Flags: ignoreversion skipifsourcedoesntexist
 
 ; ---------- Payload installers extracted on demand by [Code] ExtractTemporaryFile ----------
 
@@ -76,13 +77,18 @@ Filename: "powershell.exe"; \
 
 [Code]
 var
-  PageNet:    TInputQueryWizardPage;
-  PageDb:     TInputQueryWizardPage;
-  PageJot:    TInputQueryWizardPage;
-  PageMs:     TInputQueryWizardPage;
-  PageCert:   TInputQueryWizardPage;
-  PageDryRun: TOutputMsgWizardPage;
+  PagePorts:   TOutputMsgWizardPage;
+  PageNet:     TInputQueryWizardPage;
+  PageDb:      TInputQueryWizardPage;
+  PageAdmin:   TInputQueryWizardPage;
+  PageJot:     TInputQueryWizardPage;
+  PageMs:      TInputQueryWizardPage;
+  PageAzure:   TOutputMsgWizardPage;
+  PageCert:    TInputQueryWizardPage;
+  PageDryRun:  TOutputMsgWizardPage;
   ServerIPDefault: string;
+  PortsReport: string;
+  PortsBlocked: Boolean;
 
 function GetDefaultServerIP(Param: string): string;
 var
@@ -112,6 +118,44 @@ end;
 function GetTickCount: DWORD;
   external 'GetTickCount@kernel32.dll stdcall';
 
+function ProbePorts(): string;
+var
+  ResultCode: Integer;
+  TmpFile, Cmd, Content: string;
+  Lines: TStringList;
+begin
+  Result := '';
+  TmpFile := ExpandConstant('{tmp}\port-probe.txt');
+  Cmd :=
+    '-NoProfile -ExecutionPolicy Bypass -Command "' +
+    '$ports = 80,443,3001,5432;' +
+    '$out = foreach ($p in $ports) {' +
+    '  $tcp = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue;' +
+    '  if (-not $tcp) { ''port='' + $p + '';state=FREE;owner='''';blocked=false'' } else {' +
+    '    $svc = $null;' +
+    '    try { Import-Module WebAdministration -ErrorAction SilentlyContinue;' +
+    '      $svc = (Get-Website | Where-Object { $_.Bindings.Collection | Where-Object { $_.bindingInformation -match '':'' + $p + '':'' } } | Select-Object -First 1 -ExpandProperty Name) } catch {}' +
+    '    if ($svc -eq ''Default Web Site'') { ''port='' + $p + '';state=BUSY;owner=Default Web Site;blocked=false'' }' +
+    '    elseif ($svc -eq ''FlowAccel'')   { ''port='' + $p + '';state=BUSY;owner=FlowAccel (previous install);blocked=false'' }' +
+    '    else {' +
+    '      $pid = $tcp[0].OwningProcess;' +
+    '      $name = (Get-Process -Id $pid -ErrorAction SilentlyContinue).ProcessName;' +
+    '      if (-not $name) { $name = ''(unknown pid '' + $pid + '')'' };' +
+    '      ''port='' + $p + '';state=BUSY;owner='' + $name + '';blocked=true'' }}};' +
+    '$out -join [Environment]::NewLine | Set-Content -Path ''' + TmpFile + ''' -Encoding ASCII"';
+  Exec('powershell.exe', Cmd, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  if FileExists(TmpFile) then begin
+    Lines := TStringList.Create;
+    try
+      Lines.LoadFromFile(TmpFile);
+      Content := Lines.Text;
+    finally
+      Lines.Free;
+    end;
+    Result := Content;
+  end;
+end;
+
 function GenerateRandomPassword(Len: Integer): string;
 var
   i, Idx: Integer;
@@ -131,9 +175,17 @@ end;
 procedure InitializeWizard;
 begin
   ServerIPDefault := GetDefaultServerIP('');
+  PortsReport := '';
+  PortsBlocked := False;
+
+  // Page: Pre-flight port availability (Change 3)
+  PagePorts := CreateOutputMsgPage(wpSelectDir,
+    'Port availability check',
+    'Verifying that the ports FlowAccel needs are free',
+    'The installer will check ports 80, 443, 3001, 5432. Click Next to run the check.');
 
   // Page: Network
-  PageNet := CreateInputQueryPage(wpSelectDir,
+  PageNet := CreateInputQueryPage(PagePorts.ID,
     'Network settings',
     'Where will users reach this server?',
     'Enter the IP address or hostname users will use to reach FlowAccel.');
@@ -153,8 +205,18 @@ begin
   PageDb.Add('Application DB password (auto-generated, change if you want):', True);
   PageDb.Values[1] := GenerateRandomPassword(24);
 
+  // Page: Admin account (Change 1)
+  PageAdmin := CreateInputQueryPage(PageDb.ID,
+    'FlowAccel administrator account',
+    'First super_admin user (created automatically)',
+    'These are the credentials you will use to sign into FlowAccel the first time. The password is stored as a bcrypt hash; the installer never writes it to disk.');
+  PageAdmin.Add('Admin email:', False);
+  PageAdmin.Add('Admin password (min 12 chars):', True);
+  PageAdmin.Add('Admin full name (optional):', False);
+  PageAdmin.Values[2] := 'Administrator';
+
   // Page: JotForm
-  PageJot := CreateInputQueryPage(PageDb.ID,
+  PageJot := CreateInputQueryPage(PageAdmin.ID,
     'JotForm integration (optional)',
     'Connect to JotForm Enterprise',
     'Leave blank to skip - you can configure later by editing backend\.env.');
@@ -174,8 +236,16 @@ begin
   PageMs.Add('Tenant ID:', False);
   PageMs.Add('Client secret:', True);
 
+  // Page: Azure redirect URI display (Change 5)
+  PageAzure := CreateOutputMsgPage(PageMs.ID,
+    'Azure AD redirect URI',
+    'One manual step in the Azure Portal',
+    'After install, register this exact redirect URI in your Azure App Registration ' +
+    '(Authentication -> Web platform). The wizard will compute it from your IP. The Azure AD ' +
+    'Information Required PDF is included at {app}\_payload\docs\ for offline reference.');
+
   // Page: Cert strategy
-  PageCert := CreateInputQueryPage(PageMs.ID,
+  PageCert := CreateInputQueryPage(PageAzure.ID,
     'HTTPS certificate',
     'Choose a certificate strategy for this server',
     'Default is recommended: a self-signed Root CA so cert renewals are automatic for trusted clients. To use an existing PFX (DigiCert, internal ADCS, etc.), put the full path below and set strategy to ImportPFX.');
@@ -193,11 +263,49 @@ begin
     '{app}\logs\install-<timestamp>.log so you can diagnose. Click Back to change any setting.');
 end;
 
+procedure CurPageChanged(CurPageID: Integer);
+var
+  Uri: string;
+begin
+  if CurPageID = PagePorts.ID then begin
+    PortsReport := ProbePorts;
+    PortsBlocked := Pos('blocked=true', PortsReport) > 0;
+    if PortsReport = '' then
+      PagePorts.Msg2Label.Caption := 'Port check could not run. Continuing without verification (the installer will fail later if a critical port is busy).'
+    else if PortsBlocked then
+      PagePorts.Msg2Label.Caption :=
+        'One or more required ports are in use by something the installer cannot safely stop:' + #13#10 + #13#10 +
+        PortsReport + #13#10 +
+        'Free the listed port(s) and click Back, then Next, to recheck. ' +
+        '"Default Web Site" and a previous FlowAccel install are handled automatically.'
+    else
+      PagePorts.Msg2Label.Caption :=
+        'Port check results:' + #13#10 + #13#10 + PortsReport + #13#10 +
+        'All blocking ports are free. Click Next to continue.';
+  end
+  else if CurPageID = PageAzure.ID then begin
+    Uri := 'https://' + Trim(PageNet.Values[0]) + '/api/auth/microsoft/callback';
+    PageAzure.Msg2Label.Caption :=
+      'Redirect URI to register in Azure Portal:' + #13#10 + #13#10 +
+      '  ' + Uri + #13#10 + #13#10 +
+      'Azure Portal -> App registrations -> (your app) -> Authentication -> Add a platform -> Web -> ' +
+      'paste the URI above -> Save.' + #13#10 + #13#10 +
+      'Skip this if you left Microsoft Sign-In blank on the previous page.';
+  end;
+end;
+
 function NextButtonClick(CurPageID: Integer): Boolean;
 var
-  PgPwd: string;
+  PgPwd, AdminEmail, AdminPwd: string;
 begin
   Result := True;
+  if CurPageID = PagePorts.ID then begin
+    if PortsBlocked then begin
+      MsgBox('Required ports are in use by other processes. Free them before continuing - see the page text for details.', mbError, MB_OK);
+      Result := False;
+      exit;
+    end;
+  end;
   if CurPageID = PageDb.ID then begin
     PgPwd := Trim(PageDb.Values[0]);
     if Length(PgPwd) < 12 then begin
@@ -207,6 +315,20 @@ begin
     end;
     if Length(Trim(PageDb.Values[1])) < 12 then begin
       MsgBox('Application DB password must be at least 12 characters.', mbError, MB_OK);
+      Result := False;
+      exit;
+    end;
+  end;
+  if CurPageID = PageAdmin.ID then begin
+    AdminEmail := Trim(PageAdmin.Values[0]);
+    AdminPwd   := Trim(PageAdmin.Values[1]);
+    if (Length(AdminEmail) < 3) or (Pos('@', AdminEmail) < 2) or (Pos('.', AdminEmail) < 4) then begin
+      MsgBox('Admin email must be a valid email address.', mbError, MB_OK);
+      Result := False;
+      exit;
+    end;
+    if Length(AdminPwd) < 12 then begin
+      MsgBox('Admin password must be at least 12 characters.', mbError, MB_OK);
       Result := False;
       exit;
     end;
@@ -252,6 +374,9 @@ begin
     J.Add('  "MicrosoftTenantId": "'    + JsonEscape(PageMs.Values[1]) + '",');
     J.Add('  "MicrosoftClientSecret": "'+ JsonEscape(PageMs.Values[2]) + '",');
     J.Add('  "MicrosoftRedirectUri": "https://' + JsonEscape(PageNet.Values[0]) + '/api/auth/microsoft/callback",');
+    J.Add('  "AdminEmail": "'            + JsonEscape(Lowercase(Trim(PageAdmin.Values[0]))) + '",');
+    J.Add('  "AdminPassword": "'         + JsonEscape(PageAdmin.Values[1]) + '",');
+    J.Add('  "AdminName": "'             + JsonEscape(Trim(PageAdmin.Values[2])) + '",');
     J.Add('  "CertStrategy": "'         + JsonEscape(PageCert.Values[0]) + '",');
     J.Add('  "PfxPath": "'              + JsonEscape(PageCert.Values[1]) + '",');
     J.Add('  "PfxPassword": "'          + JsonEscape(PageCert.Values[2]) + '",');

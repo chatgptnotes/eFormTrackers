@@ -114,14 +114,12 @@ function New-FlowAccelSite {
     Write-StepHeader -Number 15 -Total 25 -Title "Creating IIS site '$SiteName'"
     Import-Module WebAdministration -ErrorAction Stop
 
-    # Stop Default Web Site if it holds port 80
+    # Always retire 'Default Web Site' so the bare-IP URL can never land on the IIS welcome page.
     $dws = Get-Website -Name 'Default Web Site' -ErrorAction SilentlyContinue
-    if ($dws -and $dws.State -eq 'Started') {
-        $dwsBinding = $dws.Bindings.Collection | Where-Object { $_.bindingInformation -match ":${HttpPort}:" }
-        if ($dwsBinding) {
-            Write-Log -Level WARN -Message "Stopping 'Default Web Site' (occupying port $HttpPort)."
-            Stop-Website -Name 'Default Web Site'
-        }
+    if ($dws) {
+        Stop-Website -Name 'Default Web Site' -ErrorAction SilentlyContinue
+        Set-ItemProperty 'IIS:\Sites\Default Web Site' -Name serverAutoStart -Value $false -ErrorAction SilentlyContinue
+        Write-Log -Level INFO -Message "Default Web Site stopped and disabled (was: $($dws.State))."
     }
 
     # Drop existing site/pool to converge on clean state
