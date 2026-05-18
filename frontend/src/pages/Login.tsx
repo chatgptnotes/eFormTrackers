@@ -230,6 +230,19 @@ export default function Login() {
         <p className="text-center text-slate-400 mt-2 text-[11px]">
           Details needed from your IT team to configure Microsoft sign-in.
         </p>
+
+        <a
+          href="/installer/FlowAccel-Client-Brief.pdf"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl bg-white/70 backdrop-blur border border-slate-300 text-slate-800 hover:border-orange-500 hover:bg-white hover:shadow-md transition-all font-semibold text-sm"
+        >
+          <FileText className="w-4 h-4 text-orange-600" />
+          Getting Started Brief for Clients (PDF)
+        </a>
+        <p className="text-center text-slate-400 mt-2 text-[11px]">
+          One-page summary: prerequisites, install steps, expectations.
+        </p>
       </div>
     </div>
   );
