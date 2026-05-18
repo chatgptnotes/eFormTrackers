@@ -1,0 +1,27 @@
+# ---- Dependencies ----
+node_modules/
+
+# ---- Secrets / environment — NEVER COMMIT ----
+.env
+.env.*
+config.json
+*.pfx
+*.pem
+*.key
+
+# ---- Logs ----
+logs/
+*.log
+
+# ---- Installer artifacts ----
+unins000.exe
+unins000.dat
+_payload/
+
+# ---- Build report intermediates ----
+deployment-report.html
+
+# ---- OS / editor ----
+Thumbs.db
+desktop.ini
+.DS_Store
