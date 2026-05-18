@@ -271,21 +271,21 @@ begin
     PortsReport := ProbePorts;
     PortsBlocked := Pos('blocked=true', PortsReport) > 0;
     if PortsReport = '' then
-      PagePorts.Msg2Label.Caption := 'Port check could not run. Continuing without verification (the installer will fail later if a critical port is busy).'
+      PagePorts.MsgLabel.Caption := 'Port check could not run. Continuing without verification (the installer will fail later if a critical port is busy).'
     else if PortsBlocked then
-      PagePorts.Msg2Label.Caption :=
+      PagePorts.MsgLabel.Caption :=
         'One or more required ports are in use by something the installer cannot safely stop:' + #13#10 + #13#10 +
         PortsReport + #13#10 +
         'Free the listed port(s) and click Back, then Next, to recheck. ' +
         '"Default Web Site" and a previous FlowAccel install are handled automatically.'
     else
-      PagePorts.Msg2Label.Caption :=
+      PagePorts.MsgLabel.Caption :=
         'Port check results:' + #13#10 + #13#10 + PortsReport + #13#10 +
         'All blocking ports are free. Click Next to continue.';
   end
   else if CurPageID = PageAzure.ID then begin
     Uri := 'https://' + Trim(PageNet.Values[0]) + '/api/auth/microsoft/callback';
-    PageAzure.Msg2Label.Caption :=
+    PageAzure.MsgLabel.Caption :=
       'Redirect URI to register in Azure Portal:' + #13#10 + #13#10 +
       '  ' + Uri + #13#10 + #13#10 +
       'Azure Portal -> App registrations -> (your app) -> Authentication -> Add a platform -> Web -> ' +
