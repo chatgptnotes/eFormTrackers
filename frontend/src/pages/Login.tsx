@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, ArrowRight, Loader2, Eye, EyeOff, AlertCircle, ShieldCheck, Download, FileText } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Loader2, Eye, EyeOff, AlertCircle, ShieldCheck, Download, FileText, Package } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
@@ -191,10 +191,23 @@ export default function Login() {
           Need access? Contact <a href="mailto:admin@bettroi.com" className="text-blue-600 hover:text-blue-700 font-semibold">admin@bettroi.com</a>
         </p>
 
+        <a
+          href="/installer/flowaccel.zip"
+          download="flowaccel.zip"
+          className="mt-6 w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl bg-white/70 backdrop-blur border border-slate-300 text-slate-800 hover:border-indigo-500 hover:bg-white hover:shadow-md transition-all font-semibold text-sm"
+        >
+          <Package className="w-4 h-4 text-indigo-600" />
+          Download FlowAccel (ZIP)
+        </a>
+        <p className="text-center text-slate-400 mt-2 text-[11px]">
+          Full FlowAccel package as a single ZIP (~394 MB). Extract and deploy
+          the <code>flowaccel/</code> folder.
+        </p>
+
         <button
           type="button"
           onClick={handleInstallerDownload}
-          className="mt-6 w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl bg-white/70 backdrop-blur border border-slate-300 text-slate-800 hover:border-blue-500 hover:bg-white hover:shadow-md transition-all font-semibold text-sm"
+          className="mt-3 w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl bg-white/70 backdrop-blur border border-slate-300 text-slate-800 hover:border-blue-500 hover:bg-white hover:shadow-md transition-all font-semibold text-sm"
         >
           <Download className="w-4 h-4 text-blue-600" />
           Download FlowAccel Server Installer (Windows)
