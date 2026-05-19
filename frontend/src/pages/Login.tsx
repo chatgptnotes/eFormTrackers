@@ -63,16 +63,7 @@ export default function Login() {
     window.location.href = '/api/auth/microsoft';
   };
 
-  const handleInstallerDownload = () => {
-    const files = [
-      'FlowAccel-Setup-1.0.2.7z.001',
-      'FlowAccel-Setup-1.0.2.7z.002',
-      'FlowAccel-Setup-1.0.2.7z.003',
-      'FlowAccel-Setup-1.0.2.7z.004',
-      'FlowAccel-Setup-1.0.2.7z.005',
-      'SHA256SUMS.txt',
-      'README.txt',
-    ];
+  const downloadFiles = (files: string[]) => {
     files.forEach((name, i) => {
       setTimeout(() => {
         const a = document.createElement('a');
@@ -83,6 +74,28 @@ export default function Login() {
         document.body.removeChild(a);
       }, i * 400);
     });
+  };
+
+  const handleInstallerDownload = () => {
+    downloadFiles([
+      'FlowAccel-Setup-1.0.2.7z.001',
+      'FlowAccel-Setup-1.0.2.7z.002',
+      'FlowAccel-Setup-1.0.2.7z.003',
+      'FlowAccel-Setup-1.0.2.7z.004',
+      'FlowAccel-Setup-1.0.2.7z.005',
+      'SHA256SUMS.txt',
+      'README.txt',
+    ]);
+  };
+
+  const handlePackageDownload = () => {
+    downloadFiles([
+      'FlowAccel-Package-1.0.7z.001',
+      'FlowAccel-Package-1.0.7z.002',
+      'FlowAccel-Package-1.0.7z.003',
+      'FlowAccel-Package-1.0.7z.004',
+      'FlowAccel-Package-1.0.7z.005',
+    ]);
   };
 
   return (
@@ -191,17 +204,18 @@ export default function Login() {
           Need access? Contact <a href="mailto:admin@bettroi.com" className="text-blue-600 hover:text-blue-700 font-semibold">admin@bettroi.com</a>
         </p>
 
-        <a
-          href="/installer/flowaccel.zip"
-          download="flowaccel.zip"
+        <button
+          type="button"
+          onClick={handlePackageDownload}
           className="mt-6 w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl bg-white/70 backdrop-blur border border-slate-300 text-slate-800 hover:border-indigo-500 hover:bg-white hover:shadow-md transition-all font-semibold text-sm"
         >
           <Package className="w-4 h-4 text-indigo-600" />
-          Download FlowAccel (ZIP)
-        </a>
+          Download FlowAccel Package (ZIP)
+        </button>
         <p className="text-center text-slate-400 mt-2 text-[11px]">
-          Full FlowAccel package as a single ZIP (~394 MB). Extract and deploy
-          the <code>flowaccel/</code> folder.
+          5 parts (~394 MB total). Allow multiple downloads, then open{' '}
+          <code>FlowAccel-Package-1.0.7z.001</code> with 7-Zip to extract{' '}
+          <code>flowaccel.zip</code>.
         </p>
 
         <button

@@ -11,6 +11,3 @@ everything-claude-code/
 backend/.env.production
 
 .vercel
-
-# 394 MB ZIP — exceeds GitHub's 100 MB per-file limit; lives on the IIS server only
-frontend/public/installer/flowaccel.zip
