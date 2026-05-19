@@ -1,5 +1,5 @@
 @echo off
-REM build-installer.bat - Build FlowAccel-Setup-1.0.exe
+REM build-installer.bat - Build FlowAccel-Setup-1.0.1.exe
 REM
 REM Prerequisites on dev machine:
 REM   - Node.js 18+ on PATH (npm)
@@ -12,7 +12,7 @@ REM       rewrite_amd64_en-US.msi
 REM       requestRouter_amd64.msi
 REM       nssm-2.24.zip
 REM
-REM Output: output\FlowAccel-Setup-1.0.exe
+REM Output: output\FlowAccel-Setup-1.0.1.exe
 
 setlocal EnableExtensions EnableDelayedExpansion
 set HERE=%~dp0
@@ -90,6 +90,6 @@ if errorlevel 1 ( echo Inno Setup compile failed & exit /b 4 )
 
 echo.
 echo ============================================================
-echo Build complete: %HERE%output\FlowAccel-Setup-1.0.exe
+echo Build complete: %HERE%output\FlowAccel-Setup-1.0.1.exe
 echo ============================================================
 endlocal

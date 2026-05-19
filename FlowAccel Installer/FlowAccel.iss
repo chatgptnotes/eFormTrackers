@@ -3,13 +3,13 @@
 ; Compile with:
 ;   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" FlowAccel.iss
 ;
-; Produces output/FlowAccel-Setup-1.0.exe
+; Produces output/FlowAccel-Setup-1.0.1.exe
 
 #define MyAppName        "FlowAccel"
-#define MyAppVersion     "1.0.0"
+#define MyAppVersion     "1.0.1"
 #define MyAppPublisher   "FlowAccel"
 #define MyAppURL         "https://flowaccel.local/"
-#define MyAppExeName     "FlowAccel-Setup-1.0.exe"
+#define MyAppExeName     "FlowAccel-Setup-1.0.1.exe"
 
 [Setup]
 AppId={{9C5F2D6E-7B41-4F2B-A7E0-9E1F0D5C1B92}
@@ -24,7 +24,7 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
 OutputDir=output
-OutputBaseFilename=FlowAccel-Setup-1.0
+OutputBaseFilename=FlowAccel-Setup-1.0.1
 Compression=lzma2/ultra64
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64
