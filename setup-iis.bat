@@ -37,7 +37,7 @@ echo   Done — %DST%\dist\index.html
 
 REM ── Copy web.config and server.js ──
 echo [3/7] Copying web.config and server.js...
-copy /Y "%SRC%\web.config" "%DST%\web.config" >nul
+copy /Y "%SRC%\web.config" "%DST%\dist\web.config" >nul
 copy /Y "%SRC%\server.js" "%DST%\server.js" >nul
 echo   Done.
 
@@ -71,7 +71,7 @@ if exist "C:\Program Files\iisnode\iisnode.dll" (
 REM ── Create IIS site ──
 echo [7/7] Creating IIS website...
 %windir%\system32\inetsrv\appcmd.exe delete site "flowaccel" >nul 2>nul
-%windir%\system32\inetsrv\appcmd.exe add site /name:"flowaccel" /physicalPath:"%DST%" /bindings:http/*:80: >nul 2>nul
+%windir%\system32\inetsrv\appcmd.exe add site /name:"flowaccel" /physicalPath:"%DST%\dist" /bindings:http/*:80: >nul 2>nul
 if %ERRORLEVEL% NEQ 0 (
     echo   Site may already exist or port 80 conflict. Check IIS Manager.
 ) else (

@@ -18,7 +18,7 @@ function Copy-AppFiles {
         Write-Log -Level INFO -Message "Existing .env backed up to $backup"
     }
 
-    $items = @('dist','backend','server.js','web.config')
+    $items = @('dist','backend','server.js')
     foreach ($i in $items) {
         $src = Join-Path $PayloadAppDir $i
         if (-not (Test-Path $src)) {
@@ -32,6 +32,19 @@ function Copy-AppFiles {
         } else {
             Copy-Item $src $dst -Force
         }
+    }
+
+    # web.config must sit INSIDE the IIS site root, which is the dist\ folder
+    # (New-FlowAccelSite is called with -PhysicalPath ...\dist). IIS only reads
+    # web.config from a site's physical path, so a copy at the install root is
+    # never loaded — SPA routing and the /api proxy would silently break, and a
+    # bare site root with no index.html returns HTTP 403.14.
+    $webCfgSrc = Join-Path $PayloadAppDir 'web.config'
+    if (Test-Path $webCfgSrc) {
+        Copy-Item $webCfgSrc (Join-Path $InstallDir 'dist\web.config') -Force
+        Write-Log -Level INFO -Message 'Deployed web.config into dist\ (IIS site root).'
+    } else {
+        Write-Log -Level WARN -Message 'Payload item missing: web.config'
     }
 
     # Recreate runtime dirs
