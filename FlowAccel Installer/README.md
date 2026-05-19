@@ -35,7 +35,7 @@ FlowAccel Installer/
 │   │   └── README.txt
 │   └── app/                       Staged by build-installer.bat (do not edit by hand)
 ├── trust-bundle/                  Reserved for compile-time-generated artifacts
-└── output/                        ISCC writes FlowAccel-Setup-1.0.1.exe here
+└── output/                        ISCC writes FlowAccel-Setup-1.0.2.exe here
 ```
 
 ## Building
@@ -50,7 +50,7 @@ cd ..\..
 build-installer.bat
 ```
 
-Output: `FlowAccel Installer\output\FlowAccel-Setup-1.0.1.exe` (~525 MB).
+Output: `FlowAccel Installer\output\FlowAccel-Setup-1.0.2.exe` (~525 MB).
 
 ## Installing on a target server
 
@@ -75,4 +75,4 @@ build.
 
 These legacy scripts are kept in the repo for reference only:
 `build-for-iis.bat`, `deploy-iis.bat`, `fix-deploy.bat`, `setup-iis.bat`,
-`setup-after-reboot.ps1`. New deployments should use `FlowAccel-Setup-1.0.1.exe`.
+`setup-after-reboot.ps1`. New deployments should use `FlowAccel-Setup-1.0.2.exe`.

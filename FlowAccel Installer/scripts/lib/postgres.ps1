@@ -1,14 +1,18 @@
 # postgres.ps1 - Steps 8-9: PostgreSQL install + DB bootstrap.
 
 function Test-PostgresInstalled {
-    $svc = Get-Service -Name 'postgresql-x64-15' -ErrorAction SilentlyContinue
+    # Match any installed PostgreSQL service (v14/15/16/17), not just v15, so an
+    # existing PostgreSQL is reused instead of conflicting on port 5432.
+    $svc = Get-Service -Name 'postgresql-x64-*' -ErrorAction SilentlyContinue
     return [bool]$svc
 }
 
 function Get-PsqlPath {
     $candidates = @(
+        'C:\Program Files\PostgreSQL\17\bin\psql.exe',
+        'C:\Program Files\PostgreSQL\16\bin\psql.exe',
         'C:\Program Files\PostgreSQL\15\bin\psql.exe',
-        'C:\Program Files\PostgreSQL\16\bin\psql.exe'
+        'C:\Program Files\PostgreSQL\14\bin\psql.exe'
     )
     foreach ($p in $candidates) { if (Test-Path $p) { return $p } }
     return $null

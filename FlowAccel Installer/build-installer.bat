@@ -1,5 +1,5 @@
 @echo off
-REM build-installer.bat - Build FlowAccel-Setup-1.0.1.exe
+REM build-installer.bat - Build FlowAccel-Setup-1.0.2.exe
 REM
 REM Prerequisites on dev machine:
 REM   - Node.js 18+ on PATH (npm)
@@ -12,7 +12,7 @@ REM       rewrite_amd64_en-US.msi
 REM       requestRouter_amd64.msi
 REM       nssm-2.24.zip
 REM
-REM Output: output\FlowAccel-Setup-1.0.1.exe
+REM Output: output\FlowAccel-Setup-1.0.2.exe
 
 setlocal EnableExtensions EnableDelayedExpansion
 set HERE=%~dp0
@@ -35,8 +35,12 @@ REM ---- 1. Build frontend ----
 echo [1/5] Building frontend...
 pushd "%REPO%\frontend"
 if exist package.json (
-  call npm ci
-  if errorlevel 1 ( echo Frontend npm ci failed & exit /b 1 )
+  if exist node_modules (
+    echo   node_modules already present - skipping install ^(avoids Windows/antivirus EPERM on npm ci^).
+  ) else (
+    call npm ci
+    if errorlevel 1 ( echo Frontend npm ci failed & exit /b 1 )
+  )
   call npm run build
   if errorlevel 1 ( echo Frontend build failed & exit /b 1 )
 ) else (
@@ -58,6 +62,13 @@ copy /y "%REPO%\server.js"  "%APP%\server.js"
 copy /y "%REPO%\web.config" "%APP%\web.config"
 REM Remove node_modules - will be reinstalled on target by Step 12.
 if exist "%APP%\backend\node_modules" rmdir /s /q "%APP%\backend\node_modules"
+REM SECURITY: never ship local secrets or runtime data inside the installer.
+REM (The /exclude above can be bypassed by the || fallback xcopy, so scrub explicitly.)
+if exist "%APP%\backend\.env"            del /f /q "%APP%\backend\.env"
+if exist "%APP%\backend\.env.production" del /f /q "%APP%\backend\.env.production"
+if exist "%APP%\backend\.env.local"      del /f /q "%APP%\backend\.env.local"
+if exist "%APP%\backend\uploads"         rmdir /s /q "%APP%\backend\uploads"
+if exist "%APP%\backend\logs"            rmdir /s /q "%APP%\backend\logs"
 
 REM ---- 3. Verify installer payloads present ----
 echo [3/5] Verifying third-party installer payloads...
@@ -90,6 +101,6 @@ if errorlevel 1 ( echo Inno Setup compile failed & exit /b 4 )
 
 echo.
 echo ============================================================
-echo Build complete: %HERE%output\FlowAccel-Setup-1.0.1.exe
+echo Build complete: %HERE%output\FlowAccel-Setup-1.0.2.exe
 echo ============================================================
 endlocal

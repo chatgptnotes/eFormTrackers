@@ -3,13 +3,13 @@
 ; Compile with:
 ;   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" FlowAccel.iss
 ;
-; Produces output/FlowAccel-Setup-1.0.1.exe
+; Produces output/FlowAccel-Setup-1.0.2.exe
 
 #define MyAppName        "FlowAccel"
-#define MyAppVersion     "1.0.1"
+#define MyAppVersion     "1.0.2"
 #define MyAppPublisher   "FlowAccel"
 #define MyAppURL         "https://flowaccel.local/"
-#define MyAppExeName     "FlowAccel-Setup-1.0.1.exe"
+#define MyAppExeName     "FlowAccel-Setup-1.0.2.exe"
 
 [Setup]
 AppId={{9C5F2D6E-7B41-4F2B-A7E0-9E1F0D5C1B92}
@@ -24,7 +24,7 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
 OutputDir=output
-OutputBaseFilename=FlowAccel-Setup-1.0.1
+OutputBaseFilename=FlowAccel-Setup-1.0.2
 Compression=lzma2/ultra64
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64
@@ -138,10 +138,13 @@ begin
     '    if ($svc -eq ''Default Web Site'') { ''port='' + $p + '';state=BUSY;owner=Default Web Site;blocked=false'' }' +
     '    elseif ($svc -eq ''FlowAccel'')   { ''port='' + $p + '';state=BUSY;owner=FlowAccel (previous install);blocked=false'' }' +
     '    else {' +
-    '      $pid = $tcp[0].OwningProcess;' +
-    '      $name = (Get-Process -Id $pid -ErrorAction SilentlyContinue).ProcessName;' +
-    '      if (-not $name) { $name = ''(unknown pid '' + $pid + '')'' };' +
-    '      ''port='' + $p + '';state=BUSY;owner='' + $name + '';blocked=true'' }}};' +
+    '      $ownerPid = $tcp[0].OwningProcess;' +
+    '      $name = (Get-Process -Id $ownerPid -ErrorAction SilentlyContinue).ProcessName;' +
+    '      if (-not $name) { $name = ''(pid '' + $ownerPid + '')'' };' +
+    '      $blk = ''true''; $own = $name;' +
+    '      if ($p -eq 5432 -and $name -like ''postgres*'') { $own = ''PostgreSQL (already installed - will be reused)''; $blk = ''false'' }' +
+    '      elseif ($p -eq 3001 -and ($name -eq ''node'' -or (Get-Service FlowAccelBackend -ErrorAction SilentlyContinue))) { $own = ''FlowAccel backend (previous install - will be reconfigured)''; $blk = ''false'' };' +
+    '      ''port='' + $p + '';state=BUSY;owner='' + $own + '';blocked='' + $blk }}};' +
     '$out -join [Environment]::NewLine | Set-Content -Path ''' + TmpFile + ''' -Encoding ASCII"';
   Exec('powershell.exe', Cmd, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   if FileExists(TmpFile) then begin
@@ -274,10 +277,11 @@ begin
       PagePorts.MsgLabel.Caption := 'Port check could not run. Continuing without verification (the installer will fail later if a critical port is busy).'
     else if PortsBlocked then
       PagePorts.MsgLabel.Caption :=
-        'One or more required ports are in use by something the installer cannot safely stop:' + #13#10 + #13#10 +
+        'Some required ports are in use by other software:' + #13#10 + #13#10 +
         PortsReport + #13#10 +
-        'Free the listed port(s) and click Back, then Next, to recheck. ' +
-        '"Default Web Site" and a previous FlowAccel install are handled automatically.'
+        'PostgreSQL, IIS, and a previous FlowAccel install are handled automatically. ' +
+        'For anything else shown as blocked=true, close that program and click Back then Next ' +
+        'to recheck - or click Next to continue anyway.'
     else
       PagePorts.MsgLabel.Caption :=
         'Port check results:' + #13#10 + #13#10 + PortsReport + #13#10 +
@@ -301,9 +305,13 @@ begin
   Result := True;
   if CurPageID = PagePorts.ID then begin
     if PortsBlocked then begin
-      MsgBox('Required ports are in use by other processes. Free them before continuing - see the page text for details.', mbError, MB_OK);
-      Result := False;
-      exit;
+      if MsgBox('Some ports are in use by other software (see the list above).' + #13#10 + #13#10 +
+                'PostgreSQL and a previous FlowAccel install are handled automatically and are safe to continue past. ' +
+                'For any other program, it is best to close it first, then click Back and Next to recheck.' + #13#10 + #13#10 +
+                'Continue the installation anyway?', mbConfirmation, MB_YESNO) = IDNO then begin
+        Result := False;
+        exit;
+      end;
     end;
   end;
   if CurPageID = PageDb.ID then begin

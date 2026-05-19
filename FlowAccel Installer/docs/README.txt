@@ -10,7 +10,7 @@ access is needed on the target machine after the .exe is delivered.
 
 INSTALLATION
 ------------
-1. Copy FlowAccel-Setup-1.0.1.exe to the target server.
+1. Copy FlowAccel-Setup-1.0.2.exe to the target server.
 2. Right-click -> Run as administrator.
 3. Walk through the 6 wizard pages:
      - Install location               (default: C:\inetpub\flowaccel)
@@ -58,7 +58,7 @@ SILENT INSTALL
 For repeatable / unattended deployment, edit config\config.template.json with
 your values and pass:
 
-  FlowAccel-Setup-1.0.1.exe /SILENT /CONFIG=path\to\config.json
+  FlowAccel-Setup-1.0.2.exe /SILENT /CONFIG=path\to\config.json
 
 RESUME AFTER REBOOT
 -------------------

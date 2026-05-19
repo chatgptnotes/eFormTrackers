@@ -14,8 +14,8 @@ function Set-FirewallRules {
     Write-StepHeader -Number 21 -Total 25 -Title 'Configuring Windows Firewall (9 FlowAccel rules)'
 
     # Wipe any prior rules in our group so re-runs converge to expected state.
-    $existing = Get-NetFirewallRule -Group $script:FwGroup -ErrorAction SilentlyContinue
-    if ($existing) {
+    $existing = @(Get-NetFirewallRule -Group $script:FwGroup -ErrorAction SilentlyContinue)
+    if ($existing.Count -gt 0) {
         Write-Log -Level INFO -Message "Removing $($existing.Count) existing FlowAccel firewall rules to re-apply clean."
         $existing | Remove-NetFirewallRule
     }
@@ -85,8 +85,8 @@ function Set-FirewallRules {
 }
 
 function Remove-FirewallRules {
-    $existing = Get-NetFirewallRule -Group $script:FwGroup -ErrorAction SilentlyContinue
-    if ($existing) {
+    $existing = @(Get-NetFirewallRule -Group $script:FwGroup -ErrorAction SilentlyContinue)
+    if ($existing.Count -gt 0) {
         $existing | Remove-NetFirewallRule
         Write-Log -Level OK -Message "Removed $($existing.Count) FlowAccel firewall rules."
     }
