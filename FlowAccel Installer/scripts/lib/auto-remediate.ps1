@@ -74,24 +74,6 @@ function Invoke-CureBackendRestart {
     Start-Sleep -Seconds 5
 }
 
-function Invoke-CureCertRebind {
-    param([hashtable]$Config, [string]$InstallDir)
-    $thumbFile = Join-Path $InstallDir '.cert-thumbprint'
-    if (-not (Test-Path $thumbFile)) {
-        throw "Cert thumbprint file missing: $thumbFile (cannot rebind)"
-    }
-    $thumb = (Get-Content $thumbFile -Raw).Trim()
-    if (-not $thumb) { throw "Cert thumbprint file empty: $thumbFile" }
-
-    $cert = Get-ChildItem -Path Cert:\LocalMachine\My | Where-Object { $_.Thumbprint -eq $thumb } | Select-Object -First 1
-    if (-not $cert) { throw "Certificate with thumbprint $thumb not found in Cert:\LocalMachine\My" }
-
-    Import-Module WebAdministration -ErrorAction SilentlyContinue
-    $binding = Get-WebBinding -Name $Config.SiteName -Protocol https -Port $Config.HttpsPort -ErrorAction SilentlyContinue
-    if (-not $binding) { throw "No https binding on site '$($Config.SiteName)' port $($Config.HttpsPort)" }
-    $binding.AddSslCertificate($thumb, 'My')
-}
-
 function Invoke-CureWebConfigReapply {
     param([hashtable]$Config, [string]$InstallDir)
     $src = Join-Path $InstallDir 'web.config'
@@ -232,11 +214,6 @@ function Invoke-AutoRemediate {
             Body    = { Invoke-CureBackendRestart -Config $Config -InstallDir $InstallDir }
         },
         @{
-            Id      = 'cure.cert.rebind'
-            Trigger = { $failedIds.Contains('https.binding') }
-            Body    = { Invoke-CureCertRebind -Config $Config -InstallDir $InstallDir }
-        },
-        @{
             Id      = 'cure.webconfig.reapply'
             Trigger = { $failedIds.Contains('landing.asset') }
             Body    = { Invoke-CureWebConfigReapply -Config $Config -InstallDir $InstallDir }
@@ -301,8 +278,8 @@ function Invoke-AutoRemediate {
     }
 
     $known = @(
-        'landing.http.bare','landing.http.port','landing.asset','landing.https',
-        'backend.health','https.binding','arr.enabled',
+        'landing.http.bare','landing.http.port','landing.asset',
+        'backend.health','arr.enabled',
         'iis.site.started','iis.apppool.started',
         'auth.login','auth.session','db.admin.row','pg.schema','pg.reachable'
     )

@@ -5,7 +5,7 @@
 #   Invoke-Verification (see signature below)
 #
 # Result contract (per check): @{ id; tier; name; status; detail; remediationHint }
-# IDs are stable — auto-remediate.ps1 keys off them.
+# IDs are stable - auto-remediate.ps1 keys off them.
 
 function Initialize-CertBypass {
     if ($PSVersionTable.PSVersion.Major -ge 6) { return }
@@ -20,7 +20,7 @@ public class TrustAllVerify : ICertificatePolicy {
         [System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllVerify
         [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
     } catch {
-        # Ignore — type may already exist from prior dot-source.
+        # Ignore - type may already exist from prior dot-source.
     }
 }
 
@@ -83,7 +83,7 @@ function New-CheckResult {
 
 function Write-CheckResult {
     param([Parameter(Mandatory)][hashtable]$Result)
-    $msg = "[$($Result.id)] $($Result.name) — $($Result.detail)"
+    $msg = "[$($Result.id)] $($Result.name) - $($Result.detail)"
     switch ($Result.status) {
         'PASS' { Write-Log -Level OK    -Message $msg }
         'FAIL' { Write-Log -Level ERROR -Message $msg; if ($Result.remediationHint) { Write-Log -Level WARN -Message "  hint: $($Result.remediationHint)" } }
@@ -95,7 +95,6 @@ function Invoke-Verification {
     param(
         [Parameter(Mandatory)][string]$ServerIP,
         [int]$HttpPort      = 80,
-        [int]$HttpsPort     = 443,
         [int]$BackendPort   = 3001,
         [int]$PgPort        = 5432,
         [string]$ServiceName= 'FlowAccelBackend',
@@ -114,7 +113,7 @@ function Invoke-Verification {
     $psql = Get-PsqlPath
 
     # -------------------------------------------------------------------
-    # Tier 1 — infrastructure smoke
+    # Tier 1 - infrastructure smoke
     # -------------------------------------------------------------------
 
     # 1. service.running
@@ -126,14 +125,14 @@ function Invoke-Verification {
             [void]$results.Add((New-CheckResult -Id 'service.running' -Tier 1 -Name "Service '$ServiceName' running" -Status FAIL -Detail "Status=$($svc.Status)" -RemediationHint "Start-Service $ServiceName; check Event Viewer for crash reason."))
         }
     } catch {
-        [void]$results.Add((New-CheckResult -Id 'service.running' -Tier 1 -Name "Service '$ServiceName' running" -Status FAIL -Detail $_.Exception.Message -RemediationHint "Service not installed — re-run nssm install step."))
+        [void]$results.Add((New-CheckResult -Id 'service.running' -Tier 1 -Name "Service '$ServiceName' running" -Status FAIL -Detail $_.Exception.Message -RemediationHint "Service not installed - re-run nssm install step."))
     }
 
     # 2. pg.reachable
     if ([string]::IsNullOrEmpty($AppDbPassword)) {
         [void]$results.Add((New-CheckResult -Id 'pg.reachable' -Tier 1 -Name 'PostgreSQL SELECT 1' -Status SKIP -Detail 'AppDbPassword not provided'))
     } elseif (-not $psql) {
-        [void]$results.Add((New-CheckResult -Id 'pg.reachable' -Tier 1 -Name 'PostgreSQL SELECT 1' -Status FAIL -Detail 'psql.exe not found' -RemediationHint 'PostgreSQL install incomplete — re-run Step 8.'))
+        [void]$results.Add((New-CheckResult -Id 'pg.reachable' -Tier 1 -Name 'PostgreSQL SELECT 1' -Status FAIL -Detail 'psql.exe not found' -RemediationHint 'PostgreSQL install incomplete - re-run Step 8.'))
     } else {
         try {
             $env:PGPASSWORD = $AppDbPassword
@@ -141,7 +140,7 @@ function Invoke-Verification {
             if ($LASTEXITCODE -eq 0) {
                 [void]$results.Add((New-CheckResult -Id 'pg.reachable' -Tier 1 -Name 'PostgreSQL SELECT 1' -Status PASS -Detail 'psql returned 0'))
             } else {
-                [void]$results.Add((New-CheckResult -Id 'pg.reachable' -Tier 1 -Name 'PostgreSQL SELECT 1' -Status FAIL -Detail "psql exit=$LASTEXITCODE: $out" -RemediationHint "Check pg_hba.conf, app DB password, and that user '$DbUser' exists."))
+                [void]$results.Add((New-CheckResult -Id 'pg.reachable' -Tier 1 -Name 'PostgreSQL SELECT 1' -Status FAIL -Detail "psql exit=${LASTEXITCODE}: $out" -RemediationHint "Check pg_hba.conf, app DB password, and that user '$DbUser' exists."))
             }
         } catch {
             [void]$results.Add((New-CheckResult -Id 'pg.reachable' -Tier 1 -Name 'PostgreSQL SELECT 1' -Status FAIL -Detail $_.Exception.Message -RemediationHint 'psql invocation failed.'))
@@ -180,7 +179,7 @@ function Invoke-Verification {
             [void]$results.Add((New-CheckResult -Id 'backend.health' -Tier 1 -Name 'Backend /api/health' -Status FAIL -Detail "HTTP $($r.StatusCode)" -RemediationHint 'Inspect backend logs (nssm get FlowAccelBackend AppStdout).'))
         }
     } catch {
-        [void]$results.Add((New-CheckResult -Id 'backend.health' -Tier 1 -Name 'Backend /api/health' -Status FAIL -Detail $_.Exception.Message -RemediationHint "Service not listening on $BackendPort — check nssm logs and DATABASE_URL."))
+        [void]$results.Add((New-CheckResult -Id 'backend.health' -Tier 1 -Name 'Backend /api/health' -Status FAIL -Detail $_.Exception.Message -RemediationHint "Service not listening on $BackendPort - check nssm logs and DATABASE_URL."))
     }
 
     # 5. iis.site.started
@@ -193,7 +192,7 @@ function Invoke-Verification {
             [void]$results.Add((New-CheckResult -Id 'iis.site.started' -Tier 1 -Name "IIS site 'FlowAccel' started" -Status FAIL -Detail "State=$($site.State)" -RemediationHint "Start-Website -Name 'FlowAccel'; check port conflict with Default Web Site."))
         }
     } catch {
-        [void]$results.Add((New-CheckResult -Id 'iis.site.started' -Tier 1 -Name "IIS site 'FlowAccel' started" -Status FAIL -Detail $_.Exception.Message -RemediationHint 'IIS site missing — re-run Step 20 (create-iis-site).'))
+        [void]$results.Add((New-CheckResult -Id 'iis.site.started' -Tier 1 -Name "IIS site 'FlowAccel' started" -Status FAIL -Detail $_.Exception.Message -RemediationHint 'IIS site missing - re-run Step 20 (create-iis-site).'))
     }
 
     # 6. iis.apppool.started
@@ -205,7 +204,7 @@ function Invoke-Verification {
             [void]$results.Add((New-CheckResult -Id 'iis.apppool.started' -Tier 1 -Name 'AppPool FlowAccelPool started' -Status FAIL -Detail "State=$($pool.State)" -RemediationHint "Start-WebAppPool -Name 'FlowAccelPool'."))
         }
     } catch {
-        [void]$results.Add((New-CheckResult -Id 'iis.apppool.started' -Tier 1 -Name 'AppPool FlowAccelPool started' -Status FAIL -Detail $_.Exception.Message -RemediationHint 'AppPool missing — re-run Step 20.'))
+        [void]$results.Add((New-CheckResult -Id 'iis.apppool.started' -Tier 1 -Name 'AppPool FlowAccelPool started' -Status FAIL -Detail $_.Exception.Message -RemediationHint 'AppPool missing - re-run Step 20.'))
     }
 
     # 7. arr.enabled
@@ -222,36 +221,12 @@ function Invoke-Verification {
         [void]$results.Add((New-CheckResult -Id 'arr.enabled' -Tier 1 -Name 'ARR proxy enabled' -Status FAIL -Detail $_.Exception.Message -RemediationHint 'Install ARR module + run Step 21.'))
     }
 
-    # 8. https.binding
-    try {
-        $binding = Get-WebBinding -Name 'FlowAccel' -Protocol 'https' -Port $HttpsPort -ErrorAction Stop
-        if ($binding) {
-            $thumb = $binding.certificateHash
-            if (-not [string]::IsNullOrEmpty($thumb)) {
-                [void]$results.Add((New-CheckResult -Id 'https.binding' -Tier 1 -Name "HTTPS binding on $HttpsPort" -Status PASS -Detail "Thumbprint $thumb"))
-            } else {
-                [void]$results.Add((New-CheckResult -Id 'https.binding' -Tier 1 -Name "HTTPS binding on $HttpsPort" -Status FAIL -Detail 'Binding exists but no certificate bound' -RemediationHint 'Re-run cert binding step; check certificate is in LocalMachine\My store.'))
-            }
-        } else {
-            [void]$results.Add((New-CheckResult -Id 'https.binding' -Tier 1 -Name "HTTPS binding on $HttpsPort" -Status FAIL -Detail 'No HTTPS binding found' -RemediationHint 'Re-run Step 22 (HTTPS binding).'))
-        }
-    } catch {
-        [void]$results.Add((New-CheckResult -Id 'https.binding' -Tier 1 -Name "HTTPS binding on $HttpsPort" -Status FAIL -Detail $_.Exception.Message -RemediationHint 'Re-run Step 22 (HTTPS binding).'))
-    }
-
-    # 9. Landing-page fingerprint on 4 URL forms
+    # 8. Landing-page fingerprint (HTTP only)
     $urlSpecs = @()
-    $urlSpecs += @{ Id = 'landing.http.bare';  Url = "http://$ServerIP/" }
     if ($HttpPort -ne 80) {
-        $urlSpecs += @{ Id = 'landing.http.port'; Url = "http://${ServerIP}:${HttpPort}/" }
+        $urlSpecs += @{ Id = 'landing.http.bare'; Url = "http://${ServerIP}:${HttpPort}/" }
     } else {
-        $urlSpecs += @{ Id = 'landing.http.port'; Url = "http://$ServerIP/"; Skip = $true; SkipReason = 'duplicate of http.bare (HttpPort=80)' }
-    }
-    $urlSpecs += @{ Id = 'landing.https.bare'; Url = "https://$ServerIP/" }
-    if ($HttpsPort -ne 443) {
-        $urlSpecs += @{ Id = 'landing.https.port'; Url = "https://${ServerIP}:${HttpsPort}/" }
-    } else {
-        $urlSpecs += @{ Id = 'landing.https.port'; Url = "https://$ServerIP/"; Skip = $true; SkipReason = 'duplicate of https.bare (HttpsPort=443)' }
+        $urlSpecs += @{ Id = 'landing.http.bare'; Url = "http://$ServerIP/" }
     }
 
     $firstPassing = $null
@@ -300,20 +275,20 @@ function Invoke-Verification {
                 if ([int]$ar.StatusCode -eq 200) {
                     [void]$results.Add((New-CheckResult -Id 'landing.asset' -Tier 1 -Name 'Static asset reachable' -Status PASS -Detail "200 OK for $assetPath"))
                 } else {
-                    [void]$results.Add((New-CheckResult -Id 'landing.asset' -Tier 1 -Name 'Static asset reachable' -Status FAIL -Detail "HTTP $($ar.StatusCode) for $assetUrl" -RemediationHint 'Static asset serving broken — check web.config, dist\assets\, MIME types, IIS_IUSRS perms.'))
+                    [void]$results.Add((New-CheckResult -Id 'landing.asset' -Tier 1 -Name 'Static asset reachable' -Status FAIL -Detail "HTTP $($ar.StatusCode) for $assetUrl" -RemediationHint 'Static asset serving broken - check web.config, dist\assets\, MIME types, IIS_IUSRS perms.'))
                 }
             } catch {
-                [void]$results.Add((New-CheckResult -Id 'landing.asset' -Tier 1 -Name 'Static asset reachable' -Status FAIL -Detail $_.Exception.Message -RemediationHint 'Static asset serving broken — check web.config, dist\assets\, MIME types, IIS_IUSRS perms.'))
+                [void]$results.Add((New-CheckResult -Id 'landing.asset' -Tier 1 -Name 'Static asset reachable' -Status FAIL -Detail $_.Exception.Message -RemediationHint 'Static asset serving broken - check web.config, dist\assets\, MIME types, IIS_IUSRS perms.'))
             }
         }
     }
 
     # -------------------------------------------------------------------
-    # Tier 2 — auth round-trip (only if admin creds provided)
+    # Tier 2 - auth round-trip (only if admin creds provided)
     # -------------------------------------------------------------------
     $runTier2 = -not [string]::IsNullOrEmpty($AdminEmail) -and -not [string]::IsNullOrEmpty($AdminPassword)
     if ($runTier2) {
-        if ($HttpsPort -eq 443) { $baseUrl = "https://$ServerIP" } else { $baseUrl = "https://${ServerIP}:${HttpsPort}" }
+        if ($HttpPort -eq 80) { $baseUrl = "http://$ServerIP" } else { $baseUrl = "http://${ServerIP}:${HttpPort}" }
         $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
 
         # 1. auth.login
@@ -349,10 +324,10 @@ function Invoke-Verification {
             if ([int]$r.StatusCode -eq 200 -and $role -eq 'super_admin') {
                 [void]$results.Add((New-CheckResult -Id 'auth.session' -Tier 2 -Name 'Session reflects super_admin' -Status PASS -Detail "user.role=$role"))
             } else {
-                [void]$results.Add((New-CheckResult -Id 'auth.session' -Tier 2 -Name 'Session reflects super_admin' -Status FAIL -Detail "status=$($r.StatusCode) role=$role" -RemediationHint 'User row exists but role is not super_admin — re-run admin-seed.'))
+                [void]$results.Add((New-CheckResult -Id 'auth.session' -Tier 2 -Name 'Session reflects super_admin' -Status FAIL -Detail "status=$($r.StatusCode) role=$role" -RemediationHint 'User row exists but role is not super_admin - re-run admin-seed.'))
             }
         } catch {
-            [void]$results.Add((New-CheckResult -Id 'auth.session' -Tier 2 -Name 'Session reflects super_admin' -Status FAIL -Detail $_.Exception.Message -RemediationHint 'User row exists but role is not super_admin — re-run admin-seed.'))
+            [void]$results.Add((New-CheckResult -Id 'auth.session' -Tier 2 -Name 'Session reflects super_admin' -Status FAIL -Detail $_.Exception.Message -RemediationHint 'User row exists but role is not super_admin - re-run admin-seed.'))
         }
 
         # 3. db.admin.row
@@ -387,10 +362,10 @@ function Invoke-Verification {
             if ([int]$r.StatusCode -eq 200) {
                 [void]$results.Add((New-CheckResult -Id 'auth.logout' -Tier 2 -Name 'Admin logout' -Status PASS -Detail '200 OK'))
             } else {
-                [void]$results.Add((New-CheckResult -Id 'auth.logout' -Tier 2 -Name 'Admin logout' -Status FAIL -Detail "status=$($r.StatusCode)" -RemediationHint 'Logout endpoint not returning 200 — check backend auth router.'))
+                [void]$results.Add((New-CheckResult -Id 'auth.logout' -Tier 2 -Name 'Admin logout' -Status FAIL -Detail "status=$($r.StatusCode)" -RemediationHint 'Logout endpoint not returning 200 - check backend auth router.'))
             }
         } catch {
-            [void]$results.Add((New-CheckResult -Id 'auth.logout' -Tier 2 -Name 'Admin logout' -Status FAIL -Detail $_.Exception.Message -RemediationHint 'Logout endpoint not returning 200 — check backend auth router.'))
+            [void]$results.Add((New-CheckResult -Id 'auth.logout' -Tier 2 -Name 'Admin logout' -Status FAIL -Detail $_.Exception.Message -RemediationHint 'Logout endpoint not returning 200 - check backend auth router.'))
         }
     } else {
         Write-Log -Level INFO -Message 'Tier 2 auth checks skipped (AdminEmail / AdminPassword not provided).'

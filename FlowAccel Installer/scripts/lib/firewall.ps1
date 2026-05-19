@@ -5,13 +5,12 @@ $script:FwGroup = 'FlowAccel'
 function Set-FirewallRules {
     param(
         [int]$HttpPort   = 80,
-        [int]$HttpsPort  = 443,
         [int]$BackendPort = 3001,
         [int]$PgPort     = 5432,
         [string]$NodeExe = 'C:\Program Files\nodejs\node.exe',
         [bool]$AllowIcmp = $true
     )
-    Write-StepHeader -Number 21 -Total 25 -Title 'Configuring Windows Firewall (9 FlowAccel rules)'
+    Write-StepHeader -Number 21 -Total 25 -Title 'Configuring Windows Firewall (FlowAccel rules)'
 
     # Wipe any prior rules in our group so re-runs converge to expected state.
     $existing = @(Get-NetFirewallRule -Group $script:FwGroup -ErrorAction SilentlyContinue)
@@ -20,14 +19,9 @@ function Set-FirewallRules {
         $existing | Remove-NetFirewallRule
     }
 
-    # 1. HTTP inbound (Domain + Private only)
+    # 1. HTTP inbound (Domain + Private only) - the only inbound web port
     New-NetFirewallRule -DisplayName 'FlowAccel: HTTP Inbound' -Group $script:FwGroup `
         -Direction Inbound -Action Allow -Protocol TCP -LocalPort $HttpPort `
-        -Profile Domain,Private | Out-Null
-
-    # 2. HTTPS inbound (Domain + Private only)
-    New-NetFirewallRule -DisplayName 'FlowAccel: HTTPS Inbound' -Group $script:FwGroup `
-        -Direction Inbound -Action Allow -Protocol TCP -LocalPort $HttpsPort `
         -Profile Domain,Private | Out-Null
 
     # 3. Node backend - loopback only (allow)

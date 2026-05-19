@@ -43,9 +43,10 @@ function Get-CfgValue {
     return $v
 }
 
-$serverIP      = Get-CfgValue $cfg 'ServerIP'      $null
+# HTTP-only, IP-independent: probe the loopback address - the IIS site binds
+# every interface, so 127.0.0.1 reaches it regardless of the machine's IP.
+$serverIP      =      Get-CfgValue $cfg 'ServerIP'     '127.0.0.1'
 $httpPort      = [int](Get-CfgValue $cfg 'HttpPort'    80)
-$httpsPort     = [int](Get-CfgValue $cfg 'HttpsPort'   443)
 $backendPort   = [int](Get-CfgValue $cfg 'BackendPort' 3001)
 $pgPort        = [int](Get-CfgValue $cfg 'PgPort'      5432)
 $dbName        =      Get-CfgValue $cfg 'DbName'        'jotflow'
@@ -61,7 +62,6 @@ if (-not (Test-Path $jsonReportDir)) { New-Item -ItemType Directory -Force -Path
 $r = Invoke-Verification `
     -ServerIP      $serverIP `
     -HttpPort      $httpPort `
-    -HttpsPort     $httpsPort `
     -BackendPort   $backendPort `
     -PgPort        $pgPort `
     -DbName        $dbName `

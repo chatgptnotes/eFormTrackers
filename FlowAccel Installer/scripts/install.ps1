@@ -19,7 +19,7 @@ Set-StrictMode -Version Latest
 # ----- Bootstrap: dot-source libraries -----
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $libDir = Join-Path $here 'lib'
-foreach ($mod in 'log','prereq','iis','node','postgres','ssl','site','service','firewall','verify','admin-seed','auto-remediate') {
+foreach ($mod in 'log','prereq','iis','node','postgres','site','service','firewall','verify','admin-seed','auto-remediate') {
     . (Join-Path $libDir "$mod.ps1")
 }
 
@@ -37,12 +37,26 @@ Write-Log -Level INFO -Message "Install dir: $installDir"
 if ($Resume) { Write-Log -Level INFO -Message 'Resume mode after reboot.' }
 if ($DryRun) { Write-Log -Level INFO -Message 'DRY-RUN: actions will be logged but not executed.' }
 
+# Detect the machine's primary IPv4 - used only for display and the closing
+# "open http://<ip>/" message. Nothing IP-specific is baked into the app: IIS
+# binds every interface and the SPA uses relative URLs, so FlowAccel works on
+# whatever IP this machine has, even after the IP changes.
+function Get-PrimaryIPv4 {
+    try {
+        $ip = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+              Where-Object { $_.IPAddress -ne '127.0.0.1' -and $_.PrefixOrigin -ne 'WellKnown' } |
+              Select-Object -First 1 -ExpandProperty IPAddress
+        if ($ip) { return $ip }
+    } catch {}
+    return '127.0.0.1'
+}
+$primaryIp = Get-PrimaryIPv4
+Write-Log -Level INFO -Message "Primary IPv4 detected: $primaryIp (display only)"
+
 # Convenience hashtable for downstream functions
 $config = @{
     InstallDir            = $cfg.InstallDir
-    ServerIP              = $cfg.ServerIP
-    HttpPort              = [int]$cfg.HttpPort
-    HttpsPort             = [int]$cfg.HttpsPort
+    HttpPort              = if ($cfg.HttpPort) { [int]$cfg.HttpPort } else { 80 }
     BackendPort           = if ($cfg.BackendPort) { [int]$cfg.BackendPort } else { 3001 }
     PgPort                = if ($cfg.PgPort) { [int]$cfg.PgPort } else { 5432 }
     PgSuperPassword       = $cfg.PgSuperPassword
@@ -61,12 +75,7 @@ $config = @{
     MicrosoftClientId     = $cfg.MicrosoftClientId
     MicrosoftTenantId     = $cfg.MicrosoftTenantId
     MicrosoftClientSecret = $cfg.MicrosoftClientSecret
-    MicrosoftRedirectUri  = if ($cfg.MicrosoftRedirectUri) { $cfg.MicrosoftRedirectUri } else { "https://$($cfg.ServerIP)/api/auth/microsoft/callback" }
-    CertStrategy          = if ($cfg.CertStrategy) { $cfg.CertStrategy } else { 'SelfSignedCA' }
-    PfxPath               = $cfg.PfxPath
-    PfxPassword           = $cfg.PfxPassword
-    CertCN                = if ($cfg.CertCN) { $cfg.CertCN } else { $cfg.ServerIP }
-    CertExtraSANs         = if ($cfg.CertExtraSANs) { $cfg.CertExtraSANs -split ',' } else { @() }
+    MicrosoftRedirectUri  = if ($cfg.MicrosoftRedirectUri) { $cfg.MicrosoftRedirectUri } else { "http://$primaryIp/api/auth/microsoft/callback" }
     AllowIcmp             = if ($null -ne $cfg.AllowIcmp) { [bool]$cfg.AllowIcmp } else { $true }
     SiteName              = 'FlowAccel'
     AppPoolName           = 'FlowAccelPool'
@@ -136,7 +145,7 @@ Initialize-AppDatabase -SuperPassword $config.PgSuperPassword `
     -Port $config.PgPort
 
 # ===== STEP 10: Deploy app files =====
-$envBackup = Copy-AppFiles -PayloadAppDir $payloadAppDir -InstallDir $config.InstallDir
+$envBackup = Copy-AppFiles -PayloadAppDir $payloadAppDir -InstallDir $config.InstallDir -BackendPort $config.BackendPort
 
 # ===== STEP 11: Generate .env =====
 Write-DotEnv -InstallDir $config.InstallDir -Config $config
@@ -170,34 +179,10 @@ New-FlowAccelSite -SiteName $config.SiteName `
     -PhysicalPath (Join-Path $config.InstallDir 'dist') `
     -HttpPort $config.HttpPort
 
-# ===== STEP 16-17: TLS certificates =====
-$serverCert = $null
-switch ($config.CertStrategy) {
-    'ImportPFX' {
-        if (-not $config.PfxPath -or -not $config.PfxPassword) {
-            throw 'CertStrategy=ImportPFX but PfxPath/PfxPassword not provided.'
-        }
-        $sec = ConvertTo-SecureString $config.PfxPassword -AsPlainText -Force
-        $serverCert = Import-OperatorPFX -PfxPath $config.PfxPath -PfxPassword $sec
-    }
-    'Skip' {
-        Write-Log -Level WARN -Message 'CertStrategy=Skip - no HTTPS binding will be created.'
-    }
-    default {
-        $rootCa = New-RootCA
-        Trust-RootCA -Cert $rootCa
-        $serverCert = New-LeafCertificate -RootCA $rootCa -CN $config.CertCN -ExtraSANs $config.CertExtraSANs
-        $bundle = Build-TrustBundle -RootCA $rootCa -DistPath (Join-Path $config.InstallDir 'dist')
-        # Persist thumbprint for uninstall + operator out-of-band verification
-        Set-Content -Path (Join-Path $config.InstallDir '.rootca-thumbprint') -Value $rootCa.Thumbprint -Encoding ASCII
-    }
-}
-
-# ===== STEP 18: HTTPS binding =====
-if ($serverCert) {
-    Set-IISHttpsBinding -SiteName $config.SiteName -Cert $serverCert -Port $config.HttpsPort
-    Set-Content -Path (Join-Path $config.InstallDir '.cert-thumbprint') -Value $serverCert.Thumbprint -Encoding ASCII
-}
+# ===== STEPS 16-18: TLS certificates / HTTPS binding =====
+# Removed in FlowAccel 1.0.3 - the app is served over HTTP on port 80 only.
+# HTTP keeps the install fully IP-independent: no certificate is tied to a
+# fixed address, so the machine's IP can change without breaking anything.
 
 # ===== STEP 19: NSSM =====
 $nssmExe = Install-NSSM -ZipPath (Join-Path $installersDir 'nssm-2.24.zip') `
@@ -214,7 +199,6 @@ Register-BackendService -NssmExe $nssmExe `
 
 # ===== STEP 21: Firewall =====
 Set-FirewallRules -HttpPort $config.HttpPort `
-    -HttpsPort $config.HttpsPort `
     -BackendPort $config.BackendPort `
     -PgPort $config.PgPort `
     -NodeExe $nodeExe `
@@ -228,9 +212,8 @@ Start-FlowAccelSite -SiteName $config.SiteName
 
 # ===== STEP 24: Verify (Tier 1 infra + Tier 2 auth) =====
 $verifyArgs = @{
-    ServerIP      = $config.ServerIP
+    ServerIP      = '127.0.0.1'
     HttpPort      = $config.HttpPort
-    HttpsPort     = $config.HttpsPort
     BackendPort   = $config.BackendPort
     PgPort        = $config.PgPort
     ServiceName   = $config.ServiceName
@@ -256,18 +239,12 @@ if ($result.Fail -gt 0) {
 # ===== STEP 25: Finish =====
 Write-StepHeader -Number 25 -Total 25 -Title 'Installation complete'
 Write-Host ""
-Write-Host "  Frontend URL:      https://$($config.ServerIP)/" -ForegroundColor Green
+Write-Host "  Frontend URL:      http://$primaryIp/" -ForegroundColor Green
+Write-Host "  Also reachable at: http://localhost/  (and any other IP of this machine)"
 Write-Host "  Backend service:   $($config.ServiceName)  (autostart on boot)"
 Write-Host "  Install dir:       $($config.InstallDir)"
 Write-Host "  Logs:              $logFile"
 Write-Host "  Config:            $ConfigPath"
-if ($config.CertStrategy -eq 'SelfSignedCA') {
-    $tp = Get-Content (Join-Path $config.InstallDir '.rootca-thumbprint') -ErrorAction SilentlyContinue
-    Write-Host ""
-    Write-Host "  LAN clients need to trust this Root CA (one-time):"
-    Write-Host "    URL: http://$($config.ServerIP)/trust-flowaccel/"
-    Write-Host "    Thumbprint (verify out-of-band): $tp"
-}
 Write-Host ""
 Write-Host "  Uninstall: Control Panel > Programs > FlowAccel"
 Write-Host ""

@@ -3,13 +3,13 @@
 ; Compile with:
 ;   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" FlowAccel.iss
 ;
-; Produces output/FlowAccel-Setup-1.0.2.exe
+; Produces output/FlowAccel-Setup-1.0.3.exe
 
 #define MyAppName        "FlowAccel"
-#define MyAppVersion     "1.0.2"
+#define MyAppVersion     "1.0.3"
 #define MyAppPublisher   "FlowAccel"
-#define MyAppURL         "https://flowaccel.local/"
-#define MyAppExeName     "FlowAccel-Setup-1.0.2.exe"
+#define MyAppURL         "http://localhost/"
+#define MyAppExeName     "FlowAccel-Setup-1.0.3.exe"
 
 [Setup]
 AppId={{9C5F2D6E-7B41-4F2B-A7E0-9E1F0D5C1B92}
@@ -24,7 +24,7 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
 OutputDir=output
-OutputBaseFilename=FlowAccel-Setup-1.0.2
+OutputBaseFilename=FlowAccel-Setup-1.0.3
 Compression=lzma2/ultra64
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64
@@ -78,42 +78,13 @@ Filename: "powershell.exe"; \
 [Code]
 var
   PagePorts:   TOutputMsgWizardPage;
-  PageNet:     TInputQueryWizardPage;
   PageDb:      TInputQueryWizardPage;
   PageAdmin:   TInputQueryWizardPage;
   PageJot:     TInputQueryWizardPage;
   PageMs:      TInputQueryWizardPage;
-  PageAzure:   TOutputMsgWizardPage;
-  PageCert:    TInputQueryWizardPage;
   PageDryRun:  TOutputMsgWizardPage;
-  ServerIPDefault: string;
   PortsReport: string;
   PortsBlocked: Boolean;
-
-function GetDefaultServerIP(Param: string): string;
-var
-  ResultCode: Integer;
-  TmpFile: string;
-  Lines: TStringList;
-begin
-  Result := '127.0.0.1';
-  TmpFile := ExpandConstant('{tmp}\detect-ip.txt');
-  Exec('powershell.exe',
-       '-NoProfile -Command "$ip = (Get-NetIPAddress -AddressFamily IPv4 | ' +
-       'Where-Object { $_.IPAddress -ne ''127.0.0.1'' -and $_.PrefixOrigin -ne ''WellKnown'' } | ' +
-       'Select-Object -First 1 -ExpandProperty IPAddress); ' +
-       'if ($ip) { Set-Content -Path ''' + TmpFile + ''' -Value $ip -Encoding ASCII }"',
-       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  if FileExists(TmpFile) then begin
-    Lines := TStringList.Create;
-    try
-      Lines.LoadFromFile(TmpFile);
-      if Lines.Count > 0 then Result := Trim(Lines[0]);
-    finally
-      Lines.Free;
-    end;
-  end;
-end;
 
 function GetTickCount: DWORD;
   external 'GetTickCount@kernel32.dll stdcall';
@@ -128,7 +99,7 @@ begin
   TmpFile := ExpandConstant('{tmp}\port-probe.txt');
   Cmd :=
     '-NoProfile -ExecutionPolicy Bypass -Command "' +
-    '$ports = 80,443,3001,5432;' +
+    '$ports = 80,3001,5432;' +
     '$out = foreach ($p in $ports) {' +
     '  $tcp = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue;' +
     '  if (-not $tcp) { ''port='' + $p + '';state=FREE;owner='''';blocked=false'' } else {' +
@@ -177,38 +148,28 @@ end;
 
 procedure InitializeWizard;
 begin
-  ServerIPDefault := GetDefaultServerIP('');
   PortsReport := '';
   PortsBlocked := False;
 
-  // Page: Pre-flight port availability (Change 3)
+  // Page: Pre-flight port availability
   PagePorts := CreateOutputMsgPage(wpSelectDir,
     'Port availability check',
     'Verifying that the ports FlowAccel needs are free',
-    'The installer will check ports 80, 443, 3001, 5432. Click Next to run the check.');
+    'The installer will check ports 80, 3001, 5432. Click Next to run the check.');
 
-  // Page: Network
-  PageNet := CreateInputQueryPage(PagePorts.ID,
-    'Network settings',
-    'Where will users reach this server?',
-    'Enter the IP address or hostname users will use to reach FlowAccel.');
-  PageNet.Add('Server IP / hostname:', False);
-  PageNet.Add('HTTP port (usually 80):', False);
-  PageNet.Add('HTTPS port (usually 443):', False);
-  PageNet.Values[0] := ServerIPDefault;
-  PageNet.Values[1] := '80';
-  PageNet.Values[2] := '443';
-
-  // Page: Database
-  PageDb := CreateInputQueryPage(PageNet.ID,
+  // Page: Database passwords (both pre-filled - just click Next)
+  PageDb := CreateInputQueryPage(PagePorts.ID,
     'PostgreSQL passwords',
-    'Choose strong passwords for the database',
-    'PostgreSQL will be installed automatically. These passwords are used internally; the application database is never exposed to the network.');
+    'Database passwords (generated for you)',
+    'PostgreSQL is installed automatically. These passwords are used internally only; ' +
+    'the database is never exposed to the network. The generated values are fine to keep - ' +
+    'just click Next.');
   PageDb.Add('Postgres superuser password (min 12 chars):', True);
-  PageDb.Add('Application DB password (auto-generated, change if you want):', True);
+  PageDb.Add('Application DB password (min 12 chars):', True);
+  PageDb.Values[0] := GenerateRandomPassword(24);
   PageDb.Values[1] := GenerateRandomPassword(24);
 
-  // Page: Admin account (Change 1)
+  // Page: Admin account
   PageAdmin := CreateInputQueryPage(PageDb.ID,
     'FlowAccel administrator account',
     'First super_admin user (created automatically)',
@@ -218,11 +179,12 @@ begin
   PageAdmin.Add('Admin full name (optional):', False);
   PageAdmin.Values[2] := 'Administrator';
 
-  // Page: JotForm
+  // Page: JotForm (optional)
   PageJot := CreateInputQueryPage(PageAdmin.ID,
     'JotForm integration (optional)',
     'Connect to JotForm Enterprise',
-    'Leave blank to skip - you can configure later by editing backend\.env.');
+    'Leave blank to skip - plain email/password login works without it. ' +
+    'You can configure JotForm later by editing backend\.env.');
   PageJot.Add('JotForm API key:', False);
   PageJot.Add('JotForm Team ID:', False);
   PageJot.Add('JotForm API base URL:', False);
@@ -230,45 +192,26 @@ begin
   PageJot.Values[2] := 'https://eforms.mediaoffice.ae/API';
   PageJot.Values[3] := 'https://eforms.mediaoffice.ae';
 
-  // Page: Microsoft OAuth
+  // Page: Microsoft OAuth (optional)
   PageMs := CreateInputQueryPage(PageJot.ID,
     'Microsoft Sign-In (optional)',
     'Azure AD / Entra ID single sign-on',
-    'Leave blank to skip.');
+    'Leave blank to skip. Note: Microsoft Sign-In needs a stable address - if this ' +
+    'machine uses a changing (DHCP) IP, use a reserved IP or a fixed hostname.');
   PageMs.Add('Client ID:', False);
   PageMs.Add('Tenant ID:', False);
   PageMs.Add('Client secret:', True);
 
-  // Page: Azure redirect URI display (Change 5)
-  PageAzure := CreateOutputMsgPage(PageMs.ID,
-    'Azure AD redirect URI',
-    'One manual step in the Azure Portal',
-    'After install, register this exact redirect URI in your Azure App Registration ' +
-    '(Authentication -> Web platform). The wizard will compute it from your IP. The Azure AD ' +
-    'Information Required PDF is included at {app}\_payload\docs\ for offline reference.');
-
-  // Page: Cert strategy
-  PageCert := CreateInputQueryPage(PageAzure.ID,
-    'HTTPS certificate',
-    'Choose a certificate strategy for this server',
-    'Default is recommended: a self-signed Root CA so cert renewals are automatic for trusted clients. To use an existing PFX (DigiCert, internal ADCS, etc.), put the full path below and set strategy to ImportPFX.');
-  PageCert.Add('Strategy (SelfSignedCA | ImportPFX | Skip):', False);
-  PageCert.Add('PFX file path (if ImportPFX):', False);
-  PageCert.Add('PFX password (if ImportPFX):', True);
-  PageCert.Add('Extra SANs (comma-separated DNS names / IPs):', False);
-  PageCert.Values[0] := 'SelfSignedCA';
-
-  // Dry-run preview page
-  PageDryRun := CreateOutputMsgPage(PageCert.ID,
+  // Page: Ready
+  PageDryRun := CreateOutputMsgPage(PageMs.ID,
     'Ready to install',
-    'The installer will now run 25 steps to set up FlowAccel.',
-    'Click Next to proceed. If anything goes wrong, the install log will be saved to '#13#10 +
-    '{app}\logs\install-<timestamp>.log so you can diagnose. Click Back to change any setting.');
+    'The installer will now set up FlowAccel.',
+    'Click Next to proceed. FlowAccel is served over HTTP on port 80 and works on ' +
+    'whatever IP this machine has. If anything goes wrong, the install log is saved to '#13#10 +
+    '{app}\logs\install-<timestamp>.log. Click Back to change any setting.');
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
-var
-  Uri: string;
 begin
   if CurPageID = PagePorts.ID then begin
     PortsReport := ProbePorts;
@@ -286,15 +229,6 @@ begin
       PagePorts.MsgLabel.Caption :=
         'Port check results:' + #13#10 + #13#10 + PortsReport + #13#10 +
         'All blocking ports are free. Click Next to continue.';
-  end
-  else if CurPageID = PageAzure.ID then begin
-    Uri := 'https://' + Trim(PageNet.Values[0]) + '/api/auth/microsoft/callback';
-    PageAzure.MsgLabel.Caption :=
-      'Redirect URI to register in Azure Portal:' + #13#10 + #13#10 +
-      '  ' + Uri + #13#10 + #13#10 +
-      'Azure Portal -> App registrations -> (your app) -> Authentication -> Add a platform -> Web -> ' +
-      'paste the URI above -> Save.' + #13#10 + #13#10 +
-      'Skip this if you left Microsoft Sign-In blank on the previous page.';
   end;
 end;
 
@@ -356,16 +290,12 @@ procedure WriteConfigJson;
 var
   J: TStringList;
   Path: string;
-  CertCN: string;
 begin
   J := TStringList.Create;
   try
-    CertCN := Trim(PageNet.Values[0]);
     J.Add('{');
     J.Add('  "InstallDir": "'           + JsonEscape(ExpandConstant('{app}')) + '",');
-    J.Add('  "ServerIP": "'             + JsonEscape(PageNet.Values[0]) + '",');
-    J.Add('  "HttpPort": '              + PageNet.Values[1] + ',');
-    J.Add('  "HttpsPort": '             + PageNet.Values[2] + ',');
+    J.Add('  "HttpPort": 80,');
     J.Add('  "BackendPort": 3001,');
     J.Add('  "PgPort": 5432,');
     J.Add('  "DbName": "jotflow",');
@@ -381,15 +311,10 @@ begin
     J.Add('  "MicrosoftClientId": "'    + JsonEscape(PageMs.Values[0]) + '",');
     J.Add('  "MicrosoftTenantId": "'    + JsonEscape(PageMs.Values[1]) + '",');
     J.Add('  "MicrosoftClientSecret": "'+ JsonEscape(PageMs.Values[2]) + '",');
-    J.Add('  "MicrosoftRedirectUri": "https://' + JsonEscape(PageNet.Values[0]) + '/api/auth/microsoft/callback",');
+    J.Add('  "MicrosoftRedirectUri": "",');
     J.Add('  "AdminEmail": "'            + JsonEscape(Lowercase(Trim(PageAdmin.Values[0]))) + '",');
     J.Add('  "AdminPassword": "'         + JsonEscape(PageAdmin.Values[1]) + '",');
     J.Add('  "AdminName": "'             + JsonEscape(Trim(PageAdmin.Values[2])) + '",');
-    J.Add('  "CertStrategy": "'         + JsonEscape(PageCert.Values[0]) + '",');
-    J.Add('  "PfxPath": "'              + JsonEscape(PageCert.Values[1]) + '",');
-    J.Add('  "PfxPassword": "'          + JsonEscape(PageCert.Values[2]) + '",');
-    J.Add('  "CertCN": "'               + JsonEscape(CertCN) + '",');
-    J.Add('  "CertExtraSANs": "'        + JsonEscape(PageCert.Values[3]) + '",');
     J.Add('  "AllowIcmp": true');
     J.Add('}');
 

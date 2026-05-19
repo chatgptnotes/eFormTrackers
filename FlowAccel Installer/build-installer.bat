@@ -1,5 +1,5 @@
 @echo off
-REM build-installer.bat - Build FlowAccel-Setup-1.0.2.exe
+REM build-installer.bat - Build FlowAccel-Setup-1.0.3.exe
 REM
 REM Prerequisites on dev machine:
 REM   - Node.js 18+ on PATH (npm)
@@ -12,7 +12,7 @@ REM       rewrite_amd64_en-US.msi
 REM       requestRouter_amd64.msi
 REM       nssm-2.24.zip
 REM
-REM Output: output\FlowAccel-Setup-1.0.2.exe
+REM Output: output\FlowAccel-Setup-1.0.3.exe
 
 setlocal EnableExtensions EnableDelayedExpansion
 set HERE=%~dp0
@@ -59,7 +59,9 @@ REM Strip recursive installer chunks - they are produced AFTER this .exe and mus
 if exist "%APP%\dist\installer" rmdir /s /q "%APP%\dist\installer"
 xcopy /e /i /y /q "%REPO%\backend"   "%APP%\backend"   /exclude:%REPO%\deploy-exclude.txt 2>nul || xcopy /e /i /y /q "%REPO%\backend" "%APP%\backend"
 copy /y "%REPO%\server.js"  "%APP%\server.js"
-copy /y "%REPO%\web.config" "%APP%\web.config"
+REM web.config is the installer's own HTTP-only template (with __BACKEND_PORT__
+REM token) - NOT the repo-root web.config, which targets the local dev deploy.
+copy /y "%HERE%config\web.config.template" "%APP%\web.config"
 REM Remove node_modules - will be reinstalled on target by Step 12.
 if exist "%APP%\backend\node_modules" rmdir /s /q "%APP%\backend\node_modules"
 REM SECURITY: never ship local secrets or runtime data inside the installer.
@@ -101,6 +103,6 @@ if errorlevel 1 ( echo Inno Setup compile failed & exit /b 4 )
 
 echo.
 echo ============================================================
-echo Build complete: %HERE%output\FlowAccel-Setup-1.0.2.exe
+echo Build complete: %HERE%output\FlowAccel-Setup-1.0.3.exe
 echo ============================================================
 endlocal
