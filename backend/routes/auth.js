@@ -16,7 +16,15 @@ const msalConfig = {
     clientSecret: env.MICROSOFT_CLIENT_SECRET,
   },
 };
-const msalClient = new msal.ConfidentialClientApplication(msalConfig);
+// Lazily build the MSAL client so the backend can boot without Microsoft SSO
+// credentials configured. Only the /microsoft routes need it.
+let _msalClient = null;
+function getMsalClient() {
+  if (!_msalClient) {
+    _msalClient = new msal.ConfidentialClientApplication(msalConfig);
+  }
+  return _msalClient;
+}
 const MS_SCOPES = ['openid', 'profile', 'email', 'User.Read'];
 
 // ── POST /api/auth/signup ──
@@ -193,6 +201,13 @@ let memberCache = null;
 const CACHE_TTL = 5 * 60 * 1000;
 
 router.post('/verify-workspace-member', async (req, res, next) => {
+  // Local-dev bypass: the JotForm Enterprise API host (eforms.mediaoffice.ae)
+  // is unreachable outside the GDMO network, which would block every login.
+  // Skip the workspace-membership gate when not running in production.
+  if (env.NODE_ENV !== 'production') {
+    const devEmail = String(req.body.email || '').trim().toLowerCase();
+    return res.json({ isMember: true, member: { email: devEmail }, totalMembers: 0, devBypass: true });
+  }
   try {
     if (!env.JOTFORM_API_KEY) {
       return res.status(500).json({ error: 'JOTFORM_API_KEY not set', isMember: false });
@@ -243,7 +258,7 @@ router.get('/microsoft', async (req, res) => {
     return res.redirect('/login?error=microsoft_not_configured');
   }
   try {
-    const authUrl = await msalClient.getAuthCodeUrl({
+    const authUrl = await getMsalClient().getAuthCodeUrl({
       scopes: MS_SCOPES,
       redirectUri: env.MICROSOFT_REDIRECT_URI,
     });
@@ -262,7 +277,7 @@ router.get('/microsoft/callback', async (req, res) => {
   }
 
   try {
-    const tokenResponse = await msalClient.acquireTokenByCode({
+    const tokenResponse = await getMsalClient().acquireTokenByCode({
       code: String(code),
       scopes: MS_SCOPES,
       redirectUri: env.MICROSOFT_REDIRECT_URI,

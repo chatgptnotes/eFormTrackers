@@ -36,7 +36,7 @@ if exist "%DST%\dist\index.html" (
 REM ── Copy server.js and web.config ──
 echo [3/5] Copying server.js and web.config...
 copy /Y "%SRC%\server.js" "%DST%\server.js"
-copy /Y "%SRC%\web.config" "%DST%\web.config"
+copy /Y "%SRC%\web.config" "%DST%\dist\web.config"
 
 REM ── Check iisnode ──
 echo [4/5] Checking iisnode...
@@ -64,7 +64,7 @@ echo [5/5] Configuring IIS site...
 %windir%\system32\inetsrv\appcmd.exe delete site "flowaccel" >nul 2>nul
 %windir%\system32\inetsrv\appcmd.exe delete apppool "flowaccel" >nul 2>nul
 %windir%\system32\inetsrv\appcmd.exe add apppool /name:"flowaccel" /managedRuntimeVersion:""
-%windir%\system32\inetsrv\appcmd.exe add site /name:"flowaccel" /physicalPath:"%DST%" /bindings:http/*:80:
+%windir%\system32\inetsrv\appcmd.exe add site /name:"flowaccel" /physicalPath:"%DST%\dist" /bindings:http/*:80:
 %windir%\system32\inetsrv\appcmd.exe set site "flowaccel" /applicationDefaults.applicationPool:"flowaccel"
 echo   Done.
 

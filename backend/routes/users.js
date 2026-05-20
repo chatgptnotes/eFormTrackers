@@ -6,6 +6,8 @@ const router = Router();
 const SALT_ROUNDS = 12;
 const ORG_ID = '971589dd-afcb-4a12-8900-47626e4d59cc';
 const VALID_ROLES = ['super_admin', 'admin', 'approver', 'viewer'];
+// Configured at install time via the installer-generated backend/.env.
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || '').toLowerCase();
 
 // ── POST /api/create-user ──
 // Admin-only user creation (replaces Supabase auth.admin.createUser)
@@ -13,9 +15,9 @@ router.post('/create-user', async (req, res, next) => {
   try {
     const { email, password, fullName, department, role, creatorEmail } = req.body || {};
 
-    // Only bk@bettroi.com can create users
-    if (creatorEmail !== 'bk@bettroi.com') {
-      return res.status(403).json({ error: 'Only bk@bettroi.com can create users' });
+    // Only the configured admin (ADMIN_EMAIL) can create users
+    if (!ADMIN_EMAIL || (creatorEmail || '').toLowerCase() !== ADMIN_EMAIL) {
+      return res.status(403).json({ error: 'Not authorized to create users' });
     }
 
     if (!email || !password) {

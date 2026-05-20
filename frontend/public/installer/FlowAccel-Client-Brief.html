@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>FlowAccel — Getting Started Brief for Clients</title>
+<style>
+  @page {
+    size: A4;
+    margin: 18mm 16mm 16mm 16mm;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #1e293b;
+    font-size: 10.5pt;
+    line-height: 1.45;
+    margin: 0;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+  .brand .logo {
+    width: 34px; height: 34px;
+    background: #1e40af;
+    color: #fff;
+    border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 18pt;
+  }
+  .brand .name { font-size: 16pt; font-weight: 700; color: #0f172a; }
+  .brand .tag {
+    display: block;
+    font-size: 7.5pt; letter-spacing: 0.18em;
+    color: #64748b; text-transform: uppercase; margin-top: 1px;
+  }
+  h1 {
+    color: #0f172a;
+    font-size: 18pt;
+    margin: 8px 0 4px 0;
+    font-weight: 700;
+  }
+  .meta { color: #475569; font-size: 9.5pt; margin-bottom: 6px; }
+  .rule { height: 3px; background: #1e40af; margin: 6px 0 12px 0; border-radius: 2px; }
+  h2 {
+    color: #1e40af;
+    font-size: 11.5pt;
+    margin: 12px 0 6px 0;
+    padding-bottom: 3px;
+    border-bottom: 1px solid #e2e8f0;
+    font-weight: 700;
+  }
+  p { margin: 4px 0; }
+  ul { margin: 4px 0 4px 18px; padding: 0; }
+  li { margin: 2px 0; }
+  .lead {
+    background: #eff6ff;
+    border-left: 3px solid #1e40af;
+    padding: 8px 10px;
+    border-radius: 4px;
+    margin: 6px 0 10px 0;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .step {
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 8px 10px;
+    background: #fff;
+  }
+  .step .num {
+    display: inline-block;
+    width: 18px; height: 18px;
+    background: #1e40af; color: #fff;
+    border-radius: 50%;
+    text-align: center; line-height: 18px;
+    font-size: 9pt; font-weight: 700;
+    margin-right: 5px;
+    vertical-align: middle;
+  }
+  .step h3 {
+    display: inline; margin: 0;
+    font-size: 10.5pt; font-weight: 700;
+    color: #0f172a;
+  }
+  .step ul { margin-top: 4px; font-size: 9.5pt; }
+  .callout {
+    background: #fef3c7;
+    border-left: 3px solid #d97706;
+    padding: 7px 10px;
+    border-radius: 4px;
+    margin: 8px 0;
+    font-size: 9.5pt;
+  }
+  .check {
+    background: #ecfdf5;
+    border-left: 3px solid #059669;
+    padding: 8px 10px;
+    border-radius: 4px;
+    margin-top: 6px;
+  }
+  .check ul { list-style: none; margin-left: 0; padding-left: 0; }
+  .check li::before { content: "☐  "; color: #059669; font-weight: 700; }
+  .pillars {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin: 6px 0;
+  }
+  .pillar {
+    background: #f8fafc;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 9.5pt;
+  }
+  .pillar b { color: #1e40af; display: block; margin-bottom: 2px; }
+  code {
+    background: #f1f5f9;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 9pt;
+  }
+  footer {
+    margin-top: 14px;
+    padding-top: 8px;
+    border-top: 1px solid #e2e8f0;
+    color: #64748b;
+    font-size: 8.5pt;
+    display: flex;
+    justify-content: space-between;
+  }
+</style>
+</head>
+<body>
+
+<div class="brand">
+  <div class="logo">F</div>
+  <div>
+    <div class="name">FlowAccel</div>
+    <span class="tag">Getting Started Brief</span>
+  </div>
+</div>
+
+<h1>What you're receiving &amp; what we need from you</h1>
+<div class="meta">Prepared for: Client / IT Administrator &nbsp;|&nbsp; A one-page brief to read before opening the installer</div>
+<div class="rule"></div>
+
+<div class="lead">
+  <b>FlowAccel</b> is a workflow management application that runs <b>entirely on your own server</b> — your forms, approvals, signatures and data never leave your premises. You'll receive two items: (1) the Windows installer, and (2) a short PDF asking your IT team for a few details.
+</div>
+
+<h2>What your IT team needs to do — in order</h2>
+
+<div class="grid">
+  <div class="step">
+    <span class="num">1</span><h3>Prepare a Windows server</h3>
+    <ul>
+      <li>Windows 10 / Server 2016 or newer</li>
+      <li>10 GB free disk space on C:</li>
+      <li>Administrator access</li>
+      <li>A fixed internal IP address</li>
+      <li><b>No internet needed</b> — everything's bundled</li>
+    </ul>
+  </div>
+
+  <div class="step">
+    <span class="num">2</span><h3>Fill the Azure AD info sheet</h3>
+    <ul>
+      <li>Register FlowAccel inside Microsoft Entra ID</li>
+      <li>Send us App ID, Tenant ID, Client Secret</li>
+      <li>Lets staff sign in with Microsoft 365</li>
+      <li>Client Secret must be shared securely</li>
+    </ul>
+  </div>
+
+  <div class="step">
+    <span class="num">3</span><h3>Install 7-Zip on the server</h3>
+    <ul>
+      <li>Free utility — 30 seconds to install</li>
+      <li>From <code>https://www.7-zip.org</code></li>
+      <li>Needed to extract the installer parts</li>
+    </ul>
+  </div>
+
+  <div class="step">
+    <span class="num">4</span><h3>Run the installer</h3>
+    <ul>
+      <li>Download 5 parts + open <code>.7z.001</code> with 7-Zip</li>
+      <li>Right-click the <code>.exe</code> → Run as Administrator</li>
+      <li>Walk through 6 wizard pages (IP, passwords, cert)</li>
+      <li>Wait <b>10–15 minutes</b> for install to finish</li>
+    </ul>
+  </div>
+</div>
+
+<h2>What happens after installation</h2>
+<div class="pillars">
+  <div class="pillar"><b>Auto-starts with the server</b>Runs as a Windows service. Survives reboots without manual intervention.</div>
+  <div class="pillar"><b>Access on your network</b>Users open <code>https://&lt;server-ip&gt;/</code> from any browser inside your LAN.</div>
+  <div class="pillar"><b>Local database</b>All workflow data stored in a PostgreSQL database on the same server.</div>
+</div>
+
+<h2>Three things to keep in mind</h2>
+<ul>
+  <li><b>All on-premises, no cloud dependency.</b> Forms, approvals, and signatures stay on your hardware.</li>
+  <li><b>One-time setup, then hands-off.</b> The installer is idempotent — safe to re-run if anything goes wrong.</li>
+  <li><b>Microsoft sign-in is optional but recommended.</b> Saves managing a separate password for each user.</li>
+</ul>
+
+<div class="callout">
+  <b>Security note:</b> The Client Secret (from the Azure AD form) and any certificate private key are highly sensitive. Send via a password-manager share, encrypted file, or secure upload link — <b>never plain email</b>. The App ID and Tenant ID are not secret.
+</div>
+
+<div class="check">
+  <b style="color:#059669;">Before we kick off — please confirm:</b>
+  <ul>
+    <li>Which Windows server you'll install on</li>
+    <li>Completed Azure AD information sheet returned</li>
+    <li>7-Zip installed on the target server</li>
+    <li>A 30-minute window booked for your IT person to run the wizard (we'll be on-call)</li>
+  </ul>
+</div>
+
+<footer>
+  <span>FlowAccel — Getting Started Brief for Clients</span>
+  <span>Confidential — for the named recipient only</span>
+</footer>
+
+</body>
+</html>
