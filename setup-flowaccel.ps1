@@ -28,12 +28,33 @@ $DbHost     = if ($env:FA_DB_HOST)     { $env:FA_DB_HOST }     else { 'localhost
 $DbPort     = if ($env:FA_DB_PORT)     { $env:FA_DB_PORT }     else { '5432' }
 $AdminEmail = if ($env:ADMIN_EMAIL)    { $env:ADMIN_EMAIL }    else { 'admin@flowaccel.local' }
 $AdminPass  = if ($env:ADMIN_PASSWORD) { $env:ADMIN_PASSWORD } else { 'Admin@12345' }
-$BackendPort = '3001'   # MUST match web.config reverse-proxy target (localhost:3001)
+$BackendPort = $null    # chosen dynamically below (first free of 3001, 3000, else an OS-assigned free port)
 
 function Step($m) { Write-Host "`n=== $m ===" -ForegroundColor Cyan }
 function Ok($m)   { Write-Host "  [OK]  $m" -ForegroundColor Green }
 function Warn($m) { Write-Host "  [!]   $m" -ForegroundColor Yellow }
 function Die($m)  { Write-Host "  [X]   $m" -ForegroundColor Red; exit 1 }
+
+# Returns $true if something is already LISTENING on the given TCP port.
+function Test-PortListening($port) {
+  $c = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
+  return [bool]$c
+}
+
+# Pick the backend port DYNAMICALLY: prefer 3001, then 3000, otherwise let the
+# OS hand us any free loopback port. The backend is loopback-only (IIS proxies
+# to it), so any free port works - it just has to match what web.config proxies
+# to, which deploy-to-iis.ps1 reads back from backend\.env.
+function Get-FreeBackendPort {
+  foreach ($p in 3001, 3000) {
+    if (-not (Test-PortListening $p)) { return $p }
+  }
+  $l = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+  $l.Start()
+  $p = $l.LocalEndpoint.Port
+  $l.Stop()
+  return $p
+}
 
 # -- 0. Elevation --
 $id = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -72,6 +93,11 @@ if (-not $env:PGPASSWORD) { $env:PGPASSWORD = 'postgres' }
 # Create role (a harmless error if it already exists - ON_ERROR_STOP off).
 & psql -h $DbHost -p $DbPort -U postgres -d postgres -v ON_ERROR_STOP=0 `
   -c "CREATE ROLE $DbUser LOGIN PASSWORD '$DbPassword'" 2>&1 | Out-Host
+# Always sync the password (and LOGIN) to the known value, in case the role
+# already existed with an unknown password (e.g. left over from a dump restore
+# whose original owner role we are re-creating here).
+& psql -h $DbHost -p $DbPort -U postgres -d postgres -v ON_ERROR_STOP=0 `
+  -c "ALTER ROLE $DbUser LOGIN PASSWORD '$DbPassword'" 2>&1 | Out-Null
 
 $dbExists = (& psql -h $DbHost -p $DbPort -U postgres -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$DbName'" 2>$null)
 if ($dbExists -ne '1') {
@@ -86,8 +112,18 @@ if ($dbExists -ne '1') {
 Step '3/8  Writing backend env file'
 
 $envPath = Join-Path $backend '.env'
+
+# Decide the backend port DYNAMICALLY. If an .env already exists, keep whatever
+# PORT it declares (so we never fight a running install). Otherwise pick the
+# first free port (3001 -> 3000 -> OS-assigned).
 if (Test-Path $envPath) {
-  Warn '.env already exists - leaving it untouched. Delete it first for a clean regenerate.'
+  if ((Get-Content $envPath -Raw) -match '(?m)^\s*PORT\s*=\s*(\d+)') { $BackendPort = $Matches[1] }
+}
+if (-not $BackendPort) { $BackendPort = "$(Get-FreeBackendPort)" }
+Ok "backend port selected: $BackendPort"
+
+if (Test-Path $envPath) {
+  Warn ".env already exists - leaving it untouched (PORT=$BackendPort). Delete it first for a clean regenerate."
 } else {
   $sessionSecret = -join ((1..64) | ForEach-Object { '{0:x}' -f (Get-Random -Maximum 16) })
   $databaseUrl = "postgresql://${DbUser}:${DbPassword}@${DbHost}:${DbPort}/${DbName}"
@@ -126,23 +162,50 @@ Step '5/8  Applying database schema'
 node db/migrate.js
 Ok 'schema applied'
 
-# -- 5b. Grant the app role access to every object (dump-restore safety) --
-# If the schema was created (or restored from a dump) under the postgres
-# superuser, the jotflow app role gets "permission denied for table users" on
-# the very first login. These idempotent GRANTs + ALTER DEFAULT PRIVILEGES make
-# jotflow able to read/write all current AND future objects, regardless of who
-# created them. Safe to re-run.
-$grantSql = @"
-GRANT ALL ON SCHEMA public TO $DbUser;
-GRANT ALL ON ALL TABLES IN SCHEMA public TO $DbUser;
-GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO $DbUser;
-GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO $DbUser;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO $DbUser;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO $DbUser;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO $DbUser;
-"@
-& psql -h $DbHost -p $DbPort -U postgres -d $DbName -v ON_ERROR_STOP=0 -c $grantSql 2>&1 | Out-Null
-Ok "privileges granted on '$DbName' to role '$DbUser'"
+# -- 5b. Auto-repair ownership + privileges (dump-restore safety) --
+# This is the fix for the classic dump-restore mismatch: a dump restored under
+# the postgres superuser leaves every table OWNED BY postgres, so the jotflow
+# app role gets "permission denied for table users" on the first login. We:
+#   1. Transfer ownership of all public tables/sequences to the app role, and
+#   2. GRANT read/write on all current + future objects.
+# Single-quoted here-string so PowerShell does not mangle the plpgsql $do$
+# dollar-quoting; __ROLE__ is then substituted with the real role name.
+$repairSql = @'
+DO $do$
+DECLARE r record;
+BEGIN
+  FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP
+    EXECUTE format('ALTER TABLE public.%I OWNER TO %I', r.tablename, '__ROLE__');
+  END LOOP;
+  FOR r IN SELECT sequencename FROM pg_sequences WHERE schemaname = 'public' LOOP
+    EXECUTE format('ALTER SEQUENCE public.%I OWNER TO %I', r.sequencename, '__ROLE__');
+  END LOOP;
+END
+$do$;
+GRANT ALL ON SCHEMA public TO __ROLE__;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO __ROLE__;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO __ROLE__;
+GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO __ROLE__;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO __ROLE__;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO __ROLE__;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO __ROLE__;
+'@ -replace '__ROLE__', $DbUser
+$tmpSql = Join-Path $env:TEMP 'flowaccel-db-repair.sql'
+Set-Content -Path $tmpSql -Value $repairSql -Encoding ASCII
+& psql -h $DbHost -p $DbPort -U postgres -d $DbName -v ON_ERROR_STOP=0 -f $tmpSql 2>&1 | Out-Null
+Remove-Item $tmpSql -Force -ErrorAction SilentlyContinue
+Ok "ownership transferred + privileges granted on '$DbName' to role '$DbUser'"
+
+# Post-check: confirm the app role can actually SEE its core table. If the
+# jotflow DB exists but has no 'users' table, the data was probably restored
+# into a DIFFERENT database name - tell the operator exactly what to do.
+$hasUsers = (& psql -h $DbHost -p $DbPort -U postgres -d $DbName -tAc "SELECT to_regclass('public.users') IS NOT NULL" 2>$null)
+if ("$hasUsers".Trim() -ne 't') {
+  Warn "Database '$DbName' has no 'users' table. If you restored a dump, it likely went into a DIFFERENT database name."
+  Warn "Fix: restore the dump INTO '$DbName' (or set FA_DB_NAME), then re-run this script. The app/.env expect db='$DbName', role='$DbUser'."
+} else {
+  Ok "verified: '$DbName' contains the expected schema (public.users present)"
+}
 
 # -- 6. Seed admin --
 Step '6/8  Seeding default admin user'

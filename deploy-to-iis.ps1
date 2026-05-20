@@ -55,6 +55,19 @@ try {
   $fileCount = (Get-ChildItem $site -Recurse -File).Count
   Log "copied $fileCount files; web.config placed"
 
+  # Sync the reverse-proxy port in the deployed web.config to the backend's
+  # ACTUAL port (from backend\.env, chosen dynamically by setup-flowaccel.ps1).
+  # IIS must proxy to wherever Node really listens, or every /api call 502s.
+  $envFile = Join-Path $src 'backend\.env'
+  $backendPort = '3001'
+  if (Test-Path $envFile) {
+    if ((Get-Content $envFile -Raw) -match '(?m)^\s*PORT\s*=\s*(\d+)') { $backendPort = $Matches[1] }
+  }
+  $wc = Join-Path $site 'web.config'
+  (Get-Content $wc -Raw) -replace 'http://localhost:\d+/', "http://localhost:$backendPort/" |
+    Set-Content -Path $wc -Encoding UTF8
+  Log "web.config reverse-proxy port synced to backend .env PORT=$backendPort"
+
   # -- 4. Permissions for IIS app pool identity --
   & icacls $site /grant 'IIS_IUSRS:(OI)(CI)RX' /T /Q  2>$null | Out-Null
   & icacls $site /grant 'IUSR:(OI)(CI)RX'      /T /Q  2>$null | Out-Null
