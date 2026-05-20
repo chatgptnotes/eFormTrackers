@@ -87,6 +87,73 @@ $payloadRoot = Split-Path -Parent $here
 $installersDir = Join-Path $payloadRoot 'installers'
 $payloadAppDir = Join-Path $payloadRoot 'app'
 
+# Tracks whether THIS run created the application DB/role (set inside
+# Initialize-AppDatabase). Rollback only drops a DB this installer created.
+$script:DbCreatedThisRun = $false
+
+function Invoke-DependencyRollback {
+    # Reverse the system changes this run made, after a fatal DEPENDENCY failure.
+    # Removes FlowAccel's own footprint (service, IIS site/pool, firewall rules,
+    # and the DB/role IF this run created it). Shared runtimes (Node, PostgreSQL,
+    # IIS, VC++, URL Rewrite, ARR) are intentionally LEFT installed: they are
+    # idempotently skipped on the next run and removing them could break other
+    # apps. The install dir is preserved so the log survives for inspection.
+    param([Parameter(Mandatory)][hashtable]$Config)
+
+    Write-Log -Level WARN -Message 'ROLLBACK: undoing the system changes made by this run...'
+
+    # 1. Stop + remove the backend Windows service (if created).
+    try {
+        $svc = Get-Service -Name $Config.ServiceName -ErrorAction SilentlyContinue
+        if ($svc) {
+            if ($svc.Status -ne 'Stopped') { Stop-Service -Name $Config.ServiceName -Force -ErrorAction SilentlyContinue }
+            $nssmExe = Join-Path $Config.InstallDir 'nssm\nssm.exe'
+            if (Test-Path $nssmExe) { & $nssmExe remove $Config.ServiceName confirm 2>$null | Out-Null }
+            else { & sc.exe delete $Config.ServiceName 2>$null | Out-Null }
+            Write-Log -Level OK -Message "Rollback: service '$($Config.ServiceName)' removed."
+        }
+    } catch { Write-Log -Level WARN -Message "Rollback service error: $($_.Exception.Message)" }
+
+    # 2. Remove the IIS site + app pool (if created).
+    try {
+        Import-Module WebAdministration -ErrorAction SilentlyContinue
+        if (Get-Website -Name $Config.SiteName -ErrorAction SilentlyContinue) {
+            Stop-Website -Name $Config.SiteName -ErrorAction SilentlyContinue
+            Remove-Website -Name $Config.SiteName -ErrorAction SilentlyContinue
+            Write-Log -Level OK -Message "Rollback: IIS site '$($Config.SiteName)' removed."
+        }
+        if (Test-Path "IIS:\AppPools\$($Config.AppPoolName)") {
+            Remove-WebAppPool -Name $Config.AppPoolName -ErrorAction SilentlyContinue
+            Write-Log -Level OK -Message "Rollback: app pool '$($Config.AppPoolName)' removed."
+        }
+    } catch { Write-Log -Level WARN -Message "Rollback IIS error: $($_.Exception.Message)" }
+
+    # 3. Remove FlowAccel firewall rules.
+    try { Remove-FirewallRules } catch { Write-Log -Level WARN -Message "Rollback firewall error: $($_.Exception.Message)" }
+
+    # 4. Drop the application DB + role ONLY if this run created them.
+    if ($script:DbCreatedThisRun) {
+        $psql = Get-PsqlPath
+        if ($psql -and $Config.PgSuperPassword) {
+            $env:PGPASSWORD = $Config.PgSuperPassword
+            try {
+                & $psql -h 127.0.0.1 -p $Config.PgPort -U postgres -c "DROP DATABASE IF EXISTS $($Config.DbName);" 2>$null | Out-Null
+                & $psql -h 127.0.0.1 -p $Config.PgPort -U postgres -c "DROP USER IF EXISTS $($Config.DbUser);" 2>$null | Out-Null
+                Write-Log -Level OK -Message "Rollback: database '$($Config.DbName)' and role '$($Config.DbUser)' dropped."
+            } catch { Write-Log -Level WARN -Message "Rollback DB drop error: $($_.Exception.Message)" }
+            finally { Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue }
+        }
+    }
+
+    Write-Log -Level WARN -Message 'ROLLBACK complete. Shared runtimes left installed; install dir preserved for the log.'
+}
+
+# ===================== HARD DEPENDENCY PHASE (steps 0-11) =====================
+# Every dependency below is MANDATORY. If ANY of them fails to install, the
+# installer ABORTS immediately, prints the exact failure, ROLLS BACK its own
+# changes, and exits non-zero. It never leaves a half-configured machine.
+try {
+
 # ===== STEP 0: Pre-flight =====
 Invoke-PreflightChecks -MinDiskGB 10
 
@@ -149,6 +216,43 @@ $envBackup = Copy-AppFiles -PayloadAppDir $payloadAppDir -InstallDir $config.Ins
 
 # ===== STEP 11: Generate .env =====
 Write-DotEnv -InstallDir $config.InstallDir -Config $config
+
+}  # ----- end HARD DEPENDENCY PHASE try -----
+catch {
+    # A mandatory dependency failed to install. Abort, show the error clearly,
+    # and roll back this run's changes.
+    $depErr = $_.Exception.Message
+    Write-Host ""
+    Write-Banner -Status STOP -Message 'DEPENDENCY INSTALL FAILED - aborting installation.'
+    Write-Log -Level ERROR -Message "Fatal dependency failure: $depErr"
+    Write-Host ""
+    Write-Host "  A required dependency could not be installed, so FlowAccel cannot run." -ForegroundColor Red
+    Write-Host "  Rolling back the changes made by this run..." -ForegroundColor Yellow
+    Write-Host ""
+
+    try { Invoke-DependencyRollback -Config $config }
+    catch { Write-Log -Level ERROR -Message "Rollback itself errored: $($_.Exception.Message)" }
+
+    Write-Host ""
+    Write-Banner -Status STOP -Message 'Installation ABORTED and rolled back. No FlowAccel site or service was left behind.'
+    Write-Host "  Reason:       $depErr" -ForegroundColor Red
+    Write-Host "  Install dir:  $installDir  (rolled back; the log below is preserved here)" -ForegroundColor Yellow
+    Write-Host "  Full log:     $logFile" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Shared runtimes already installed by this run (Node.js / PostgreSQL / IIS) were" -ForegroundColor Gray
+    Write-Host "  left in place, so re-running the installer after fixing the cause is fast." -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  Common causes: port 80/5432 in use, no admin rights, Windows Home (no IIS)," -ForegroundColor Gray
+    Write-Host "  insufficient disk space, or an existing PostgreSQL with a different password." -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  This window stays open for 60 seconds so you can read the errors above..." -ForegroundColor Yellow
+    for ($i = 60; $i -gt 0; $i--) {
+        Write-Host ("`r  Closing in {0,2}s" -f $i) -NoNewline -ForegroundColor DarkGray
+        Start-Sleep -Seconds 1
+    }
+    Write-Host ""
+    exit 1
+}
 
 # ----- Fault-tolerant phase -----
 # Everything above (VC++, IIS features, URL Rewrite/ARR, Node, PostgreSQL, DB
@@ -277,6 +381,11 @@ Invoke-SafeStep 'start IIS site' {
     Start-FlowAccelSite -SiteName $config.SiteName
 } | Out-Null
 
+# ===== STEP 23b: Publish logs as a browsable web directory at /logs (non-fatal) =====
+Invoke-SafeStep 'publish logs web directory' {
+    Publish-LogsWebDir -SiteName $config.SiteName -InstallDir $config.InstallDir
+} | Out-Null
+
 # ===== STEP 24: Verify (Tier 1 infra + Tier 2 auth) =====
 $verifyArgs = @{
     ServerIP      = '127.0.0.1'
@@ -323,7 +432,9 @@ Write-Host "  Frontend URL:      http://$primaryIp/" -ForegroundColor Green
 Write-Host "  Also reachable at: http://localhost/  (and any other IP of this machine)"
 Write-Host "  Backend service:   $($config.ServiceName)  (autostart on boot)"
 Write-Host "  Install dir:       $($config.InstallDir)"
-Write-Host "  Logs:              $logFile"
+Write-Host "  Logs (file):       $logFile"
+Write-Host "  Logs (web):        http://$primaryIp/logs/   (browse every install + service log in the browser)" -ForegroundColor Green
+Write-Host "  Logs (localhost):  http://localhost/logs/"
 Write-Host "  Config:            $ConfigPath"
 Write-Host ""
 Write-Host "  Uninstall: Control Panel > Programs > FlowAccel"
@@ -335,6 +446,19 @@ Write-Host ""
 if ($envBackup) {
     Write-Host "  Previous .env preserved at: $envBackup" -ForegroundColor Yellow
 }
+# If anything failed or degraded, keep the console on screen long enough for the
+# user to read the red error summary above before the window closes. Timed (not
+# Read-Host) so silent/unattended installs are never blocked.
+if ((-not $siteOk) -or ($script:failures.Count -gt 0)) {
+    Write-Host ""
+    Write-Host "  Review the messages above. This window stays open for 30 seconds..." -ForegroundColor Yellow
+    for ($i = 30; $i -gt 0; $i--) {
+        Write-Host ("`r  Closing in {0,2}s   (full log: {1})" -f $i, $logFile) -NoNewline -ForegroundColor DarkGray
+        Start-Sleep -Seconds 1
+    }
+    Write-Host ""
+}
+
 # Exit non-zero only if the website itself failed; a degraded install (site up,
 # backend/seed pending) still returns success so Inno Setup reports completion
 # and the operator gets a working URL plus the degraded-step list above.

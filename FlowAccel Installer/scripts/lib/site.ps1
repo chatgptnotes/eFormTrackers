@@ -194,3 +194,58 @@ function Start-FlowAccelSite {
     Start-Website -Name $SiteName -ErrorAction Stop
     Write-Log -Level OK -Message "Site '$SiteName' started."
 }
+
+function Publish-LogsWebDir {
+    # Expose the install/runtime logs as a browsable web directory at /logs so an
+    # operator (or remote support) can read every log straight from the browser:
+    #   http://<host>/logs/
+    # The logs folder ({app}\logs) sits OUTSIDE the site root ({app}\dist), so we
+    # map it in as an IIS virtual directory. Its own web.config (a) enables
+    # directory browsing, (b) maps .log/.txt to text/plain so IIS serves them
+    # inline instead of 404.3, and (c) CLEARS the parent rewrite rules so the SPA
+    # fallback in dist\web.config can never rewrite /logs/* to index.html.
+    param(
+        [Parameter(Mandatory)][string]$SiteName,
+        [Parameter(Mandatory)][string]$InstallDir,
+        [string]$VirtualPath = '/logs'
+    )
+    Write-StepHeader -Number 23 -Total 25 -Title 'Publishing logs as web directory (/logs)'
+    Import-Module WebAdministration -ErrorAction Stop
+
+    $logDir = Join-Path $InstallDir 'logs'
+    if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Force -Path $logDir | Out-Null }
+
+    # Self-contained web.config for the logs vdir (pure ASCII; PS5.1-safe).
+    $logsWebConfig = @'
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+  <system.webServer>
+    <directoryBrowse enabled="true" showFlags="Date, Time, Size, Extension" />
+    <staticContent>
+      <remove fileExtension=".log" />
+      <mimeMap fileExtension=".log" mimeType="text/plain" />
+      <remove fileExtension=".txt" />
+      <mimeMap fileExtension=".txt" mimeType="text/plain" />
+    </staticContent>
+    <rewrite>
+      <rules>
+        <clear />
+      </rules>
+    </rewrite>
+    <defaultDocument enabled="false" />
+  </system.webServer>
+</configuration>
+'@
+    [System.IO.File]::WriteAllText((Join-Path $logDir 'web.config'), $logsWebConfig)
+
+    # IIS_IUSRS must be able to read the logs to serve them.
+    try { icacls $logDir /grant 'IIS_IUSRS:(OI)(CI)RX' /T /C | Out-Null } catch {}
+
+    $vdirIisPath = "IIS:\Sites\$SiteName$VirtualPath"
+    if (Test-Path $vdirIisPath) {
+        Remove-Item $vdirIisPath -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    New-WebVirtualDirectory -Site $SiteName -Name ($VirtualPath.TrimStart('/')) `
+        -PhysicalPath $logDir | Out-Null
+    Write-Log -Level OK -Message "Logs published at $VirtualPath (physical: $logDir)."
+}

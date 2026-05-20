@@ -108,6 +108,10 @@ GRANT ALL PRIVILEGES ON DATABASE $DbName TO $DbUser;
                 ForEach-Object { Write-Log -Level DEBUG -Message $_ }
             if ($LASTEXITCODE -ne 0) { throw "DB bootstrap failed (exit $LASTEXITCODE)" }
             Remove-Item $tmp -Force
+            # Signal the orchestrator that THIS run created the DB/role, so an
+            # abort-rollback may safely drop them. A pre-existing DB (the skip
+            # branch above) leaves this flag false and is never dropped.
+            $script:DbCreatedThisRun = $true
             Write-Log -Level OK -Message "Database '$DbName' and user '$DbUser' created."
         }
     } finally {

@@ -3,13 +3,13 @@
 ; Compile with:
 ;   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" FlowAccel.iss
 ;
-; Produces output/FlowAccel-Setup-1.0.3.exe
+; Produces output/FlowAccel-Setup-1.0.4.exe
 
 #define MyAppName        "FlowAccel"
-#define MyAppVersion     "1.0.3"
+#define MyAppVersion     "1.0.4"
 #define MyAppPublisher   "FlowAccel"
 #define MyAppURL         "http://localhost/"
-#define MyAppExeName     "FlowAccel-Setup-1.0.3.exe"
+#define MyAppExeName     "FlowAccel-Setup-1.0.4.exe"
 
 [Setup]
 AppId={{9C5F2D6E-7B41-4F2B-A7E0-9E1F0D5C1B92}
@@ -24,7 +24,7 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
 OutputDir=output
-OutputBaseFilename=FlowAccel-Setup-1.0.3
+OutputBaseFilename=FlowAccel-Setup-1.0.4
 Compression=lzma2/ultra64
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64
@@ -64,10 +64,13 @@ Name: "{app}\uploads\avatars"
 Name: "{app}\uploads\signatures"
 
 [Run]
+; NOTE: deliberately NOT runhidden. The PowerShell console stays visible so the
+; user watches the live install: each dependency (Node, PostgreSQL, IIS modules),
+; the npm build/compilation, and any ERROR lines (red) stream in real time.
 Filename: "powershell.exe"; \
     Parameters: "-ExecutionPolicy Bypass -NoProfile -File ""{app}\_payload\scripts\install.ps1"" -ConfigPath ""{app}\config.json"""; \
-    StatusMsg: "Installing FlowAccel (this may take 10-15 minutes)..."; \
-    Flags: runhidden waituntilterminated
+    StatusMsg: "Installing FlowAccel - watch the console window for live progress (this may take 10-15 minutes)..."; \
+    Flags: waituntilterminated
 
 [UninstallRun]
 Filename: "powershell.exe"; \
