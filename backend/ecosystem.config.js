@@ -13,8 +13,8 @@ module.exports = {
       instances: 1,           // Fork mode — Socket.IO rooms require single instance
       exec_mode: 'fork',
       env: {
-        NODE_ENV: 'production',
-        PORT: 3001,
+        NODE_ENV: 'development',
+        PORT: 3000,
       },
       max_memory_restart: '512M',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',

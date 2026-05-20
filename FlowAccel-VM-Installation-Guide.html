@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>FlowAccel / JotFlow — VM Installation Guide</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", Arial, sans-serif;
+    color: #1f2933;
+    font-size: 11px;
+    line-height: 1.55;
+    margin: 0;
+  }
+  h1, h2, h3, h4 { color: #0b3d63; margin: 0 0 .4em; line-height: 1.25; }
+  h2 {
+    font-size: 17px;
+    border-bottom: 2px solid #2563a8;
+    padding-bottom: 4px;
+    margin-top: 26px;
+  }
+  h3 { font-size: 13px; margin-top: 18px; color: #15527f; }
+  h4 { font-size: 11.5px; margin-top: 12px; color: #333; }
+  p { margin: .35em 0; }
+  ul, ol { margin: .35em 0 .6em; padding-left: 20px; }
+  li { margin: 2px 0; }
+  code {
+    font-family: "Consolas", "Courier New", monospace;
+    background: #eef2f6;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 10px;
+    color: #b8004a;
+  }
+  pre {
+    background: #0f2233;
+    color: #e6edf3;
+    padding: 9px 12px;
+    border-radius: 5px;
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 9.6px;
+    line-height: 1.5;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: .5em 0;
+  }
+  pre code { background: none; color: inherit; padding: 0; font-size: 9.6px; }
+  table { border-collapse: collapse; width: 100%; margin: .6em 0; font-size: 10px; }
+  th, td { border: 1px solid #c7d2dd; padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background: #e8f0f7; color: #0b3d63; }
+  .cover {
+    text-align: center;
+    padding-top: 150px;
+    page-break-after: always;
+  }
+  .cover .badge {
+    display: inline-block;
+    background: #2563a8;
+    color: #fff;
+    font-size: 13px;
+    letter-spacing: 3px;
+    padding: 6px 18px;
+    border-radius: 4px;
+  }
+  .cover h1 { font-size: 34px; margin: 28px 0 6px; border: none; }
+  .cover .sub { font-size: 15px; color: #5b6b7a; }
+  .cover .meta { margin-top: 60px; font-size: 11px; color: #5b6b7a; }
+  .note, .warn, .tip {
+    border-left: 4px solid;
+    padding: 7px 11px;
+    margin: .7em 0;
+    border-radius: 0 4px 4px 0;
+    font-size: 10px;
+  }
+  .note { background: #eef6ff; border-color: #2563a8; }
+  .warn { background: #fff4e5; border-color: #d98400; }
+  .tip  { background: #ecfaf0; border-color: #1f9d57; }
+  .section { page-break-before: always; }
+  .step-num {
+    display: inline-block;
+    background: #2563a8;
+    color: #fff;
+    width: 19px; height: 19px;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 19px;
+    font-size: 10px;
+    margin-right: 6px;
+  }
+  .toc li { margin: 4px 0; }
+  .kbd {
+    background: #f4f4f4; border: 1px solid #bbb; border-bottom-width: 2px;
+    border-radius: 3px; padding: 0 5px; font-size: 9.5px; font-family: Consolas, monospace;
+  }
+  footer { margin-top: 30px; border-top: 1px solid #c7d2dd; padding-top: 6px; font-size: 9px; color: #8a97a4; }
+  .small { font-size: 9.5px; color: #5b6b7a; }
+</style>
+</head>
+<body>
+
+<!-- ───────────────────────── COVER ───────────────────────── -->
+<div class="cover">
+  <div class="badge">INSTALLATION GUIDE</div>
+  <h1>FlowAccel / JotFlow</h1>
+  <div class="sub">Complete step-by-step setup on a fresh Windows VM</div>
+  <div class="meta">
+    Workflow Management Dashboard &nbsp;•&nbsp; React + Express + PostgreSQL on IIS<br/>
+    Document version 1.0 &nbsp;•&nbsp; Generated 19 May 2026
+  </div>
+</div>
+
+<!-- ───────────────────────── TOC ───────────────────────── -->
+<h2>Contents</h2>
+<ol class="toc">
+  <li>Overview &amp; Architecture</li>
+  <li>VM Requirements (what kind of machine you need)</li>
+  <li>Part A — Install required software (Node.js, PostgreSQL, IIS, PM2)</li>
+  <li>Part B — Copy the project files onto the VM</li>
+  <li>Part C — Install project dependencies</li>
+  <li>Part D — Create and migrate the database</li>
+  <li>Part E — Configure the backend (<code>.env</code> file)</li>
+  <li>Part F — Build the frontend</li>
+  <li>Part G — Deploy the site to IIS</li>
+  <li>Part H — Start the backend with PM2</li>
+  <li>Part I — Create the first login user</li>
+  <li>Part J — Verify everything works</li>
+  <li>Part K — Optional: auto-start on boot, HTTPS, firewall / LAN access</li>
+  <li>Troubleshooting</li>
+  <li>Quick Reference</li>
+</ol>
+
+<div class="note">
+  <b>Who this guide is for:</b> anyone setting up FlowAccel on a brand-new
+  Windows machine or virtual machine. Every command is written out in full —
+  copy and paste them exactly. Estimated time: <b>45–90 minutes</b>
+  (most of it is downloads and installers).
+</div>
+
+<!-- ───────────────────────── 1. OVERVIEW ───────────────────────── -->
+<h2 class="section">1. Overview &amp; Architecture</h2>
+
+<p>FlowAccel (internally called <b>JotFlow</b>) is a workflow / approval
+dashboard. It has two parts that run together:</p>
+
+<table>
+  <tr><th>Part</th><th>What it is</th><th>Where it runs</th></tr>
+  <tr>
+    <td><b>Frontend</b></td>
+    <td>The website you see in the browser (React app, built into static HTML/JS/CSS files in a <code>dist</code> folder).</td>
+    <td>Served by <b>IIS</b> on <b>port 80</b>.</td>
+  </tr>
+  <tr>
+    <td><b>Backend</b></td>
+    <td>The API server (Node.js + Express) that handles login, data, and talks to the database.</td>
+    <td>A Node process kept alive by <b>PM2</b> on <b>port 3000</b>.</td>
+  </tr>
+  <tr>
+    <td><b>Database</b></td>
+    <td>Stores users, submissions, approvals, etc.</td>
+    <td><b>PostgreSQL</b> on <b>port 5432</b>.</td>
+  </tr>
+</table>
+
+<h3>How a request flows</h3>
+<pre><code>Browser  →  http://&lt;vm&gt;/             →  IIS serves the React app (static files)
+Browser  →  http://&lt;vm&gt;/api/...      →  IIS reverse-proxies → Node backend :3000
+Browser  →  http://&lt;vm&gt;/socket.io/.. →  IIS reverse-proxies → Node backend :3000
+Browser  →  http://&lt;vm&gt;/uploads/...  →  IIS reverse-proxies → Node backend :3000
+                                          Node backend  →  PostgreSQL :5432</code></pre>
+
+<p>IIS does the reverse-proxying using two add-on modules: <b>URL Rewrite</b>
+and <b>Application Request Routing (ARR)</b>. The rules live in the
+<code>web.config</code> file that ships with the project.</p>
+
+<div class="note">
+  <b>Why this design?</b> The browser only ever talks to one address
+  (port 80). IIS quietly forwards the <code>/api</code> calls to the Node
+  backend behind the scenes, so there are no cross-origin / CORS headaches and
+  only one port needs to be open to users.
+</div>
+
+<!-- ───────────────────────── 2. REQUIREMENTS ───────────────────────── -->
+<h2 class="section">2. VM Requirements</h2>
+
+<table>
+  <tr><th>Item</th><th>Minimum</th><th>Recommended</th></tr>
+  <tr><td>Operating system</td><td>Windows 10/11 Pro or Windows Server 2019</td><td>Windows Server 2022</td></tr>
+  <tr><td>CPU</td><td>2 vCPU</td><td>4 vCPU</td></tr>
+  <tr><td>RAM</td><td>4 GB</td><td>8 GB</td></tr>
+  <tr><td>Disk</td><td>20 GB free</td><td>40 GB free</td></tr>
+  <tr><td>Network</td><td>Internet access (for downloads)</td><td>Static IP for the VM</td></tr>
+  <tr><td>Access</td><td>An account with <b>Administrator</b> rights</td><td>—</td></tr>
+</table>
+
+<div class="warn">
+  <b>You must be an Administrator on the VM.</b> Installing IIS, creating
+  websites, and copying files into <code>C:\inetpub</code> all require admin
+  rights. When this guide says "open PowerShell as Administrator", right-click
+  the Start menu → <span class="kbd">Windows PowerShell (Admin)</span> /
+  <span class="kbd">Terminal (Admin)</span>.
+</div>
+
+<h3>Software you will install (Part A)</h3>
+<table>
+  <tr><th>Software</th><th>Version</th><th>Purpose</th></tr>
+  <tr><td>Node.js</td><td>20 or 22 LTS</td><td>Runs the backend and builds the frontend</td></tr>
+  <tr><td>PostgreSQL</td><td>15 or newer</td><td>Database</td></tr>
+  <tr><td>IIS</td><td>Built into Windows</td><td>Web server for the frontend + reverse proxy</td></tr>
+  <tr><td>URL Rewrite + ARR</td><td>Latest</td><td>IIS add-ons that enable the <code>/api</code> proxy</td></tr>
+  <tr><td>PM2</td><td>Latest (via npm)</td><td>Keeps the Node backend running</td></tr>
+  <tr><td>Git <span class="small">(optional)</span></td><td>Latest</td><td>Only if you clone the code instead of copying a folder</td></tr>
+</table>
+
+<!-- ───────────────────────── PART A ───────────────────────── -->
+<h2 class="section">Part A — Install Required Software</h2>
+
+<h3><span class="step-num">A1</span> Install Node.js</h3>
+<ol>
+  <li>Open <b>https://nodejs.org</b> in the VM's browser.</li>
+  <li>Download the <b>LTS</b> installer for Windows (<code>.msi</code>, 64-bit).</li>
+  <li>Run it. Accept all defaults — <b>keep "Add to PATH" ticked</b>. Click through to Finish.</li>
+  <li>Verify: open a <b>new</b> PowerShell window and run:</li>
+</ol>
+<pre><code>node -v
+npm -v</code></pre>
+<p>You should see something like <code>v22.x.x</code> and <code>10.x.x</code>.
+If you get "not recognized", close and reopen PowerShell, or restart the VM.</p>
+
+<h3><span class="step-num">A2</span> Install PostgreSQL</h3>
+<ol>
+  <li>Open <b>https://www.postgresql.org/download/windows/</b> → "Download the installer".</li>
+  <li>Download PostgreSQL <b>15</b> (or newer) and run the installer.</li>
+  <li>During setup:
+    <ul>
+      <li><b>Installation directory</b> — leave default (<code>C:\Program Files\PostgreSQL\15</code>).</li>
+      <li><b>Components</b> — keep "PostgreSQL Server" and "Command Line Tools" ticked. pgAdmin is optional.</li>
+      <li><b>Password</b> — set a password for the <code>postgres</code> superuser.
+        <b>Write it down</b> — you need it later. This guide assumes <code>postgres</code>.</li>
+      <li><b>Port</b> — leave <code>5432</code>.</li>
+      <li><b>Locale</b> — default.</li>
+    </ul>
+  </li>
+  <li>Finish. You can skip "Stack Builder" at the end.</li>
+</ol>
+<div class="tip">
+  <b>Add psql to PATH (handy):</b> so you can run <code>psql</code> from any
+  folder, add <code>C:\Program Files\PostgreSQL\15\bin</code> to the system
+  <code>Path</code> environment variable. Otherwise, use the full path to
+  <code>psql.exe</code> as shown in Part D.
+</div>
+
+<h3><span class="step-num">A3</span> Install IIS + URL Rewrite + ARR</h3>
+
+<h4>A3.1 — Turn on IIS</h4>
+<p>Open <b>PowerShell as Administrator</b> and run the one command for your OS:</p>
+<p class="small"><b>Windows 10 / 11:</b></p>
+<pre><code>Enable-WindowsOptionalFeature -Online -All -FeatureName `
+  IIS-WebServerRole, IIS-WebServer, IIS-CommonHttpFeatures, `
+  IIS-StaticContent, IIS-DefaultDocument, IIS-HttpErrors, `
+  IIS-HttpLogging, IIS-RequestFiltering, IIS-Security, `
+  IIS-WebSockets, IIS-ManagementConsole -NoRestart</code></pre>
+<p class="small"><b>Windows Server:</b></p>
+<pre><code>Install-WindowsFeature -Name Web-Server, Web-WebSockets, `
+  Web-Mgmt-Console, Web-Static-Content, Web-Default-Doc, `
+  Web-Http-Errors, Web-Http-Logging, Web-Filtering -IncludeManagementTools</code></pre>
+<p>When it finishes, confirm IIS is running:</p>
+<pre><code>Get-Service W3SVC</code></pre>
+<p>Status should be <code>Running</code>. You can also browse to
+<code>http://localhost/</code> — the default IIS welcome page should appear.</p>
+
+<h4>A3.2 — Install the URL Rewrite module</h4>
+<ol>
+  <li>Download from <b>https://www.iis.net/downloads/microsoft/url-rewrite</b>
+      (file: <code>rewrite_amd64_en-US.msi</code>).</li>
+  <li>Run the installer → Next → Finish.</li>
+</ol>
+
+<h4>A3.3 — Install Application Request Routing (ARR)</h4>
+<ol>
+  <li>Download from <b>https://www.iis.net/downloads/microsoft/application-request-routing</b>
+      (file: <code>ARRv3_0.exe</code> / "ARR 3.0").</li>
+  <li>Run the installer → Next → Finish.</li>
+</ol>
+
+<div class="warn">
+  <b>Both URL Rewrite and ARR are mandatory.</b> Without them the
+  <code>/api</code> calls cannot reach the backend and the app will load but
+  fail to log in. Install URL Rewrite <b>before</b> ARR.
+</div>
+
+<h3><span class="step-num">A4</span> Install PM2</h3>
+<p>In <b>PowerShell as Administrator</b>:</p>
+<pre><code>npm install -g pm2</code></pre>
+<p>Verify:</p>
+<pre><code>pm2 -v</code></pre>
+
+<!-- ───────────────────────── PART B ───────────────────────── -->
+<h2 class="section">Part B — Copy the Project Files onto the VM</h2>
+
+<p>Put the whole project folder somewhere on the VM. This guide uses
+<code>C:\Apps\flowaccel</code> as the example location — use whatever you
+like, but remember it.</p>
+
+<h4>Option 1 — Copy a folder</h4>
+<p>If you have the project as a folder (USB drive, network share, zip),
+copy it so the final structure looks like:</p>
+<pre><code>C:\Apps\flowaccel\
+├── backend\           (Express API source)
+├── frontend\          (React app source)
+├── web.config         (IIS rules)
+├── deploy-to-iis.ps1  (deployment script)
+└── package.json</code></pre>
+
+<h4>Option 2 — Clone with Git</h4>
+<p>If the code is in a Git repository, install Git from
+<b>https://git-scm.com/download/win</b>, then:</p>
+<pre><code>mkdir C:\Apps
+cd C:\Apps
+git clone &lt;your-repository-url&gt; flowaccel</code></pre>
+
+<div class="note">
+  Throughout the rest of this guide, <b><code>C:\Apps\flowaccel</code></b>
+  means "wherever you put the project". If you used a different path,
+  substitute it everywhere.
+</div>
+
+<!-- ───────────────────────── PART C ───────────────────────── -->
+<h2 class="section">Part C — Install Project Dependencies</h2>
+
+<p>The project has two parts (backend and frontend), each needs its own
+<code>npm install</code>. In PowerShell:</p>
+
+<pre><code>cd C:\Apps\flowaccel\backend
+npm install
+
+cd C:\Apps\flowaccel\frontend
+npm install</code></pre>
+
+<p>Each command downloads packages into a <code>node_modules</code> folder.
+This can take a few minutes. Warnings are normal; <b>errors</b> in red that
+stop the command are not — re-run if the network dropped.</p>
+
+<!-- ───────────────────────── PART D ───────────────────────── -->
+<h2 class="section">Part D — Create and Migrate the Database</h2>
+
+<h3><span class="step-num">D1</span> Create the database</h3>
+<p>Run this in PowerShell. It connects as the <code>postgres</code> user and
+creates an empty database called <code>jotflow</code>. You will be prompted
+for the <code>postgres</code> password you set in Part A2.</p>
+<pre><code>&amp; "C:\Program Files\PostgreSQL\15\bin\createdb.exe" -U postgres -h localhost jotflow</code></pre>
+<p>No output means success. If you see "database already exists", that's fine.</p>
+
+<h3><span class="step-num">D2</span> Apply the schema (migration)</h3>
+<p>The project ships a migration script that creates all the tables. First
+make sure the <code>.env</code> file exists (Part E) — actually, do Part E
+now, then come back. Or set the database URL inline just for this step:</p>
+<pre><code>cd C:\Apps\flowaccel\backend
+node db/migrate.js</code></pre>
+<p>Expected output:</p>
+<pre><code>[migrate] Connected to PostgreSQL
+[migrate] Schema applied successfully</code></pre>
+
+<div class="note">
+  <code>migrate.js</code> reads the database connection from
+  <code>backend\.env</code> (<code>DATABASE_URL</code>). So you must create the
+  <code>.env</code> file (Part E) <b>before</b> running the migration. The
+  ordering is: Part E first, then D2.
+</div>
+
+<p>The migration creates all tables and automatically seeds one default
+organization, so you are ready to create users immediately afterwards.</p>
+
+<!-- ───────────────────────── PART E ───────────────────────── -->
+<h2 class="section">Part E — Configure the Backend (<code>.env</code> file)</h2>
+
+<p>The backend reads its settings from a file called <code>.env</code> in the
+<code>backend</code> folder. This file does <b>not</b> exist by default — you
+create it.</p>
+
+<h3><span class="step-num">E1</span> Generate a session secret</h3>
+<p>Run this once and copy the long string it prints:</p>
+<pre><code>node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"</code></pre>
+
+<h3><span class="step-num">E2</span> Create <code>backend\.env</code></h3>
+<p>Create a new file <code>C:\Apps\flowaccel\backend\.env</code> with this
+content (use Notepad — make sure it saves as <code>.env</code>, not
+<code>.env.txt</code>):</p>
+
+<pre><code># ── PostgreSQL ──
+DATABASE_URL=postgresql://postgres:YOUR_PG_PASSWORD@localhost:5432/jotflow
+
+# ── Session (paste the string from step E1) ──
+SESSION_SECRET=PASTE_THE_LONG_RANDOM_STRING_HERE
+
+# ── Server ──
+PORT=3000
+NODE_ENV=development
+
+# ── CORS — the address(es) users will open in the browser ──
+ALLOWED_ORIGIN=http://localhost,http://YOUR_VM_IP
+
+# ── JotForm API (only needed for live JotForm sync; leave blank otherwise) ──
+JOTFORM_API_KEY=
+JOTFORM_TEAM_ID=
+JOTFORM_BASE=https://eforms.mediaoffice.ae/API
+JOTFORM_HOST=https://eforms.mediaoffice.ae
+JOTFORM_WEBHOOK_SECRET=
+
+# ── Microsoft SSO (optional — leave blank to disable) ──
+MICROSOFT_CLIENT_ID=
+MICROSOFT_CLIENT_SECRET=
+MICROSOFT_TENANT_ID=
+MICROSOFT_REDIRECT_URI=</code></pre>
+
+<h3>What to change</h3>
+<table>
+  <tr><th>Setting</th><th>Set it to</th></tr>
+  <tr><td><code>YOUR_PG_PASSWORD</code></td><td>The <code>postgres</code> password from Part A2.</td></tr>
+  <tr><td><code>SESSION_SECRET</code></td><td>The random string from step E1.</td></tr>
+  <tr><td><code>YOUR_VM_IP</code></td><td>The VM's IP address (run <code>ipconfig</code> to find it, e.g. <code>192.168.1.50</code>). If users will only use the VM locally, you can leave just <code>http://localhost</code>.</td></tr>
+  <tr><td><code>JOTFORM_*</code></td><td>Fill in only if you use live JotForm integration. The app runs fine with them blank.</td></tr>
+</table>
+
+<div class="warn">
+  <b><code>NODE_ENV</code> controls how login works:</b>
+  <ul style="margin:4px 0;">
+    <li><code>development</code> — any account in the database can log in.
+        <b>Use this</b> unless the VM is inside the GDMO network.</li>
+    <li><code>production</code> — every login is first checked against the
+        JotForm workspace (<code>eforms.mediaoffice.ae</code>). If the VM
+        cannot reach that host, <b>all logins fail</b>. Only use
+        <code>production</code> if the VM has network access to JotForm
+        Enterprise and you have a valid <code>JOTFORM_API_KEY</code>.</li>
+  </ul>
+</div>
+
+<div class="tip">
+  After creating <code>.env</code>, go back and run the database migration
+  (<b>Part D, step D2</b>) if you have not already.
+</div>
+
+<!-- ───────────────────────── PART F ───────────────────────── -->
+<h2 class="section">Part F — Build the Frontend</h2>
+
+<p>This compiles the React app into static files inside a <code>dist</code>
+folder at the project root.</p>
+<pre><code>cd C:\Apps\flowaccel\frontend
+npm run build</code></pre>
+<p>It finishes with a line like <code>✓ built in 20s</code>. Afterwards a
+<code>C:\Apps\flowaccel\dist</code> folder exists containing
+<code>index.html</code>, an <code>assets</code> folder, and others.</p>
+
+<div class="note">
+  Re-run <code>npm run build</code> any time you change the frontend code,
+  then re-run the deploy script (Part G) to publish the new build.
+</div>
+
+<!-- ───────────────────────── PART G ───────────────────────── -->
+<h2 class="section">Part G — Deploy the Site to IIS</h2>
+
+<p>The project includes a script — <code>deploy-to-iis.ps1</code> — that does
+the whole IIS setup for you:</p>
+<ul>
+  <li>Copies the built frontend (<code>dist</code>) into <code>C:\inetpub\flowaccel</code></li>
+  <li>Copies <code>web.config</code> (the reverse-proxy rules)</li>
+  <li>Enables the ARR reverse proxy at the server level</li>
+  <li>Creates an IIS application pool and website on <b>port 80</b></li>
+  <li>Sets folder permissions</li>
+</ul>
+
+<h3><span class="step-num">G1</span> Run the deploy script as Administrator</h3>
+<p>Open <b>PowerShell as Administrator</b> and run:</p>
+<pre><code>cd C:\Apps\flowaccel
+PowerShell -ExecutionPolicy Bypass -File .\deploy-to-iis.ps1</code></pre>
+
+<p>The script prints its progress and finishes with
+<code>=== DONE — open http://localhost/ ===</code>. It also writes a log to
+<code>%TEMP%\flowaccel-iis-deploy.log</code>.</p>
+
+<div class="note">
+  The script figures out the project location automatically (it uses its own
+  folder). You do <b>not</b> need to edit any paths inside it — just keep
+  <code>deploy-to-iis.ps1</code> in the project root.
+</div>
+
+<div class="warn">
+  <b>If port 80 is already used</b> by another site, the script stops the
+  default IIS site to free it. If you need FlowAccel on a different port,
+  edit the binding line in <code>deploy-to-iis.ps1</code>
+  (<code>/bindings:'http/*:80:'</code> → e.g. <code>'http/*:8080:'</code>)
+  before running it.
+</div>
+
+<h3><span class="step-num">G2</span> What gets created</h3>
+<table>
+  <tr><th>IIS object</th><th>Value</th></tr>
+  <tr><td>Website name</td><td><code>FlowAccel</code></td></tr>
+  <tr><td>Application pool</td><td><code>FlowAccel</code> (No Managed Code)</td></tr>
+  <tr><td>Physical path</td><td><code>C:\inetpub\flowaccel</code></td></tr>
+  <tr><td>Binding</td><td><code>http</code> on port <code>80</code></td></tr>
+</table>
+
+<!-- ───────────────────────── PART H ───────────────────────── -->
+<h2 class="section">Part H — Start the Backend with PM2</h2>
+
+<p>IIS is now serving the frontend, but the API backend still needs to be
+running. PM2 starts it and keeps it alive.</p>
+
+<pre><code>cd C:\Apps\flowaccel\backend
+pm2 start ecosystem.config.js
+pm2 save</code></pre>
+
+<p>Check it is online:</p>
+<pre><code>pm2 list</code></pre>
+<p>You should see <code>jotflow-backend</code> with status <code>online</code>.
+Useful commands:</p>
+<table>
+  <tr><th>Command</th><th>Does</th></tr>
+  <tr><td><code>pm2 logs jotflow-backend</code></td><td>View live backend logs</td></tr>
+  <tr><td><code>pm2 restart jotflow-backend</code></td><td>Restart the backend</td></tr>
+  <tr><td><code>pm2 stop jotflow-backend</code></td><td>Stop the backend</td></tr>
+  <tr><td><code>pm2 list</code></td><td>Show all processes and status</td></tr>
+</table>
+
+<div class="note">
+  The backend runs from the project folder (<code>C:\Apps\flowaccel\backend</code>),
+  not from <code>C:\inetpub</code>. That folder holds the uploads and logs, so
+  leave the project folder in place after deployment — do not delete it.
+</div>
+
+<!-- ───────────────────────── PART I ───────────────────────── -->
+<h2 class="section">Part I — Create the First Login User</h2>
+
+<p>The database starts empty (no users). There are two ways to create the
+first account.</p>
+
+<h3>Option 1 — Sign up from the website (easiest)</h3>
+<ol>
+  <li>Open <code>http://localhost/</code> on the VM.</li>
+  <li>Go to the <b>Sign up</b> page and register with an email and password.</li>
+  <li>This creates the account with the <b>viewer</b> role.</li>
+</ol>
+
+<h3>Option 2 — Create an admin user directly in the database</h3>
+<p>To create an account (or promote one) with the <b>super_admin</b> role,
+use SQL. First, generate a password hash:</p>
+<pre><code>cd C:\Apps\flowaccel\backend
+node -e "require('bcrypt').hash('YourPassword123', 12).then(h=>console.log(h))"</code></pre>
+<p>Copy the printed hash. Then create a file <code>C:\Temp\new-user.sql</code>
+with this content (replace the email, hash, and name):</p>
+<pre><code>WITH new_user AS (
+  INSERT INTO users (email, password_hash, full_name)
+  VALUES ('admin@example.com', 'PASTE_THE_HASH_HERE', 'Administrator')
+  RETURNING id
+), new_profile AS (
+  INSERT INTO profiles (user_id, full_name, department, role, org_id, preferences)
+  SELECT id, 'Administrator', '', 'super_admin',
+         '971589dd-afcb-4a12-8900-47626e4d59cc',
+         '{"theme":"dark","language":"en"}'
+  FROM new_user
+)
+INSERT INTO org_members (org_id, user_id, role)
+SELECT '971589dd-afcb-4a12-8900-47626e4d59cc', id, 'super_admin' FROM new_user;</code></pre>
+<p>Apply it:</p>
+<pre><code>&amp; "C:\Program Files\PostgreSQL\15\bin\psql.exe" -U postgres -h localhost -d jotflow -f C:\Temp\new-user.sql</code></pre>
+
+<div class="tip">
+  Roles available: <code>viewer</code>, <code>director</code>,
+  <code>super_admin</code>. To change an existing user's role later:<br/>
+  <code>UPDATE profiles SET role='super_admin' WHERE user_id=(SELECT id FROM users WHERE email='someone@example.com');</code>
+</div>
+
+<!-- ───────────────────────── PART J ───────────────────────── -->
+<h2 class="section">Part J — Verify Everything Works</h2>
+
+<p>Run these checks in PowerShell on the VM.</p>
+
+<table>
+  <tr><th>#</th><th>Command</th><th>Expected</th></tr>
+  <tr>
+    <td>1</td>
+    <td><code>(Invoke-WebRequest http://localhost/ -UseBasicParsing).StatusCode</code></td>
+    <td><code>200</code> — IIS serves the frontend</td>
+  </tr>
+  <tr>
+    <td>2</td>
+    <td><code>(Invoke-WebRequest http://localhost/api/health -UseBasicParsing).Content</code></td>
+    <td><code>{"ok":true,...}</code> — reverse proxy reaches the backend</td>
+  </tr>
+  <tr>
+    <td>3</td>
+    <td><code>pm2 list</code></td>
+    <td><code>jotflow-backend</code> = <code>online</code></td>
+  </tr>
+  <tr>
+    <td>4</td>
+    <td>Open <code>http://localhost/</code> in a browser and log in</td>
+    <td>Dashboard loads</td>
+  </tr>
+</table>
+
+<p>If check 1 passes but check 2 returns a <b>500</b> or IIS error, the
+reverse proxy / ARR is not working — see Troubleshooting.</p>
+
+<div class="tip">
+  <b>Final test — reboot the VM</b> and confirm the site still works (after
+  doing Part K1 for auto-start). This proves the install survives a restart.
+</div>
+
+<!-- ───────────────────────── PART K ───────────────────────── -->
+<h2 class="section">Part K — Optional Hardening</h2>
+
+<h3><span class="step-num">K1</span> Auto-start the backend on boot</h3>
+<p>By default, after a VM reboot IIS restarts automatically but the PM2
+backend does <b>not</b>. To fix that, install the PM2 startup helper
+(run PowerShell as Administrator):</p>
+<pre><code>npm install -g pm2-windows-startup
+pm2-startup install
+pm2 save</code></pre>
+<p>Now the backend is restored automatically on every boot. (Run
+<code>pm2 save</code> again whenever you add or change PM2 processes.)</p>
+
+<h3><span class="step-num">K2</span> Allow access from other computers (firewall)</h3>
+<p>To let other machines on the network open the site, allow port 80 through
+the Windows Firewall (PowerShell as Administrator):</p>
+<pre><code>New-NetFirewallRule -DisplayName "FlowAccel HTTP" -Direction Inbound `
+  -Protocol TCP -LocalPort 80 -Action Allow</code></pre>
+<p>Other users then browse to <code>http://&lt;VM-IP&gt;/</code>. Find the IP
+with <code>ipconfig</code>.</p>
+
+<h3><span class="step-num">K3</span> Enable HTTPS (recommended for production)</h3>
+<p>For a quick self-signed certificate (testing only):</p>
+<pre><code>$cert = New-SelfSignedCertificate -DnsName "flowaccel.local" `
+  -CertStoreLocation "cert:\LocalMachine\My"
+New-WebBinding -Name "FlowAccel" -Protocol https -Port 443
+(Get-WebBinding -Name "FlowAccel" -Protocol https).AddSslCertificate(
+  $cert.Thumbprint, "My")</code></pre>
+<p>For real production use a proper certificate (internal CA or a public CA)
+instead of a self-signed one, and also allow port 443 in the firewall (K2,
+change <code>-LocalPort 80</code> to <code>443</code>). If you serve over
+HTTPS, also add the <code>https://</code> address to <code>ALLOWED_ORIGIN</code>
+in <code>backend\.env</code> and restart the backend.</p>
+
+<h3><span class="step-num">K4</span> Microsoft (Azure AD) single sign-on</h3>
+<p>Optional. To enable the "Sign in with Microsoft" button, fill in the
+<code>MICROSOFT_*</code> values in <code>backend\.env</code> with your Azure AD
+app registration details, and set the redirect URI in Azure to
+<code>http://&lt;VM&gt;/api/auth/microsoft/callback</code>. Restart the backend
+afterwards. Email/password login works fine without this.</p>
+
+<!-- ───────────────────────── TROUBLESHOOTING ───────────────────────── -->
+<h2 class="section">Troubleshooting</h2>
+
+<h4>The page shows "HTTP Error 500.19"</h4>
+<p>IIS cannot read <code>web.config</code>, usually because a locked
+configuration section is being overridden. The shipped <code>web.config</code>
+is already adjusted for this. If you edited it and re-introduced a
+<code>&lt;webSocket&gt;</code> element, remove it — that section is locked at
+the server level. Make sure URL Rewrite and ARR (Part A3) are installed.</p>
+
+<h4>The site loads but login fails / <code>/api</code> calls return 502 or 404</h4>
+<ul>
+  <li><b>Backend not running</b> — run <code>pm2 list</code>; if missing,
+      <code>pm2 start ecosystem.config.js</code> (Part H).</li>
+  <li><b>ARR proxy not enabled</b> — re-run <code>deploy-to-iis.ps1</code>; it
+      enables the server-level proxy. Or manually:
+      <code>appcmd set config -section:system.webServer/proxy /enabled:true /commit:apphost</code>.</li>
+  <li><b>Port mismatch</b> — <code>web.config</code> proxies to
+      <code>localhost:3000</code>; the backend's <code>PORT</code> (in
+      <code>.env</code> and <code>ecosystem.config.js</code>) must also be
+      <code>3000</code>.</li>
+</ul>
+
+<h4>"Your email is not a member of the JotForm workspace"</h4>
+<p><code>NODE_ENV</code> is set to <code>production</code> but the VM cannot
+reach JotForm. Set <code>NODE_ENV=development</code> in
+<code>backend\.env</code> and run <code>pm2 restart jotflow-backend</code>.</p>
+
+<h4>"Missing required env var: DATABASE_URL"</h4>
+<p>The <code>backend\.env</code> file is missing, misnamed (e.g.
+<code>.env.txt</code>), or in the wrong folder. It must be exactly
+<code>C:\Apps\flowaccel\backend\.env</code>.</p>
+
+<h4>Database connection refused</h4>
+<ul>
+  <li>Check PostgreSQL is running: <code>Get-Service postgresql*</code>.</li>
+  <li>Check the password and database name in <code>DATABASE_URL</code>.</li>
+  <li>Confirm the database exists (Part D1) and the migration ran (D2).</li>
+</ul>
+
+<h4>Port 80 already in use</h4>
+<p>Another site (often "Default Web Site") owns port 80. The deploy script
+stops it automatically. To check what is on port 80:
+<code>Get-NetTCPConnection -LocalPort 80 -State Listen</code>.</p>
+
+<h4>Port 3000 already in use</h4>
+<p>Pick a free port: change <code>PORT</code> in <code>backend\.env</code> and
+in <code>ecosystem.config.js</code>, change the three
+<code>localhost:3000</code> entries in <code>web.config</code> to match, then
+re-run the deploy script and <code>pm2 restart jotflow-backend</code>.</p>
+
+<!-- ───────────────────────── QUICK REFERENCE ───────────────────────── -->
+<h2 class="section">Quick Reference</h2>
+
+<h3>Folder layout after install</h3>
+<pre><code>C:\Apps\flowaccel\          ← project source (keep this!)
+├── backend\               ← Express API + .env + node_modules
+│   ├── .env               ← your configuration
+│   └── ecosystem.config.js← PM2 config
+├── frontend\              ← React source
+├── dist\                  ← built frontend (created by "npm run build")
+├── web.config             ← IIS reverse-proxy rules
+└── deploy-to-iis.ps1      ← deployment script
+
+C:\inetpub\flowaccel\      ← what IIS actually serves (copy of dist + web.config)</code></pre>
+
+<h3>Ports</h3>
+<table>
+  <tr><th>Port</th><th>Used by</th></tr>
+  <tr><td>80</td><td>IIS — the FlowAccel website (what users open)</td></tr>
+  <tr><td>3000</td><td>Node backend (internal — reached via the proxy only)</td></tr>
+  <tr><td>5432</td><td>PostgreSQL database (internal)</td></tr>
+</table>
+
+<h3>Updating the app later</h3>
+<pre><code># 1. Get the new code (git pull, or copy new files)
+# 2. Rebuild the frontend
+cd C:\Apps\flowaccel\frontend
+npm run build
+# 3. Re-deploy to IIS (PowerShell as Administrator)
+cd C:\Apps\flowaccel
+PowerShell -ExecutionPolicy Bypass -File .\deploy-to-iis.ps1
+# 4. Restart the backend
+pm2 restart jotflow-backend</code></pre>
+
+<h3>Install order — at a glance</h3>
+<ol>
+  <li>Install Node.js, PostgreSQL, IIS, URL Rewrite, ARR, PM2 &nbsp;(Part A)</li>
+  <li>Copy the project to <code>C:\Apps\flowaccel</code> &nbsp;(Part B)</li>
+  <li><code>npm install</code> in <code>backend</code> and <code>frontend</code> &nbsp;(Part C)</li>
+  <li>Create the database &nbsp;(Part D1)</li>
+  <li>Create <code>backend\.env</code> &nbsp;(Part E)</li>
+  <li>Run the migration: <code>node db/migrate.js</code> &nbsp;(Part D2)</li>
+  <li>Build the frontend: <code>npm run build</code> &nbsp;(Part F)</li>
+  <li>Deploy to IIS: <code>deploy-to-iis.ps1</code> &nbsp;(Part G)</li>
+  <li>Start the backend: <code>pm2 start ecosystem.config.js</code> &nbsp;(Part H)</li>
+  <li>Create the first user &nbsp;(Part I)</li>
+  <li>Verify &nbsp;(Part J)</li>
+  <li>Auto-start on boot &nbsp;(Part K1)</li>
+</ol>
+
+<footer>
+  FlowAccel / JotFlow — VM Installation Guide • Document v1.0 • Generated 19 May 2026<br/>
+  Architecture: React (Vite) frontend on IIS • Express + Socket.IO backend on PM2 • PostgreSQL database.
+</footer>
+
+</body>
+</html>

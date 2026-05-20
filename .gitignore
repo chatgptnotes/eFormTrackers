@@ -11,3 +11,7 @@ everything-claude-code/
 backend/.env.production
 
 .vercel
+
+# Runtime data - never commit (user PII + logs)
+backend/uploads/
+backend/logs/
