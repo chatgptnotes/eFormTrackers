@@ -28,7 +28,7 @@ $DbHost     = if ($env:FA_DB_HOST)     { $env:FA_DB_HOST }     else { 'localhost
 $DbPort     = if ($env:FA_DB_PORT)     { $env:FA_DB_PORT }     else { '5432' }
 $AdminEmail = if ($env:ADMIN_EMAIL)    { $env:ADMIN_EMAIL }    else { 'admin@flowaccel.local' }
 $AdminPass  = if ($env:ADMIN_PASSWORD) { $env:ADMIN_PASSWORD } else { 'Admin@12345' }
-$BackendPort = '3000'   # MUST match web.config reverse-proxy target
+$BackendPort = '3001'   # MUST match web.config reverse-proxy target (localhost:3001)
 
 function Step($m) { Write-Host "`n=== $m ===" -ForegroundColor Cyan }
 function Ok($m)   { Write-Host "  [OK]  $m" -ForegroundColor Green }
@@ -126,6 +126,24 @@ Step '5/8  Applying database schema'
 node db/migrate.js
 Ok 'schema applied'
 
+# -- 5b. Grant the app role access to every object (dump-restore safety) --
+# If the schema was created (or restored from a dump) under the postgres
+# superuser, the jotflow app role gets "permission denied for table users" on
+# the very first login. These idempotent GRANTs + ALTER DEFAULT PRIVILEGES make
+# jotflow able to read/write all current AND future objects, regardless of who
+# created them. Safe to re-run.
+$grantSql = @"
+GRANT ALL ON SCHEMA public TO $DbUser;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO $DbUser;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO $DbUser;
+GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO $DbUser;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO $DbUser;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO $DbUser;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO $DbUser;
+"@
+& psql -h $DbHost -p $DbPort -U postgres -d $DbName -v ON_ERROR_STOP=0 -c $grantSql 2>&1 | Out-Null
+Ok "privileges granted on '$DbName' to role '$DbUser'"
+
 # -- 6. Seed admin --
 Step '6/8  Seeding default admin user'
 $env:ADMIN_EMAIL = $AdminEmail
@@ -137,8 +155,21 @@ Ok 'admin seeded'
 Step '7/8  Starting backend with PM2'
 pm2 delete jotflow-backend 2>$null | Out-Null
 pm2 start ecosystem.config.js 2>&1 | Out-Host
+
+# Register pm2 to auto-start on boot so the backend survives reboots (otherwise
+# after a restart IIS is up but the backend is dead and every /api call 502s).
+if (-not (Get-Command pm2-startup -ErrorAction SilentlyContinue)) {
+  Warn 'pm2-windows-startup not found - installing globally...'
+  npm install -g pm2-windows-startup 2>&1 | Out-Null
+}
+if (Get-Command pm2-startup -ErrorAction SilentlyContinue) {
+  pm2-startup install 2>&1 | Out-Null
+  Ok 'pm2 registered to start on boot (pm2-windows-startup)'
+} else {
+  Warn 'pm2-windows-startup unavailable - backend will NOT auto-start after reboot. Install it manually: npm i -g pm2-windows-startup; pm2-startup install'
+}
 pm2 save 2>&1 | Out-Null
-Ok "backend running on http://localhost:$BackendPort"
+Ok "backend running on http://localhost:$BackendPort (saved for boot resurrection)"
 Pop-Location
 
 # -- 8. Deploy frontend to IIS --
