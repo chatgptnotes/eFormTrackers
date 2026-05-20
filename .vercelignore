@@ -33,11 +33,13 @@ node_modules
 *.msi
 *.zip
 
-# The on-prem installer download (~800MB of 7-Zip chunks: FlowAccel-Setup-*.7z.*
-# and FlowAccel-Package-*.7z.*) must NOT ship to Vercel - it blows the deployment
-# size limit (this is what left the cloud site empty). The installer is for the
-# IIS-hosted on-prem server; download it from GitHub release-chunks/ instead.
-frontend/public/installer/
+# Ship the installer download directory to Vercel so the login page download
+# buttons work (/installer/FlowAccel-Setup-1.0.4.7z.* and the docs). The *.exe
+# /*.msi/*.zip ignores above would otherwise be irrelevant here (chunks are
+# .7z.NNN), but keep the explicit negation so any future binaries inside the
+# installer folder also ship.
+!frontend/public/installer/
+!frontend/public/installer/**
 
 # Local env
 .env
