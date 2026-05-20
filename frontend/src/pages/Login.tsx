@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, ArrowRight, Loader2, Eye, EyeOff, AlertCircle, ShieldCheck, Download, FileText, Package } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Loader2, Eye, EyeOff, AlertCircle, ShieldCheck, Download, Package, BookOpen } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
@@ -233,42 +233,16 @@ export default function Login() {
         </p>
 
         <a
-          href="/installer/FlowAccel-Installation-Guide.pdf"
+          href="/installer/FlowAccel-Installation-Guide.html"
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-3 w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl bg-white/70 backdrop-blur border border-slate-300 text-slate-800 hover:border-purple-500 hover:bg-white hover:shadow-md transition-all font-semibold text-sm"
+          className="mt-3 w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl bg-white/70 backdrop-blur border border-slate-300 text-slate-800 hover:border-indigo-500 hover:bg-white hover:shadow-md transition-all font-semibold text-sm"
         >
-          <FileText className="w-4 h-4 text-purple-600" />
-          Installation Instructions (PDF)
+          <BookOpen className="w-4 h-4 text-indigo-600" />
+          Installation Guide (Interactive)
         </a>
         <p className="text-center text-slate-400 mt-2 text-[11px]">
-          README walkthrough + setup wizard screenshots (~610 KB).
-        </p>
-
-        <a
-          href="/installer/FlowAccel-Azure-AD-Information-Required.pdf"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-3 w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl bg-white/70 backdrop-blur border border-slate-300 text-slate-800 hover:border-green-500 hover:bg-white hover:shadow-md transition-all font-semibold text-sm"
-        >
-          <FileText className="w-4 h-4 text-green-600" />
-          Azure AD — Information Required (PDF)
-        </a>
-        <p className="text-center text-slate-400 mt-2 text-[11px]">
-          Details needed from your IT team to configure Microsoft sign-in.
-        </p>
-
-        <a
-          href="/installer/FlowAccel-Client-Brief.pdf"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-3 w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl bg-white/70 backdrop-blur border border-slate-300 text-slate-800 hover:border-orange-500 hover:bg-white hover:shadow-md transition-all font-semibold text-sm"
-        >
-          <FileText className="w-4 h-4 text-orange-600" />
-          Getting Started Brief for Clients (PDF)
-        </a>
-        <p className="text-center text-slate-400 mt-2 text-[11px]">
-          One-page summary: prerequisites, install steps, expectations.
+          Step-by-step web guide with screenshots and copy-paste credentials.
         </p>
       </div>
     </div>
