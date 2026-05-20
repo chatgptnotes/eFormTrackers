@@ -33,9 +33,11 @@ node_modules
 *.msi
 *.zip
 
-# Whitelist the installer download directory (negation)
-!frontend/public/installer/
-!frontend/public/installer/**
+# The on-prem installer download (~800MB of 7-Zip chunks: FlowAccel-Setup-*.7z.*
+# and FlowAccel-Package-*.7z.*) must NOT ship to Vercel - it blows the deployment
+# size limit (this is what left the cloud site empty). The installer is for the
+# IIS-hosted on-prem server; download it from GitHub release-chunks/ instead.
+frontend/public/installer/
 
 # Local env
 .env
