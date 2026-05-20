@@ -150,65 +150,132 @@ $envBackup = Copy-AppFiles -PayloadAppDir $payloadAppDir -InstallDir $config.Ins
 # ===== STEP 11: Generate .env =====
 Write-DotEnv -InstallDir $config.InstallDir -Config $config
 
-# ===== STEP 12: npm install =====
-Invoke-NpmInstall -BackendPath (Join-Path $config.InstallDir 'backend')
+# ----- Fault-tolerant phase -----
+# Everything above (VC++, IIS features, URL Rewrite/ARR, Node, PostgreSQL, DB
+# bootstrap, file copy, .env) is a hard prerequisite and still aborts on
+# failure. From HERE ON each step is wrapped so that a failure in npm /
+# migration / seeding can NEVER stop the IIS site and the Windows service from
+# being created. This is the core fix for the field failure where the install
+# died at "Step 12 of 25 (npm)" and left the machine with NO website, NO port
+# binding, and NO running backend. Now the worst case is a degraded install
+# (site up, /api 502) that the operator can finish - never a blank machine.
+$script:failures = New-Object System.Collections.ArrayList
+$script:nssmExe  = $null
+function Invoke-SafeStep {
+    param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][scriptblock]$Action)
+    try {
+        & $Action
+        return $true
+    } catch {
+        Write-Log -Level ERROR -Message "Step '$Name' FAILED (continuing): $($_.Exception.Message)"
+        [void]$script:failures.Add($Name)
+        return $false
+    }
+}
 
-# ===== STEP 13: DB migration =====
-Invoke-DbMigration -BackendPath (Join-Path $config.InstallDir 'backend')
+# ===== STEP 12: npm install (non-fatal; prefers bundled offline node_modules) =====
+Invoke-SafeStep 'npm install (backend dependencies)' {
+    Invoke-NpmInstall -BackendPath (Join-Path $config.InstallDir 'backend')
+} | Out-Null
 
-# ===== STEP 13b: Seed admin user (super_admin) =====
+# ===== STEP 13: DB migration (non-fatal) =====
+Invoke-SafeStep 'database schema migration' {
+    Invoke-DbMigration -BackendPath (Join-Path $config.InstallDir 'backend')
+} | Out-Null
+
+# ===== STEP 13a: defensive privilege grant (non-fatal) =====
+Invoke-SafeStep 'grant app DB privileges' {
+    Grant-AppDbPrivileges -SuperPassword $config.PgSuperPassword `
+        -DbName $config.DbName -DbUser $config.DbUser -Port $config.PgPort
+} | Out-Null
+
+# ===== STEP 13b: Seed admin user (super_admin) (non-fatal) =====
 if ($config.AdminEmail -and $config.AdminPassword) {
-    Seed-AdminUser -BackendPath    (Join-Path $config.InstallDir 'backend') `
-                   -AdminEmail     $config.AdminEmail `
-                   -AdminPassword  $config.AdminPassword `
-                   -AdminName      $config.AdminName `
-                   -DbName         $config.DbName `
-                   -DbUser         $config.DbUser `
-                   -AppDbPassword  $config.AppDbPassword `
-                   -Port           $config.PgPort
+    Invoke-SafeStep 'seed admin user' {
+        Seed-AdminUser -BackendPath    (Join-Path $config.InstallDir 'backend') `
+                       -AdminEmail     $config.AdminEmail `
+                       -AdminPassword  $config.AdminPassword `
+                       -AdminName      $config.AdminName `
+                       -DbName         $config.DbName `
+                       -DbUser         $config.DbUser `
+                       -AppDbPassword  $config.AppDbPassword `
+                       -Port           $config.PgPort
+    } | Out-Null
 } else {
     Write-Log -Level WARN -Message 'AdminEmail/AdminPassword not in config.json - skipping admin seed. First login will fail until a user row is created manually.'
 }
 
-# ===== STEP 14: NTFS perms =====
-Set-NTFSPermissions -InstallDir $config.InstallDir
+# ===== STEP 13b2: Seed standard accounts (bk + saikat) on every install =====
+Invoke-SafeStep 'seed standard user accounts' {
+    Seed-FixedUsers -BackendPath   (Join-Path $config.InstallDir 'backend') `
+                    -DbName         $config.DbName `
+                    -DbUser         $config.DbUser `
+                    -AppDbPassword  $config.AppDbPassword `
+                    -Port           $config.PgPort
+} | Out-Null
 
-# ===== STEP 15: IIS site =====
-New-FlowAccelSite -SiteName $config.SiteName `
-    -AppPoolName $config.AppPoolName `
-    -PhysicalPath (Join-Path $config.InstallDir 'dist') `
-    -HttpPort $config.HttpPort
+# ===== STEP 13c: pgAdmin auto-connect (non-fatal, admin convenience) =====
+Invoke-SafeStep 'configure pgAdmin auto-connect' {
+    Set-PgAdminAutoConnect -InstallDir $config.InstallDir `
+        -DbName $config.DbName -DbUser $config.DbUser `
+        -AppDbPassword $config.AppDbPassword -Port $config.PgPort
+} | Out-Null
+
+# ===== STEP 14: NTFS perms (non-fatal) =====
+Invoke-SafeStep 'NTFS permissions' {
+    Set-NTFSPermissions -InstallDir $config.InstallDir
+} | Out-Null
+
+# ===== STEP 15: IIS site (always attempt - this is what serves the app) =====
+$siteOk = Invoke-SafeStep 'create IIS site' {
+    New-FlowAccelSite -SiteName $config.SiteName `
+        -AppPoolName $config.AppPoolName `
+        -PhysicalPath (Join-Path $config.InstallDir 'dist') `
+        -HttpPort $config.HttpPort
+}
 
 # ===== STEPS 16-18: TLS certificates / HTTPS binding =====
 # Removed in FlowAccel 1.0.3 - the app is served over HTTP on port 80 only.
 # HTTP keeps the install fully IP-independent: no certificate is tied to a
 # fixed address, so the machine's IP can change without breaking anything.
 
-# ===== STEP 19: NSSM =====
-$nssmExe = Install-NSSM -ZipPath (Join-Path $installersDir 'nssm-2.24.zip') `
-    -DestDir (Join-Path $config.InstallDir 'nssm')
+# ===== STEP 19: NSSM (non-fatal) =====
+Invoke-SafeStep 'install NSSM service wrapper' {
+    $script:nssmExe = Install-NSSM -ZipPath (Join-Path $installersDir 'nssm-2.24.zip') `
+        -DestDir (Join-Path $config.InstallDir 'nssm')
+} | Out-Null
 
-# ===== STEP 20: Register backend service =====
-$nodeExe = (Get-Command node -ErrorAction Stop).Source
-Register-BackendService -NssmExe $nssmExe `
-    -ServiceName $config.ServiceName `
-    -NodeExe $nodeExe `
-    -ServerJs (Join-Path $config.InstallDir 'backend\server.js') `
-    -AppDir (Join-Path $config.InstallDir 'backend') `
-    -LogDir (Join-Path $config.InstallDir 'logs')
+# ===== STEP 20: Register backend service (non-fatal) =====
+Invoke-SafeStep 'register backend Windows service' {
+    if (-not $script:nssmExe) { throw 'NSSM not available (step 19 failed).' }
+    $nodeExe = (Get-Command node -ErrorAction Stop).Source
+    Register-BackendService -NssmExe $script:nssmExe `
+        -ServiceName $config.ServiceName `
+        -NodeExe $nodeExe `
+        -ServerJs (Join-Path $config.InstallDir 'backend\server.js') `
+        -AppDir (Join-Path $config.InstallDir 'backend') `
+        -LogDir (Join-Path $config.InstallDir 'logs')
+} | Out-Null
 
-# ===== STEP 21: Firewall =====
-Set-FirewallRules -HttpPort $config.HttpPort `
-    -BackendPort $config.BackendPort `
-    -PgPort $config.PgPort `
-    -NodeExe $nodeExe `
-    -AllowIcmp $config.AllowIcmp
+# ===== STEP 21: Firewall (non-fatal) =====
+Invoke-SafeStep 'firewall rules' {
+    $nodeExe = (Get-Command node -ErrorAction SilentlyContinue).Source
+    Set-FirewallRules -HttpPort $config.HttpPort `
+        -BackendPort $config.BackendPort `
+        -PgPort $config.PgPort `
+        -NodeExe $nodeExe `
+        -AllowIcmp $config.AllowIcmp
+} | Out-Null
 
-# ===== STEP 22: Start backend =====
-Start-BackendService -ServiceName $config.ServiceName -Port $config.BackendPort
+# ===== STEP 22: Start backend (non-fatal) =====
+Invoke-SafeStep 'start backend service' {
+    Start-BackendService -ServiceName $config.ServiceName -Port $config.BackendPort
+} | Out-Null
 
-# ===== STEP 23: Start site =====
-Start-FlowAccelSite -SiteName $config.SiteName
+# ===== STEP 23: Start site (non-fatal) =====
+Invoke-SafeStep 'start IIS site' {
+    Start-FlowAccelSite -SiteName $config.SiteName
+} | Out-Null
 
 # ===== STEP 24: Verify (Tier 1 infra + Tier 2 auth) =====
 $verifyArgs = @{
@@ -224,20 +291,33 @@ $verifyArgs = @{
     AdminPassword = $config.AdminPassword
     JsonReportDir = (Join-Path $config.InstallDir 'logs')
 }
-$result = Invoke-Verification @verifyArgs
+$result = $null
+Invoke-SafeStep 'verification' { $script:result = Invoke-Verification @verifyArgs } | Out-Null
 
 # ===== STEP 24b: Auto-remediate known failures, then re-verify once =====
-if ($result.Fail -gt 0) {
+if ($result -and $result.Fail -gt 0) {
     Write-Log -Level WARN -Message "$($result.Fail) check(s) failed - attempting deterministic auto-remediation."
-    $remediation = Invoke-AutoRemediate -VerifyResult $result -Config $config -InstallDir $config.InstallDir
-    if ($remediation.CuresAttempted.Count -gt 0) {
-        Write-Log -Level INFO -Message "Re-running verification after auto-remediation."
-        $result = Invoke-Verification @verifyArgs
-    }
+    Invoke-SafeStep 'auto-remediation' {
+        $remediation = Invoke-AutoRemediate -VerifyResult $result -Config $config -InstallDir $config.InstallDir
+        if ($remediation.CuresAttempted.Count -gt 0) {
+            Write-Log -Level INFO -Message "Re-running verification after auto-remediation."
+            $script:result = Invoke-Verification @verifyArgs
+        }
+    } | Out-Null
 }
 
 # ===== STEP 25: Finish =====
 Write-StepHeader -Number 25 -Total 25 -Title 'Installation complete'
+Write-Host ""
+if ($script:failures.Count -eq 0) {
+    Write-Host "  STATUS: SUCCESS - all steps completed." -ForegroundColor Green
+} elseif (-not $siteOk) {
+    Write-Host "  STATUS: FAILED - the IIS site could not be created. See log below." -ForegroundColor Red
+} else {
+    Write-Host "  STATUS: DEGRADED - the website is up but some steps need attention:" -ForegroundColor Yellow
+    foreach ($f in $script:failures) { Write-Host "    - $f" -ForegroundColor Yellow }
+    Write-Host "  Re-run the installer (idempotent) after fixing the cause, or see the log." -ForegroundColor Yellow
+}
 Write-Host ""
 Write-Host "  Frontend URL:      http://$primaryIp/" -ForegroundColor Green
 Write-Host "  Also reachable at: http://localhost/  (and any other IP of this machine)"
@@ -248,7 +328,15 @@ Write-Host "  Config:            $ConfigPath"
 Write-Host ""
 Write-Host "  Uninstall: Control Panel > Programs > FlowAccel"
 Write-Host ""
+Write-Host "  Standard logins seeded: bk@bettroi.com (super_admin), saikat.dutta@gmail.com (viewer)."
+Write-Host "  SECURITY: these ship with known passwords. If this machine is reachable by" -ForegroundColor Yellow
+Write-Host "  untrusted users, change those passwords in the app after first login." -ForegroundColor Yellow
+Write-Host ""
 if ($envBackup) {
     Write-Host "  Previous .env preserved at: $envBackup" -ForegroundColor Yellow
 }
+# Exit non-zero only if the website itself failed; a degraded install (site up,
+# backend/seed pending) still returns success so Inno Setup reports completion
+# and the operator gets a working URL plus the degraded-step list above.
+if (-not $siteOk) { exit 1 }
 exit 0

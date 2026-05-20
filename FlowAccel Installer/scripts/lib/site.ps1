@@ -29,10 +29,27 @@ function Copy-AppFiles {
         $dst = Join-Path $InstallDir $i
         Write-Log -Level INFO -Message "Copying $i ..."
         if ((Get-Item $src).PSIsContainer) {
+            # /MIR mirrors source->dest. node_modules is excluded here so a
+            # /MIR run can never DELETE an already-installed dependency tree in
+            # the destination. Bundled node_modules (offline deps) is deployed
+            # separately below, additively, so it survives re-runs.
             robocopy $src $dst /MIR /NFL /NDL /NJH /NJS /NP /XD node_modules logs uploads | Out-Null
         } else {
             Copy-Item $src $dst -Force
         }
+    }
+
+    # Deploy bundled backend node_modules (offline dependencies) if the payload
+    # ships them. Additive copy (no /MIR delete semantics against the parent),
+    # so this never wipes deps and lets the npm step (Step 12) skip the network.
+    $bundledNm = Join-Path $PayloadAppDir 'backend\node_modules'
+    if (Test-Path $bundledNm) {
+        $destNm = Join-Path $InstallDir 'backend\node_modules'
+        Write-Log -Level INFO -Message 'Deploying bundled backend node_modules (offline dependencies)...'
+        robocopy $bundledNm $destNm /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
+        Write-Log -Level OK -Message 'Bundled node_modules deployed.'
+    } else {
+        Write-Log -Level INFO -Message 'No bundled node_modules in payload - backend deps will be installed online at Step 12.'
     }
 
     # web.config must sit INSIDE the IIS site root, which is the dist\ folder

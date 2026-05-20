@@ -19,10 +19,14 @@ function Set-FirewallRules {
         $existing | Remove-NetFirewallRule
     }
 
-    # 1. HTTP inbound (Domain + Private only) - the only inbound web port
+    # 1. HTTP inbound - the only inbound web port. MUST be open on ALL profiles
+    # including Public: cloud servers (AWS/Azure/GCP) almost always classify
+    # their NIC as Public, and end users reach FlowAccel by hitting the public
+    # IP. Restricting this to Domain,Private silently blocked port 80 on those
+    # machines (the install looked fine but "hit the IP" never connected).
     New-NetFirewallRule -DisplayName 'FlowAccel: HTTP Inbound' -Group $script:FwGroup `
         -Direction Inbound -Action Allow -Protocol TCP -LocalPort $HttpPort `
-        -Profile Domain,Private | Out-Null
+        -Profile Any | Out-Null
 
     # 3. Node backend - loopback only (allow)
     New-NetFirewallRule -DisplayName 'FlowAccel: Node Backend Loopback' -Group $script:FwGroup `
