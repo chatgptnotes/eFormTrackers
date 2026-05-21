@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FlowAccel — Manual IIS Deployment Guide</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f0f4f8;
+    color: #1a202c;
+    padding: 32px 16px 64px;
+    line-height: 1.6;
+  }
+
+  .container { max-width: 860px; margin: 0 auto; }
+
+  .header {
+    background: linear-gradient(135deg, #1e3a5f 0%, #2d6a9f 100%);
+    color: #fff; border-radius: 14px;
+    padding: 36px 40px 28px; margin-bottom: 28px;
+    box-shadow: 0 4px 20px rgba(30,58,95,0.25);
+  }
+  .header h1 { font-size: 1.9rem; font-weight: 700; letter-spacing: -0.5px; }
+  .header p  { margin-top: 6px; opacity: 0.85; font-size: 0.95rem; }
+
+  .kp-grid { display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; }
+  .kp { display:flex; align-items:flex-start; gap:14px; border-radius:10px;
+        padding:14px 18px; border-width:2px; border-style:solid; border-left-width:6px; }
+  .kp-yellow { background:#fff3cd; border-color:#f0a500; }
+  .kp-red    { background:#ffeaea; border-color:#e53e3e; }
+  .kp-green  { background:#e8f5e9; border-color:#43a047; }
+  .kp-blue   { background:#eef2ff; border-color:#4f46e5; }
+  .kp-icon   { font-size:1.5rem; flex-shrink:0; }
+  .kp-title  { font-weight:700; font-size:0.97rem; margin-bottom:3px; }
+  .kp-body   { font-size:0.88rem; }
+  .kp-yellow .kp-title { color:#7a4700; } .kp-yellow .kp-body { color:#5a3700; }
+  .kp-red    .kp-title { color:#7b1a1a; } .kp-red    .kp-body { color:#6b2020; }
+  .kp-green  .kp-title { color:#1b5e20; } .kp-green  .kp-body { color:#2e7d32; }
+  .kp-blue   .kp-title { color:#1e1b74; } .kp-blue   .kp-body { color:#312e81; }
+
+  .section-label { font-size:0.75rem; font-weight:700; text-transform:uppercase;
+                    letter-spacing:1px; color:#64748b; margin-bottom:12px; }
+  .steps { display:flex; flex-direction:column; gap:20px; }
+  .step { background:#fff; border-radius:12px; box-shadow:0 2px 10px rgba(0,0,0,0.07); overflow:hidden; }
+  .step-header { display:flex; align-items:center; gap:14px; padding:16px 22px;
+                  background:#f7faff; border-bottom:1px solid #e2e8f0; }
+  .step-num { width:34px; height:34px; border-radius:50%; background:#2d6a9f; color:#fff;
+               font-weight:700; font-size:0.95rem; display:flex; align-items:center;
+               justify-content:center; flex-shrink:0; }
+  .step-title { font-size:1.02rem; font-weight:600; color:#1e3a5f; }
+  .step-body  { padding:18px 22px; }
+  .step-body p { font-size:0.93rem; margin-bottom:10px; }
+  .step-body p:last-child { margin-bottom:0; }
+  .step-body ul, .step-body ol { margin: 8px 0 10px 22px; }
+  .step-body li { font-size:0.92rem; margin-bottom: 4px; }
+
+  .hl { background:#eef6ff; border:1px solid #b3d4f5; border-radius:4px;
+         padding:1px 6px; font-family:monospace; font-size:0.88rem; color:#1a4f80; }
+  .tip { background:#e8f5e9; border-left:4px solid #43a047; border-radius:6px;
+          padding:10px 14px; font-size:0.88rem; color:#1b5e20; margin-top:10px; }
+  .warn { background:#fff3cd; border-left:4px solid #f0a500; border-radius:6px;
+           padding:10px 14px; font-size:0.88rem; color:#7a4700; margin-top:10px; }
+  .danger { background:#ffeaea; border-left:4px solid #e53e3e; border-radius:6px;
+           padding:10px 14px; font-size:0.88rem; color:#7b1a1a; margin-top:10px; }
+  .cmd-block { background:#1e2a3a; color:#a8e6cf; border-radius:8px; padding:12px 16px;
+                font-family:"Courier New",monospace; font-size:0.87rem; margin:10px 0;
+                white-space: pre-wrap; word-break: break-all; }
+
+  .verify-list { list-style:none; display:flex; flex-direction:column; gap:10px; }
+  .verify-list li { display:flex; align-items:flex-start; gap:10px;
+                     background:#f9f9ff; border:1px solid #d8dff0;
+                     border-radius:8px; padding:11px 14px; font-size:0.9rem; }
+  .vcmd { font-family:monospace; background:#eef0ff; border-radius:4px;
+           padding:1px 6px; font-size:0.84rem; color:#3730a3; }
+
+  .footer { text-align:center; margin-top:40px; font-size:0.8rem; color:#94a3b8; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>FlowAccel — Manual IIS Deployment Guide</h1>
+    <p>Windows Server &nbsp;|&nbsp; IIS + PostgreSQL &nbsp;|&nbsp; Step-by-step manual deployment &nbsp;|&nbsp; <strong>IIS v1.1</strong> &nbsp;·&nbsp; 2026-05-21 11:57 IST</p>
+  </div>
+
+  <!-- Download / resources box -->
+  <div style="background:#fff; border:2px solid #2d6a9f; border-radius:12px;
+              padding:18px 22px; margin-bottom:24px;
+              box-shadow:0 2px 12px rgba(45,106,159,0.12);">
+    <div style="font-size:0.78rem; font-weight:700; letter-spacing:1px;
+                color:#2d6a9f; text-transform:uppercase; margin-bottom:8px;">
+      📦 Download everything from here
+    </div>
+    <a href="https://drive.google.com/drive/folders/1Z8uq4fxAHgJXZaXPMBz_dvcenwlFs8yp?usp=sharing"
+       target="_blank" rel="noopener noreferrer"
+       style="display:inline-block; font-family:monospace; font-size:0.95rem;
+              color:#1e4f80; word-break:break-all; margin-bottom:10px;
+              background:#eef6ff; border:1px solid #b3d4f5; border-radius:6px;
+              padding:8px 12px; text-decoration:none;">
+      https://drive.google.com/drive/folders/1Z8uq4fxAHgJXZaXPMBz_dvcenwlFs8yp?usp=sharing
+    </a>
+    <p style="font-size:0.9rem; color:#334155; margin-top:8px;">
+      This link contains everything you need for the deployment — open it on the
+      <strong>deployment machine</strong> and download all three bundles:
+    </p>
+    <ul style="margin:8px 0 0 22px; font-size:0.9rem; color:#334155;">
+      <li><strong>FlowAccel project files</strong> — the <code>app\</code> folder you'll copy to <span class="hl">E:\FlowAccel\</span> in step 5.</li>
+      <li><strong>Installer / packages folder</strong> — the third-party MSI/EXE installers (Node.js 18, URL Rewrite, iisnode, PostgreSQL 15, VC++ redist) used in step 4.</li>
+      <li><strong>SQL dump file</strong> — the <code>.sql</code> schema/data export loaded into pgAdmin in step 8.</li>
+    </ul>
+    <div style="background:#fff3cd; border-left:4px solid #f0a500; border-radius:6px;
+                padding:10px 14px; font-size:0.85rem; color:#7a4700; margin-top:12px;">
+      ⚠️ Download on the same Windows server where FlowAccel will run. Do not download
+      on a different PC and copy files across — paths, permissions, and the
+      installer all assume the target machine.
+    </div>
+  </div>
+
+  <!-- Key points -->
+  <div class="section-label">Before you start</div>
+  <div class="kp-grid">
+    <div class="kp kp-red">
+      <div class="kp-icon">🛠️</div>
+      <div>
+        <div class="kp-title">Run every command as Administrator</div>
+        <div class="kp-body">You'll be enabling Windows roles, writing to <strong>E:\</strong>, modifying IIS bindings, and loading SQL into PostgreSQL. Open PowerShell / Command Prompt with <strong>Run as administrator</strong> for every step.</div>
+      </div>
+    </div>
+    <div class="kp kp-yellow">
+      <div class="kp-icon">🌐</div>
+      <div>
+        <div class="kp-title">Port swap — IIS Default Web Site → 8081, FlowAccel takes port 80</div>
+        <div class="kp-body">Move the IIS <strong>Default Web Site</strong> off port 80 onto port <strong>8081</strong> (so it gets out of the way), then bind the <strong>FlowAccel</strong> site to the freed-up port <strong>80</strong>. End users open <span class="hl">http://&lt;server-ip&gt;/</span> with no port suffix.</div>
+      </div>
+    </div>
+    <div class="kp kp-green">
+      <div class="kp-icon">💾</div>
+      <div>
+        <div class="kp-title">All project files live on the E: drive</div>
+        <div class="kp-body">Deployment root is <span class="hl">E:\FlowAccel\</span>. The IIS application pool user must have NTFS permissions on this folder — granted manually in step 6.</div>
+      </div>
+    </div>
+    <div class="kp kp-blue">
+      <div class="kp-icon">🗄️</div>
+      <div>
+        <div class="kp-title">Database: PostgreSQL, database name "flowaccel"</div>
+        <div class="kp-body">Load the schema dump with <code style="background:#dde3ff;border-radius:3px;padding:1px 5px;">psql.exe -U postgres -d flowaccel -f &lt;your-sql-file&gt;</code> from the PostgreSQL <strong>bin</strong> folder.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Steps -->
+  <div class="section-label" style="margin-top:8px;">Step-by-step deployment</div>
+  <div class="steps">
+
+    <!-- Step 1 -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">1</div>
+        <div class="step-title">Enable IIS (Internet Information Services)</div>
+      </div>
+      <div class="step-body">
+        <p>Open <strong>Server Manager</strong> → <strong>Manage</strong> → <strong>Add Roles and Features</strong>, or run the PowerShell command below as administrator.</p>
+        <div class="cmd-block">Enable-WindowsOptionalFeature -Online -FeatureName IIS-WebServerRole, IIS-WebServer, IIS-CommonHttpFeatures, IIS-StaticContent, IIS-DefaultDocument, IIS-DirectoryBrowsing, IIS-HttpErrors, IIS-HttpRedirect, IIS-ApplicationDevelopment, IIS-NetFxExtensibility45, IIS-HealthAndDiagnostics, IIS-HttpLogging, IIS-Security, IIS-RequestFiltering, IIS-Performance, IIS-WebServerManagementTools, IIS-ManagementConsole, IIS-IIS6ManagementCompatibility, IIS-Metabase, IIS-WindowsAuthentication -All</div>
+        <p>Wait for the install to finish, then verify by opening a browser to <span class="hl">http://localhost</span> — you should see the default IIS landing page.</p>
+        <div class="tip">💡 On Windows 10 / 11 desktop editions, use <strong>Control Panel → Programs → Turn Windows features on or off</strong> instead of Server Manager. Check every node under <strong>Internet Information Services</strong>.</div>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">2</div>
+        <div class="step-title">Move the IIS Default Web Site from port 80 → 8081 (frees up port 80 for FlowAccel)</div>
+      </div>
+      <div class="step-body">
+        <p>The IIS <strong>Default Web Site</strong> ships bound to port 80. We move it onto <strong>8081</strong> so port 80 is free, then bind the real FlowAccel site to port <strong>80</strong> in step 5.</p>
+        <p>Open <strong>IIS Manager</strong> (<code style="background:#dde3ff;border-radius:3px;padding:1px 5px;">inetmgr</code> in Run).</p>
+        <ol>
+          <li>In the left tree, expand the server node → <strong>Sites</strong> → click <strong>Default Web Site</strong>.</li>
+          <li>On the right panel, click <strong>Bindings…</strong>.</li>
+          <li>Select the existing <strong>http</strong> binding (Port 80) → click <strong>Edit…</strong>.</li>
+          <li>Change <strong>Port</strong> from <span class="hl">80</span> to <span class="hl">8081</span> → click <strong>OK</strong> → <strong>Close</strong>.</li>
+          <li>Click <strong>Restart</strong> on the right-side <strong>Manage Website</strong> panel.</li>
+        </ol>
+        <p>Or do it from the command line:</p>
+        <div class="cmd-block">%windir%\system32\inetsrv\appcmd set site "Default Web Site" /bindings:"http/*:8081:"
+iisreset</div>
+        <p>Verify in a browser at <span class="hl">http://localhost:8081</span> (the placeholder IIS page should now answer on the new port). Port <strong>80</strong> is now free — FlowAccel will claim it in step 5.</p>
+        <div class="warn">⚠️ Open <strong>both</strong> ports in Windows Firewall — port 80 (FlowAccel) and 8081 (Default Web Site):<br/>
+          <code style="background:#fff;border:1px solid #f0a500;border-radius:3px;padding:1px 5px;display:block;margin-top:6px;">netsh advfirewall firewall add rule name="FlowAccel HTTP 80" dir=in action=allow protocol=TCP localport=80</code>
+          <code style="background:#fff;border:1px solid #f0a500;border-radius:3px;padding:1px 5px;display:block;margin-top:4px;">netsh advfirewall firewall add rule name="IIS Default 8081" dir=in action=allow protocol=TCP localport=8081</code>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">3</div>
+        <div class="step-title">Enable IIS roles and security permissions</div>
+      </div>
+      <div class="step-body">
+        <p>In <strong>IIS Manager</strong>, with the server node selected, double-click <strong>Authentication</strong> and confirm:</p>
+        <ul>
+          <li><strong>Anonymous Authentication</strong> — Enabled</li>
+          <li><strong>Windows Authentication</strong> — Enabled (if your environment uses AD SSO)</li>
+        </ul>
+        <p>Then double-click <strong>Authorization Rules</strong> and ensure <strong>Allow All Users</strong> is present.</p>
+        <p>Make sure these role services are installed (run as administrator):</p>
+        <div class="cmd-block">Enable-WindowsOptionalFeature -Online -FeatureName IIS-StaticContent, IIS-RequestFiltering, IIS-WindowsAuthentication, IIS-ManagementConsole -All</div>
+        <p>Restart IIS to apply changes:</p>
+        <div class="cmd-block">iisreset</div>
+      </div>
+    </div>
+
+    <!-- Step 4 -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">4</div>
+        <div class="step-title">Install all third-party dependencies from the zip</div>
+      </div>
+      <div class="step-body">
+        <p>The FlowAccel package zip ships a <span class="hl">packages\</span> folder (sometimes named <span class="hl">third-party\</span> or <span class="hl">installers\</span>) with all required runtimes.</p>
+        <p><strong>Open the packages folder and install each installer one by one</strong> — right-click each file → <strong>Run as administrator</strong>. <strong>Install Node.js FIRST</strong>, then the rest in the order shown below:</p>
+        <ol>
+          <li><strong>Node.js 18.x</strong> — <span class="hl">node-v18.x.x-x64.msi</span> &nbsp;<em>← install this one FIRST</em></li>
+          <li><strong>URL Rewrite Module</strong> for IIS — <span class="hl">rewrite_amd64_en-US.msi</span></li>
+          <li><strong>iisnode</strong> — <span class="hl">iisnode-full-v0.2.x-x64.msi</span></li>
+          <li><strong>PostgreSQL 15</strong> — <span class="hl">postgresql-15.x-windows-x64.exe</span><br/>
+              During setup, set the <strong>postgres</strong> superuser password — remember it, you'll need it in step 8.</li>
+          <li><strong>Visual C++ Redistributable</strong> (if included in the folder) — <span class="hl">vc_redist.x64.exe</span></li>
+          <li><strong>Application Request Routing (ARR)</strong> for IIS — <span class="hl">requestRouter_amd64.msi</span><br/>
+              Enables IIS to reverse-proxy requests to the Node backend.</li>
+          <li><strong>PM2</strong> (Node process manager) — installed via npm <em>after</em> Node.js is set up:<br/>
+              <code style="background:#dde3ff;border-radius:3px;padding:1px 5px;">npm install -g pm2</code></li>
+        </ol>
+        <p>Don't skip any file in the <span class="hl">packages\</span> folder — go through them one by one until every installer has been run.</p>
+        <div class="tip">💡 After installing each MSI/EXE, you don't need to reboot — but do <strong>close and reopen</strong> any Command Prompt / PowerShell window so the new PATH entries become visible.</div>
+      </div>
+    </div>
+
+    <!-- Step 5 -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">5</div>
+        <div class="step-title">Copy files to E:\ and create the FlowAccel site on port 80</div>
+      </div>
+      <div class="step-body">
+        <p>Create the deployment root and copy the FlowAccel application files into it:</p>
+        <div class="cmd-block">mkdir E:\FlowAccel
+xcopy /E /I /Y "&lt;path-to-extracted-zip&gt;\app" "E:\FlowAccel\"</div>
+        <p>After the copy, you should have this layout:</p>
+        <div class="cmd-block">E:\FlowAccel\
+   ├─ dist\              ← static frontend (served by IIS)
+   ├─ api\               ← Node.js backend (iisnode entry point)
+   ├─ web.config         ← IIS site config
+   ├─ package.json
+   └─ node_modules\      ← run "npm install --production" if missing</div>
+        <p>Now create a <strong>new IIS site</strong> for FlowAccel bound to port <strong>80</strong> (this is the URL end users will open — no port suffix needed):</p>
+        <ol>
+          <li>Open <strong>IIS Manager</strong> → right-click <strong>Sites</strong> → <strong>Add Website…</strong>.</li>
+          <li><strong>Site name:</strong> <span class="hl">FlowAccel</span></li>
+          <li><strong>Physical path:</strong> <span class="hl">E:\FlowAccel\dist</span> (or the path that contains <code>web.config</code>)</li>
+          <li><strong>Binding:</strong> Type = <code>http</code>, IP = <code>All Unassigned</code>, <strong>Port = 80</strong>, Host name = (blank)</li>
+          <li>Click <strong>OK</strong>.</li>
+        </ol>
+        <p>Or do it from the command line:</p>
+        <div class="cmd-block">%windir%\system32\inetsrv\appcmd add site /name:"FlowAccel" /physicalPath:"E:\FlowAccel\dist" /bindings:"http/*:80:"
+iisreset</div>
+        <div class="tip">💡 After this step you should have <strong>two</strong> sites in IIS Manager: <em>Default Web Site</em> on port 8081 (placeholder) and <em>FlowAccel</em> on port 80 (the real app).</div>
+        <div class="warn">⚠️ If <code>iisreset</code> fails with "port 80 already in use", you didn't move the Default Web Site off port 80 in step 2 — go back and complete step 2 before retrying.</div>
+      </div>
+    </div>
+
+    <!-- Step 6 -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">6</div>
+        <div class="step-title">Grant IIS user permissions on E:\FlowAccel</div>
+      </div>
+      <div class="step-body">
+        <p>IIS runs the site under the application pool identity — by default <strong>IIS AppPool\DefaultAppPool</strong>, plus the built-in groups <strong>IIS_IUSRS</strong> and <strong>IUSR</strong>. All three need NTFS access on the folder.</p>
+        <p><strong>Via Explorer (matches the screenshot):</strong></p>
+        <ol>
+          <li>Right-click <span class="hl">E:\FlowAccel</span> → <strong>Properties</strong> → <strong>Security</strong> tab → <strong>Edit…</strong>.</li>
+          <li>Click <strong>Add…</strong>. In <em>Enter the object names to select</em>, type each name below (one at a time), click <strong>Check Names</strong>, then <strong>OK</strong>:
+            <ul>
+              <li><span class="hl">IIS_IUSRS</span></li>
+              <li><span class="hl">IUSR</span></li>
+              <li><span class="hl">IIS AppPool\DefaultAppPool</span> &nbsp;<em>(Locations… → choose the local machine first)</em></li>
+              <li><span class="hl">NETWORK SERVICE</span></li>
+            </ul>
+          </li>
+          <li>For each added principal, tick <strong>Modify</strong>, <strong>Read &amp; execute</strong>, <strong>List folder contents</strong>, <strong>Read</strong>, and <strong>Write</strong> under <em>Allow</em> → <strong>OK</strong>.</li>
+        </ol>
+        <p><strong>Or, equivalently, from an elevated PowerShell:</strong></p>
+        <div class="cmd-block">icacls "E:\FlowAccel" /grant "IIS_IUSRS:(OI)(CI)M" /T
+icacls "E:\FlowAccel" /grant "IUSR:(OI)(CI)M" /T
+icacls "E:\FlowAccel" /grant "IIS AppPool\DefaultAppPool:(OI)(CI)M" /T
+icacls "E:\FlowAccel" /grant "NETWORK SERVICE:(OI)(CI)M" /T</div>
+        <div class="warn">⚠️ If you use a non-default app pool (e.g. <code>FlowAccelPool</code>), substitute <code>IIS AppPool\FlowAccelPool</code> in the commands above.</div>
+      </div>
+    </div>
+
+    <!-- Step 7 -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">7</div>
+        <div class="step-title">Verify all dependencies are installed</div>
+      </div>
+      <div class="step-body">
+        <p>Open a <strong>new</strong> elevated Command Prompt (so PATH is refreshed) and run each check. All must succeed.</p>
+        <ul class="verify-list">
+          <li>
+            <span style="font-size:1.1rem;flex-shrink:0;">🟢</span>
+            <div>
+              <strong>Node.js</strong><br/>
+              <span class="vcmd">node --version</span>
+              <span style="font-size:0.85rem;color:#475569;margin-left:6px;">→ v18.x.x</span>
+            </div>
+          </li>
+          <li>
+            <span style="font-size:1.1rem;flex-shrink:0;">🟢</span>
+            <div>
+              <strong>npm</strong><br/>
+              <span class="vcmd">npm --version</span>
+              <span style="font-size:0.85rem;color:#475569;margin-left:6px;">→ 9.x or 10.x</span>
+            </div>
+          </li>
+          <li>
+            <span style="font-size:1.1rem;flex-shrink:0;">🟢</span>
+            <div>
+              <strong>iisnode module loaded by IIS</strong><br/>
+              <span class="vcmd">%windir%\system32\inetsrv\appcmd list module /name:iisnode</span>
+              <span style="font-size:0.85rem;color:#475569;margin-left:6px;">→ MODULE "iisnode" listed</span>
+            </div>
+          </li>
+          <li>
+            <span style="font-size:1.1rem;flex-shrink:0;">🟢</span>
+            <div>
+              <strong>URL Rewrite</strong><br/>
+              <span class="vcmd">%windir%\system32\inetsrv\appcmd list module /name:RewriteModule</span>
+              <span style="font-size:0.85rem;color:#475569;margin-left:6px;">→ MODULE "RewriteModule" listed</span>
+            </div>
+          </li>
+          <li>
+            <span style="font-size:1.1rem;flex-shrink:0;">🟢</span>
+            <div>
+              <strong>PostgreSQL</strong><br/>
+              <span class="vcmd">psql --version</span>
+              <span style="font-size:0.85rem;color:#475569;margin-left:6px;">→ psql (PostgreSQL) 15.x</span>
+            </div>
+          </li>
+          <li>
+            <span style="font-size:1.1rem;flex-shrink:0;">🟢</span>
+            <div>
+              <strong>IIS Default Web Site (port 8081)</strong><br/>
+              <span class="vcmd">curl -I http://localhost:8081</span>
+              <span style="font-size:0.85rem;color:#475569;margin-left:6px;">→ HTTP/1.1 200 OK</span>
+            </div>
+          </li>
+          <li>
+            <span style="font-size:1.1rem;flex-shrink:0;">🟢</span>
+            <div>
+              <strong>FlowAccel site (port 80)</strong><br/>
+              <span class="vcmd">curl -I http://localhost</span>
+              <span style="font-size:0.85rem;color:#475569;margin-left:6px;">→ HTTP/1.1 200 OK</span>
+            </div>
+          </li>
+        </ul>
+        <div class="tip">💡 If <code>psql</code> is not found, add <code>C:\Program Files\PostgreSQL\15\bin</code> to system PATH and reopen the terminal.</div>
+      </div>
+    </div>
+
+    <!-- Step 8 -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">8</div>
+        <div class="step-title">Dump the .sql file into PostgreSQL (via pgAdmin + PowerShell)</div>
+      </div>
+      <div class="step-body">
+        <p>Once all third-party dependencies from step 4 are installed, load the SQL dump into the database. This is a <strong>three-part</strong> procedure: create the DB in pgAdmin → open PowerShell as administrator → run <code>psql</code> from the bin folder.</p>
+
+        <p style="margin-top:12px;font-weight:600;color:#1e3a5f;">8a — Create the database in pgAdmin</p>
+        <ol>
+          <li>Open <strong>pgAdmin 4</strong> (installed with PostgreSQL in step 4).</li>
+          <li>In the left tree, expand <strong>Servers → PostgreSQL 15</strong> and enter the postgres password when prompted.</li>
+          <li>Right-click <strong>Databases</strong> → <strong>Create → Database…</strong>.</li>
+          <li>Enter the <strong>Database name</strong> (e.g. <span class="hl">flowaccel</span>) → click <strong>Save</strong>.</li>
+        </ol>
+        <p>Remember the exact name you used — you'll pass it to <code>-d</code> in step 8c.</p>
+
+        <p style="margin-top:14px;font-weight:600;color:#1e3a5f;">8b — Open PowerShell as Administrator</p>
+        <p>Press <strong>Start</strong> → type <span class="hl">PowerShell</span> → right-click <strong>Windows PowerShell</strong> → <strong>Run as administrator</strong>.</p>
+        <div class="warn">⚠️ A normal (non-admin) PowerShell window will fail with permission errors when reading the SQL file or writing logs. <strong>Always run as administrator</strong> for this step.</div>
+
+        <p style="margin-top:14px;font-weight:600;color:#1e3a5f;">8c — Go to the PostgreSQL <code>bin</code> folder and load the SQL file</p>
+        <p>In the elevated PowerShell window, change into the PostgreSQL <strong>bin</strong> directory of the project (this is the folder where <code>psql.exe</code> lives):</p>
+        <div class="cmd-block">cd "C:\Program Files\PostgreSQL\15\bin"</div>
+        <p>Then run <code>psql.exe</code> with:</p>
+        <ul>
+          <li><code>-U postgres</code> — the superuser name</li>
+          <li><code>-d &lt;database&gt;</code> — the database name you created in pgAdmin in step 8a</li>
+          <li><code>-f "&lt;path-to-your-.sql-file&gt;"</code> — the full path to the dump file</li>
+        </ul>
+        <div class="cmd-block">.\psql.exe -U postgres -d flowaccel -f "C:\Users\Administrator\Desktop\yourfile.sql"</div>
+        <p>Replace <span class="hl">flowaccel</span> with whatever name you used in pgAdmin, and <span class="hl">C:\Users\Administrator\Desktop\yourfile.sql</span> with the real path to your <code>.sql</code> file. When prompted, enter the <strong>postgres</strong> password.</p>
+
+        <div class="tip">💡 Verify the load succeeded — list the tables:<br/>
+          <code style="background:#dde3ff;border-radius:3px;padding:1px 5px;">.\psql.exe -U postgres -d flowaccel -c "\dt"</code>
+        </div>
+        <div class="danger">🚨 If you see <code>permission denied</code> or <code>role "postgres" does not exist</code>, the PostgreSQL service isn't running. Start it from <strong>services.msc</strong> → <strong>postgresql-x64-15</strong> → <strong>Start</strong>.</div>
+
+        <p style="margin-top:18px;font-weight:600;color:#1e3a5f;">8d — After the SQL import: create the app DB user, grant privileges &amp; enable the IIS proxy</p>
+        <p><strong>Only run these once the .sql file has imported successfully.</strong> In the same <strong>elevated PowerShell</strong>, run the block below. It creates the <span class="hl">jotflow</span> application user (idempotent — safe to re-run), grants it access to the <code>flowaccel</code> database, and enables the IIS ARR reverse proxy.</p>
+        <div class="cmd-block">&amp; "C:\Program Files\PostgreSQL\15\bin\psql.exe" -U postgres -h 127.0.0.1 -c "DO `$`$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='jotflow') THEN CREATE USER jotflow WITH PASSWORD 'hope9886@'; END IF; END `$`$; GRANT ALL PRIVILEGES ON DATABASE flowaccel TO jotflow;"
+
+&amp; "C:\Program Files\PostgreSQL\15\bin\psql.exe" -U postgres -h 127.0.0.1 -d flowaccel -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO jotflow; GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO jotflow; ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO jotflow;"</div>
+
+        <p>Then enable the IIS Application Request Routing proxy (installed in step 4):</p>
+        <div class="cmd-block">Set-WebConfigurationProperty -PSPath 'MACHINE/WEBROOT/APPHOST' -Filter 'system.webServer/proxy' -Name 'enabled' -Value 'True'</div>
+
+        <div class="warn">⚠️ If the combined block above errors out, run the three commands <strong>separately</strong> instead:
+          <div class="cmd-block" style="margin-top:8px;">REM 1 — create the user
+&amp; "C:\Program Files\PostgreSQL\15\bin\psql.exe" -U postgres -h 127.0.0.1 -c "CREATE USER jotflow WITH PASSWORD 'hope9886@';"
+
+REM 2 — grant privileges on the flowaccel database
+&amp; "C:\Program Files\PostgreSQL\15\bin\psql.exe" -U postgres -h 127.0.0.1 -d flowaccel -c "GRANT ALL PRIVILEGES ON DATABASE flowaccel TO jotflow; GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO jotflow; GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO jotflow; ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO jotflow;"
+
+REM 3 — enable the IIS ARR proxy
+Set-WebConfigurationProperty -PSPath 'MACHINE/WEBROOT/APPHOST' -Filter 'system.webServer/proxy' -Name 'enabled' -Value 'True'</div>
+        </div>
+        <div class="tip">💡 The <span class="hl">jotflow</span> user / password here must match the DB credentials in the backend <code>.env</code> (see the notes at the bottom of this guide).</div>
+      </div>
+    </div>
+
+    <!-- Step 9 -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">9</div>
+        <div class="step-title">Restart the backend server</div>
+      </div>
+      <div class="step-body">
+        <p>After the database is loaded and the <code>.env</code> values are in place (see the notes at the bottom), restart the Node backend so it picks up the fresh config. In the <strong>elevated PowerShell</strong>, change into the backend folder and start the server:</p>
+        <div class="cmd-block">cd E:\FlowAccel\api
+node server.js</div>
+        <div class="tip">💡 For a long-running, auto-restarting process, use PM2 instead (installed in step 4):<br/>
+          <code style="background:#dde3ff;border-radius:3px;padding:1px 5px;">pm2 restart all</code> &nbsp;(or <code style="background:#dde3ff;border-radius:3px;padding:1px 5px;">pm2 start server.js --name flowaccel</code> the first time).
+        </div>
+        <div class="warn">⚠️ The backend won't authenticate or load workflow data until the <code>.env</code> keys (CLIENT_ID, CLIENT_SECRET, TENANT_ID, JOTFORM_API_KEY, FORM_ID, TEAM_ID) are filled in — see the notes below.</div>
+      </div>
+    </div>
+
+    <!-- Step 10 -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">10</div>
+        <div class="step-title">Final smoke test</div>
+      </div>
+      <div class="step-body">
+        <p>Open a browser on the server and visit the <strong>FlowAccel site on port 80</strong> (no port suffix needed):</p>
+        <div class="cmd-block">http://localhost/</div>
+        <p>You should see the FlowAccel login page. From another machine on the LAN, use the server's IP:</p>
+        <div class="cmd-block">http://&lt;server-ip&gt;/</div>
+        <p>If the page loads, all steps are complete and FlowAccel is live on IIS.</p>
+        <div class="tip">💡 Reminder — port <strong>8081</strong> shows the placeholder IIS Default Web Site, port <strong>80</strong> (the default) is the real FlowAccel app.</div>
+      </div>
+    </div>
+
+  </div><!-- /steps -->
+
+  <!-- Backend .env notes -->
+  <div style="background:#fffbe6; border:2px solid #f0a500; border-left-width:6px;
+              border-radius:10px; padding:20px 24px; margin-top:28px;
+              box-shadow:0 2px 12px rgba(240,165,0,0.12);">
+    <div style="font-size:0.8rem; font-weight:700; letter-spacing:1px;
+                color:#7a4700; text-transform:uppercase; margin-bottom:10px;">
+      📝 Important — Backend <code>.env</code> configuration
+    </div>
+    <p style="font-size:0.92rem; color:#5a3700; margin-bottom:12px;">
+      Before starting the backend, add the following keys to the <strong>backend</strong>
+      <span class="hl">.env</span> file (in the <code>api\</code> folder). FlowAccel will not
+      authenticate or pull workflow data until every value below is filled in:
+    </p>
+    <div class="cmd-block" style="background:#1e2a3a; color:#a8e6cf;">CLIENT_ID=&lt;Azure AD application (client) ID&gt;
+CLIENT_SECRET=&lt;Azure AD client secret&gt;
+TENANT_ID=&lt;Azure AD directory (tenant) ID&gt;
+JOTFORM_API_KEY=&lt;your JotForm API key&gt;
+FORM_ID=&lt;JotForm form ID&gt;
+TEAM_ID=&lt;JotForm team ID&gt;</div>
+    <ul style="margin:12px 0 0 22px; font-size:0.88rem; color:#5a3700;">
+      <li><strong>CLIENT_ID / CLIENT_SECRET / TENANT_ID</strong> — from the Azure AD app registration (Microsoft sign-in / SSO).</li>
+      <li><strong>JOTFORM_API_KEY</strong> — JotForm → Account → API → create a key.</li>
+      <li><strong>FORM_ID</strong> — the numeric ID in the JotForm form URL.</li>
+      <li><strong>TEAM_ID</strong> — the JotForm Enterprise team/workspace ID.</li>
+    </ul>
+    <div style="background:#ffeaea; border-left:4px solid #e53e3e; border-radius:6px;
+                padding:10px 14px; font-size:0.85rem; color:#7b1a1a; margin-top:14px;">
+      🚨 Keep the <code>.env</code> file private — never commit it or share the client
+      secret / API key. After editing <code>.env</code>, restart the backend
+      (<code>pm2 restart all</code>) so the new values load.
+    </div>
+  </div>
+
+  <div class="footer">
+    FlowAccel — Manual IIS Deployment Guide · IIS v1.1 · 2026-05-21 11:57 IST · For automated installation, use the <a href="/installer/FlowAccel-Installation-Guide.html" style="color:#2d6a9f;">FlowAccel Server Installer</a>.
+  </div>
+
+</div>
+</body>
+</html>

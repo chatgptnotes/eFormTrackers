@@ -204,10 +204,26 @@ export default function Login() {
           Need access? Contact <a href="mailto:admin@bettroi.com" className="text-blue-600 hover:text-blue-700 font-semibold">admin@bettroi.com</a>
         </p>
 
+        <a
+          href="/installer/FlowAccel-Manual-IIS-Deployment.html"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-6 w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl bg-white/70 backdrop-blur border border-slate-300 text-slate-800 hover:border-indigo-500 hover:bg-white hover:shadow-md transition-all font-semibold text-sm"
+        >
+          <BookOpen className="w-4 h-4 text-indigo-600" />
+          Manual IIS Deployment Guide
+        </a>
+        <p className="text-center text-slate-400 mt-2 text-[11px]">
+          Enable IIS · Default Web Site → 8081, FlowAccel → 80 · copy files to E:\ · grant IIS user permissions · load PostgreSQL dump.
+        </p>
+        <p className="text-center text-slate-400 mt-1 text-[10px] italic">
+          IIS v1.1 · Updated 2026-05-21 12:43 IST
+        </p>
+
         <button
           type="button"
           onClick={handlePackageDownload}
-          className="mt-6 w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl bg-white/70 backdrop-blur border border-slate-300 text-slate-800 hover:border-indigo-500 hover:bg-white hover:shadow-md transition-all font-semibold text-sm"
+          className="mt-3 w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl bg-white/70 backdrop-blur border border-slate-300 text-slate-800 hover:border-indigo-500 hover:bg-white hover:shadow-md transition-all font-semibold text-sm"
         >
           <Package className="w-4 h-4 text-indigo-600" />
           Download FlowAccel Package (ZIP)
