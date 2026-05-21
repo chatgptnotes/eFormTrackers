@@ -65,9 +65,29 @@
            padding:10px 14px; font-size:0.88rem; color:#7a4700; margin-top:10px; }
   .danger { background:#ffeaea; border-left:4px solid #e53e3e; border-radius:6px;
            padding:10px 14px; font-size:0.88rem; color:#7b1a1a; margin-top:10px; }
-  .cmd-block { background:#1e2a3a; color:#a8e6cf; border-radius:8px; padding:12px 16px;
+  .cmd-block { position:relative; background:#1e2a3a; color:#a8e6cf; border-radius:8px;
+                padding:12px 44px 12px 16px;
                 font-family:"Courier New",monospace; font-size:0.87rem; margin:10px 0;
                 white-space: pre-wrap; word-break: break-all; }
+
+  /* copy button (injected on cmd-blocks and inline links) */
+  .copy-btn { position:absolute; top:8px; right:8px; background:rgba(255,255,255,0.12);
+               color:#cbd5e1; border:none; border-radius:6px; padding:4px 7px;
+               font-size:0.72rem; font-weight:600; cursor:pointer; line-height:1;
+               display:inline-flex; align-items:center; gap:4px; transition:background 0.15s; }
+  .copy-btn:hover  { background:rgba(255,255,255,0.25); color:#fff; }
+  .copy-btn.copied { background:#16a34a; color:#fff; }
+  .copy-btn svg { width:13px; height:13px; }
+
+  /* link-row copy / download icons (light background) */
+  .icon-btn { background:#eef6ff; color:#2d6a9f; border:1px solid #b3d4f5; border-radius:6px;
+               padding:6px 10px; font-size:0.78rem; font-weight:600; cursor:pointer;
+               display:inline-flex; align-items:center; gap:5px; transition:background 0.15s,transform 0.1s;
+               text-decoration:none; }
+  .icon-btn:hover  { background:#d9ebff; }
+  .icon-btn:active { transform:scale(0.96); }
+  .icon-btn.copied { background:#16a34a; border-color:#16a34a; color:#fff; }
+  .icon-btn svg { width:14px; height:14px; }
 
   .verify-list { list-style:none; display:flex; flex-direction:column; gap:10px; }
   .verify-list li { display:flex; align-items:flex-start; gap:10px;
@@ -96,14 +116,24 @@
                 color:#2d6a9f; text-transform:uppercase; margin-bottom:8px;">
       📦 Download everything from here
     </div>
-    <a href="https://drive.google.com/drive/folders/1Z8uq4fxAHgJXZaXPMBz_dvcenwlFs8yp?usp=sharing"
-       target="_blank" rel="noopener noreferrer"
-       style="display:inline-block; font-family:monospace; font-size:0.95rem;
-              color:#1e4f80; word-break:break-all; margin-bottom:10px;
-              background:#eef6ff; border:1px solid #b3d4f5; border-radius:6px;
-              padding:8px 12px; text-decoration:none;">
-      https://drive.google.com/drive/folders/1Z8uq4fxAHgJXZaXPMBz_dvcenwlFs8yp?usp=sharing
-    </a>
+    <div style="font-family:monospace; font-size:0.92rem; color:#1e4f80;
+                word-break:break-all; background:#eef6ff; border:1px solid #b3d4f5;
+                border-radius:6px; padding:8px 12px; margin-bottom:10px;">
+      <span data-copy="https://drive.google.com/drive/folders/1Z8uq4fxAHgJXZaXPMBz_dvcenwlFs8yp?usp=sharing">https://drive.google.com/drive/folders/1Z8uq4fxAHgJXZaXPMBz_dvcenwlFs8yp?usp=sharing</span>
+    </div>
+    <div style="display:flex; gap:10px; margin-bottom:6px; flex-wrap:wrap;">
+      <a class="icon-btn"
+         href="https://drive.google.com/drive/folders/1Z8uq4fxAHgJXZaXPMBz_dvcenwlFs8yp?usp=sharing"
+         target="_blank" rel="noopener noreferrer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download (ZIP / Drive)
+      </a>
+      <button class="icon-btn" type="button"
+              data-copy="https://drive.google.com/drive/folders/1Z8uq4fxAHgJXZaXPMBz_dvcenwlFs8yp?usp=sharing">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        Copy link
+      </button>
+    </div>
     <p style="font-size:0.9rem; color:#334155; margin-top:8px;">
       This link contains everything you need for the deployment — open it on the
       <strong>deployment machine</strong> and download all three bundles:
@@ -513,5 +543,50 @@ TEAM_ID=&lt;JotForm team ID&gt;</div>
   </div>
 
 </div>
+
+<script>
+  (function () {
+    var COPY_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+
+    function copyText(text, btn, doneLabel) {
+      var restore = btn.innerHTML;
+      var fn = (navigator.clipboard && navigator.clipboard.writeText)
+        ? navigator.clipboard.writeText(text)
+        : new Promise(function (res, rej) {
+            var ta = document.createElement('textarea');
+            ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+            document.body.appendChild(ta); ta.select();
+            try { document.execCommand('copy'); res(); } catch (e) { rej(e); }
+            document.body.removeChild(ta);
+          });
+      fn.then(function () {
+        btn.classList.add('copied');
+        btn.innerHTML = '✓ ' + (doneLabel || 'Copied');
+        setTimeout(function () { btn.classList.remove('copied'); btn.innerHTML = restore; }, 1500);
+      });
+    }
+
+    // Inject a copy button into every command block
+    document.querySelectorAll('.cmd-block').forEach(function (block) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'copy-btn';
+      btn.innerHTML = COPY_SVG + 'Copy';
+      btn.addEventListener('click', function () {
+        copyText(block.innerText.trim(), btn, 'Copied');
+      });
+      block.appendChild(btn);
+    });
+
+    // Wire up any explicit [data-copy] buttons (e.g. the Drive link)
+    document.querySelectorAll('[data-copy]').forEach(function (el) {
+      if (el.tagName === 'BUTTON' || el.classList.contains('icon-btn')) {
+        el.addEventListener('click', function () {
+          copyText(el.getAttribute('data-copy'), el, 'Copied');
+        });
+      }
+    });
+  })();
+</script>
 </body>
 </html>
