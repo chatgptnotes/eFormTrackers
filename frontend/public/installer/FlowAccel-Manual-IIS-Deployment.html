@@ -233,6 +233,15 @@
       <button class="cf-save" id="cf-save" type="button">💾 Save credentials</button>
       <span class="cf-status" id="cf-status"></span>
     </div>
+    <div style="background:#ffeaea; border-left:4px solid #e53e3e; border-radius:6px;
+                padding:10px 14px; font-size:0.85rem; color:#7b1a1a; margin-top:14px;">
+      🚨 The <strong>Redirect URL</strong> above must also be registered in the client's
+      <strong>Azure AD app registration</strong> (Azure Portal → App registrations → your app →
+      <strong>Authentication</strong> → <strong>Redirect URIs</strong>) — it has to match
+      <code>MICROSOFT_REDIRECT_URI</code> in <code>.env</code> exactly (e.g.
+      <code>http://&lt;server-ip&gt;/api/auth/microsoft/callback</code>). If it isn't registered,
+      Microsoft sign-in fails with a <em>redirect_uri mismatch</em> error.
+    </div>
   </div>
 
   <!-- Key points -->
@@ -396,7 +405,16 @@ xcopy /E /I /Y "&lt;path-to-extracted-zip&gt;\app" "E:\FlowAccel\"</div>
 iisreset</div>
         <div class="tip">💡 After this step you should have <strong>two</strong> sites in IIS Manager: <em>Default Web Site</em> on port 8081 (placeholder) and <em>FlowAccel</em> on port 80 (the real app).</div>
         <div class="warn">⚠️ If <code>iisreset</code> fails with "port 80 already in use", you didn't move the Default Web Site off port 80 in step 2 — go back and complete step 2 before retrying.</div>
-        <div class="warn">📁 The downloaded build files (the FlowAccel app / <code>FlowAccel_Server_Specification</code>) must sit inside the IIS web-root folder <span class="hl">C:\inetpub\wwwroot\flowaccel</span>. Make sure that <code>flowaccel</code> folder exists under <code>C:\inetpub\wwwroot\</code> and contains the build, then point the IIS site's <strong>Physical path</strong> at it.</div>
+        <div class="danger">📁 <strong>Pick ONE deployment location and use it everywhere.</strong> This guide uses <span class="hl">E:\FlowAccel\</span> (frontend in <code>E:\FlowAccel\dist</code>, backend in <code>E:\FlowAccel\api</code>). If you instead deploy under <span class="hl">C:\inetpub\wwwroot\flowaccel</span>, substitute that path in <strong>every</strong> step (IIS physical path, the icacls grants in Step 6, the <code>cd</code> in Steps 8–9, and the startup .bat). Mixing the two paths is the most common cause of a 403 / blank page.</div>
+
+        <p style="margin-top:14px;font-weight:600;color:#1e3a5f;">web.config — the IIS → Node reverse proxy (critical)</p>
+        <p>The site root (the <code>dist</code> folder) must contain a <span class="hl">web.config</span> that serves the React files <em>and</em> reverse-proxies the API to the Node backend. This is what the URL Rewrite + ARR modules from Step 4 are for. The build ships one — confirm <code>web.config</code> exists in the site's physical path. It does three things:</p>
+        <ul>
+          <li>Proxies <code>/api/*</code>, <code>/socket.io/*</code>, <code>/uploads/*</code> → <span class="hl">http://localhost:3001</span> (the Node backend).</li>
+          <li>Serves static files directly from <code>dist\</code>.</li>
+          <li>Falls back to <code>index.html</code> for all other routes (SPA client-side routing).</li>
+        </ul>
+        <div class="warn">⚠️ The proxy target port (<code>3001</code>) must match the backend's <code>PORT</code> in <code>.env</code> (see the notes at the bottom). If they differ, the site loads but every <code>/api</code> call returns 502.</div>
       </div>
     </div>
 
@@ -572,9 +590,11 @@ Set-WebConfigurationProperty -PSPath 'MACHINE/WEBROOT/APPHOST' -Filter 'system.w
         <div class="step-title">Restart the backend server</div>
       </div>
       <div class="step-body">
-        <p>After the database is loaded and the <code>.env</code> values are in place (see the notes at the bottom), restart the Node backend so it picks up the fresh config. In the <strong>elevated PowerShell</strong>, change into the backend folder and start the server:</p>
+        <p>After the database is loaded and the <code>.env</code> values are in place (see the notes at the bottom), start the Node backend. First, in the <strong>elevated PowerShell</strong>, change into the backend folder and install production dependencies (skip if <code>node_modules</code> already shipped with the build):</p>
         <div class="cmd-block">cd E:\FlowAccel\api
-node server.js</div>
+npm install --production</div>
+        <p>Then start the server:</p>
+        <div class="cmd-block">node server.js</div>
         <div class="tip">💡 For a long-running, auto-restarting process, use PM2 instead (installed in step 4):<br/>
           <code style="background:#dde3ff;border-radius:3px;padding:1px 5px;">pm2 restart all</code> &nbsp;(or <code style="background:#dde3ff;border-radius:3px;padding:1px 5px;">pm2 start server.js --name flowaccel</code> the first time).
         </div>
@@ -592,6 +612,7 @@ node server.js</div>
 start /B node "C:\path\to\your\app.js"</div>
         <p>Change <span class="hl">C:\path\to\your\app.js</span> to the real backend entry point on this machine — e.g. <code>E:\FlowAccel\api\server.js</code>.</p>
         <div class="tip">💡 The server will now launch in the background on each login/boot. To start it once right now without rebooting, double-click <code>run-server.bat</code>.</div>
+        <div class="warn">⚠️ The Startup-folder <code>.bat</code> only runs when a user <strong>logs in</strong> — not at boot before login. For an unattended server that reboots without anyone signing in, make the backend a real service instead: <code>pm2 start server.js --name flowaccel</code> then <code>pm2 save</code> and <code>pm2 startup</code> (or use <strong>nssm</strong> to install it as a Windows Service).</div>
       </div>
     </div>
 
@@ -606,7 +627,10 @@ start /B node "C:\path\to\your\app.js"</div>
         <div class="cmd-block">http://localhost/</div>
         <p>You should see the FlowAccel login page. From another machine on the LAN, use the server's IP:</p>
         <div class="cmd-block">http://&lt;server-ip&gt;/</div>
-        <p>If the page loads, all steps are complete and FlowAccel is live on IIS.</p>
+        <p>The page loading only proves IIS serves the static files. Also confirm the <strong>IIS → Node proxy</strong> works — a page load that can't reach the backend looks fine but can't log in. Hit the backend health endpoint through the proxy:</p>
+        <div class="cmd-block">curl http://localhost/api/health</div>
+        <p>You should get back <code>{"ok":true,"uptime":...}</code> from the Node app — <strong>not</strong> a <code>502 Bad Gateway</code> (backend not running / wrong PORT) or a <code>404</code> / the HTML page (web.config proxy missing). If you get 502/404, recheck the backend is running on <code>:3001</code> (Step 9) and that the <code>web.config</code> proxy + <code>.env</code> PORT match.</p>
+        <p>If both the page and <code>/api</code> respond, all steps are complete and FlowAccel is live on IIS.</p>
         <div class="warn">⏳ After an <code>iisreset</code> / IIS restart, the first request from another PC can take <strong>2–3 minutes</strong> while IIS spins the backend service back up. Wait it out — once the process has auto-restarted, data is fetched directly at the defined IP. Don't assume it's broken in the first couple of minutes.</div>
         <div class="tip">💡 Reminder — port <strong>8081</strong> shows the placeholder IIS Default Web Site, port <strong>80</strong> (the default) is the real FlowAccel app.</div>
       </div>
@@ -630,22 +654,41 @@ start /B node "C:\path\to\your\app.js"</div>
       saved in the <strong>Step 0</strong> form at the top of this guide straight into the matching keys
       below. FlowAccel will not authenticate or pull workflow data until every value is filled in:
     </p>
-    <div class="cmd-block" style="background:#1e2a3a; color:#a8e6cf;">MICROSOFT_CLIENT_ID=&lt;Microsoft Client ID — from Step 0&gt;
+    <div class="cmd-block" style="background:#1e2a3a; color:#a8e6cf;"># --- Database (must match the jotflow user created in Step 8d) ---
+DATABASE_URL=postgresql://jotflow:hope9886%40@localhost:5432/flowaccel
+
+# --- Session ---
+SESSION_SECRET=&lt;any random 64-character string&gt;
+
+# --- Microsoft sign-in (from Step 0) ---
+MICROSOFT_CLIENT_ID=&lt;Microsoft Client ID — from Step 0&gt;
 MICROSOFT_CLIENT_SECRET=&lt;Microsoft Client Secret — from Step 0&gt;
 MICROSOFT_TENANT_ID=&lt;Microsoft Tenant ID — from Step 0&gt;
 MICROSOFT_REDIRECT_URI=&lt;Microsoft Redirect URL — from Step 0&gt;
+
+# --- JotForm API ---
 JOTFORM_API_KEY=&lt;client's JotForm API key&gt;
-JOTFORM_TEAM_ID=&lt;JotForm team ID&gt;</div>
+JOTFORM_TEAM_ID=&lt;JotForm team ID&gt;
+JOTFORM_BASE=https://eforms.mediaoffice.ae/API
+JOTFORM_HOST=https://eforms.mediaoffice.ae
+
+# --- Server / CORS ---
+PORT=3001
+NODE_ENV=production
+ALLOWED_ORIGIN=http://&lt;server-ip&gt;</div>
     <ul style="margin:12px 0 0 22px; font-size:0.88rem; color:#5a3700;">
-      <li><strong>MICROSOFT_CLIENT_ID / MICROSOFT_CLIENT_SECRET / MICROSOFT_TENANT_ID / MICROSOFT_REDIRECT_URI</strong> — the client's Azure AD app registration values you entered and saved in <strong>Step 0</strong> at the top of this guide. Use the copy icon there to paste each one here.</li>
-      <li><strong>JOTFORM_API_KEY</strong> — JotForm → Account → API → create a key.</li>
-      <li><strong>JOTFORM_TEAM_ID</strong> — the JotForm Enterprise team/workspace ID.</li>
+      <li><strong>DATABASE_URL</strong> — connection string for the <code>jotflow</code> user / <code>flowaccel</code> database created in Step 8d. <strong>⚠️ The password <code>hope9886@</code> contains an <code>@</code>, which MUST be written as <code>%40</code></strong> in the URL (so <code>hope9886@</code> → <code>hope9886%40</code>), otherwise the connection silently fails.</li>
+      <li><strong>SESSION_SECRET</strong> — any long random string; logins break if it's missing.</li>
+      <li><strong>MICROSOFT_CLIENT_ID / CLIENT_SECRET / TENANT_ID / REDIRECT_URI</strong> — the client's Azure AD values saved in <strong>Step 0</strong>. Use the copy icon there to paste each one.</li>
+      <li><strong>JOTFORM_API_KEY</strong> — JotForm → Account → API → create a key. <strong>JOTFORM_TEAM_ID</strong> — the JotForm Enterprise team/workspace ID.</li>
+      <li><strong>PORT</strong> — must stay <code>3001</code> to match the IIS reverse-proxy in <code>web.config</code> (see Step 5). If you change it, change the proxy target too or every <code>/api</code> call fails.</li>
+      <li><strong>ALLOWED_ORIGIN</strong> — set to the deployed URL <code>http://&lt;server-ip&gt;</code> (or <code>*</code>). Leaving it at <code>localhost:5173</code> blocks the live site via CORS.</li>
     </ul>
     <div style="background:#ffeaea; border-left:4px solid #e53e3e; border-radius:6px;
                 padding:10px 14px; font-size:0.85rem; color:#7b1a1a; margin-top:14px;">
       🚨 Keep the <code>.env</code> file private — never commit it or share the client
       secret / API key. After editing <code>.env</code>, restart the backend
-      (<code>pm2 restart all</code>) so the new values load.
+      (<code>pm2 restart all</code> or re-run <code>node server.js</code>) so the new values load.
     </div>
   </div>
 
