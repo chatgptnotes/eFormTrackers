@@ -400,20 +400,23 @@ iisreset</div>
       </div>
       <div class="step-body">
         <p>IIS runs the site under the application pool identity — by default <strong>IIS AppPool\DefaultAppPool</strong>, plus the built-in groups <strong>IIS_IUSRS</strong> and <strong>IUSR</strong>. All three need NTFS access on the folder.</p>
-        <p><strong>Via Explorer (matches the screenshot):</strong></p>
+        <p><strong>Via Explorer — click-by-click walkthrough:</strong></p>
         <ol>
-          <li>Right-click <span class="hl">E:\FlowAccel</span> → <strong>Properties</strong> → <strong>Security</strong> tab → <strong>Edit…</strong>.</li>
-          <li>Click <strong>Add…</strong>. In <em>Enter the object names to select</em>, type each name below (one at a time), click <strong>Check Names</strong>, then <strong>OK</strong>:
+          <li><strong>Right-click</strong> the folder <span class="hl">E:\FlowAccel</span> (or the specific build file) and click <strong>Properties</strong> — the Properties dialog opens.</li>
+          <li>Go to the <strong>Security</strong> tab.</li>
+          <li>Click <strong>Edit…</strong>. Check whether an <strong>IIS user</strong> (e.g. <span class="hl">IIS_IUSRS</span> / <span class="hl">IUSR</span>) is already listed:
             <ul>
-              <li><span class="hl">IIS_IUSRS</span></li>
-              <li><span class="hl">IUSR</span></li>
-              <li><span class="hl">IIS AppPool\DefaultAppPool</span> &nbsp;<em>(Locations… → choose the local machine first)</em></li>
-              <li><span class="hl">NETWORK SERVICE</span></li>
+              <li>If the IIS user is there <strong>and has Full control</strong> — you're done, nothing to change.</li>
+              <li>If it's <strong>not</strong> listed, or doesn't have Full control — add / fix it using the next steps.</li>
             </ul>
           </li>
-          <li>For each added principal, tick <strong>Modify</strong>, <strong>Read &amp; execute</strong>, <strong>List folder contents</strong>, <strong>Read</strong>, and <strong>Write</strong> under <em>Allow</em> → <strong>OK</strong>.</li>
+          <li>To add the user, click <strong>Add…</strong> → <strong>Advanced…</strong> → <strong>Find Now</strong>.</li>
+          <li>In the search results, <strong>scroll down</strong> until you see the <strong>IIS user</strong> (such as <span class="hl">IIS_IUSRS</span>). Select that user and click <strong>OK</strong>, then <strong>OK</strong> again to return to the permissions list.</li>
+          <li>With the IIS user selected, look at the <em>Allow</em> column and tick <strong>Full control</strong>. This automatically checks <strong>Modify</strong>, <strong>Read &amp; execute</strong>, <strong>List folder contents</strong>, <strong>Read</strong>, and <strong>Write</strong> — confirm they are all ticked under <em>Allow</em>.</li>
+          <li>Click <strong>Apply</strong>, then click <strong>OK</strong> (click <strong>OK</strong> on every dialog) and close the Properties window. The IIS user now has full permission on the folder.</li>
         </ol>
-        <p><strong>Or, equivalently, from an elevated PowerShell:</strong></p>
+        <div class="tip">💡 For completeness you can repeat the Add → Advanced → Find Now flow for <span class="hl">IUSR</span>, <span class="hl">IIS AppPool\DefaultAppPool</span>, and <span class="hl">NETWORK SERVICE</span> and give each Full control too.</div>
+        <p style="margin-top:12px;"><strong>Or, equivalently, from an elevated PowerShell:</strong></p>
         <div class="cmd-block">icacls "E:\FlowAccel" /grant "IIS_IUSRS:(OI)(CI)M" /T
 icacls "E:\FlowAccel" /grant "IUSR:(OI)(CI)M" /T
 icacls "E:\FlowAccel" /grant "IIS AppPool\DefaultAppPool:(OI)(CI)M" /T
