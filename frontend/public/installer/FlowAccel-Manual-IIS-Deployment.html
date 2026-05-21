@@ -97,6 +97,29 @@
            padding:1px 6px; font-size:0.84rem; color:#3730a3; }
 
   .footer { text-align:center; margin-top:40px; font-size:0.8rem; color:#94a3b8; }
+
+  /* client credentials form */
+  .creds-form { background:#fff; border:2px solid #4f46e5; border-left-width:6px;
+                 border-radius:12px; padding:20px 24px; margin-bottom:24px;
+                 box-shadow:0 2px 12px rgba(79,70,229,0.12); }
+  .creds-form .cf-title { font-size:0.95rem; font-weight:700; color:#312e81; margin-bottom:6px; }
+  .creds-form .cf-intro { font-size:0.88rem; color:#334155; margin-bottom:14px; }
+  .cf-row { margin-bottom:12px; }
+  .cf-row label { display:block; font-size:0.78rem; font-weight:700; color:#475569;
+                   text-transform:uppercase; letter-spacing:0.5px; margin-bottom:5px; }
+  .cf-input-wrap { display:flex; gap:8px; align-items:stretch; }
+  .cf-input-wrap input { flex:1; font-family:monospace; font-size:0.88rem; color:#1e293b;
+                          background:#f8faff; border:1px solid #cbd5e1; border-radius:8px;
+                          padding:9px 12px; outline:none; transition:border 0.15s; }
+  .cf-input-wrap input:focus { border-color:#4f46e5; background:#fff; }
+  .cf-actions { display:flex; align-items:center; gap:12px; margin-top:6px; }
+  .cf-save { background:#4f46e5; color:#fff; border:none; border-radius:8px;
+              padding:9px 18px; font-size:0.86rem; font-weight:700; cursor:pointer;
+              transition:background 0.15s,transform 0.1s; }
+  .cf-save:hover  { background:#3730a3; }
+  .cf-save:active { transform:scale(0.97); }
+  .cf-save.saved  { background:#16a34a; }
+  .cf-status { font-size:0.82rem; color:#16a34a; font-weight:600; }
 </style>
 </head>
 <body>
@@ -148,6 +171,67 @@
       ⚠️ Download on the same Windows server where FlowAccel will run. Do not download
       on a different PC and copy files across — paths, permissions, and the
       installer all assume the target machine.
+    </div>
+  </div>
+
+  <!-- Client Microsoft credentials form (fill in first) -->
+  <div class="creds-form">
+    <div class="cf-title">🔐 Step 0 — Enter the client's Microsoft credentials first</div>
+    <p class="cf-intro">
+      Before you start the installation, keep the <strong>client's</strong> Microsoft Entra (Azure AD)
+      credentials ready and paste them into the fields below, then click <strong>Save</strong>.
+      They are stored locally in this browser so you can copy each one straight into the backend
+      <code>.env</code> file later (see the notes at the bottom of this guide). Use the copy icon next
+      to each field to grab the value.
+    </p>
+
+    <div class="cf-row">
+      <label for="cf-client-id">Microsoft Client ID</label>
+      <div class="cf-input-wrap">
+        <input id="cf-client-id" type="text" data-cf="ms_client_id" placeholder="e.g. 11111111-2222-3333-4444-555555555555" />
+        <button class="icon-btn" type="button" data-copy-field="cf-client-id">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          Copy
+        </button>
+      </div>
+    </div>
+
+    <div class="cf-row">
+      <label for="cf-tenant-id">Microsoft Tenant ID</label>
+      <div class="cf-input-wrap">
+        <input id="cf-tenant-id" type="text" data-cf="ms_tenant_id" placeholder="e.g. aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" />
+        <button class="icon-btn" type="button" data-copy-field="cf-tenant-id">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          Copy
+        </button>
+      </div>
+    </div>
+
+    <div class="cf-row">
+      <label for="cf-client-secret">Microsoft Client Secret</label>
+      <div class="cf-input-wrap">
+        <input id="cf-client-secret" type="text" data-cf="ms_client_secret" placeholder="the client secret VALUE (not the secret ID)" />
+        <button class="icon-btn" type="button" data-copy-field="cf-client-secret">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          Copy
+        </button>
+      </div>
+    </div>
+
+    <div class="cf-row">
+      <label for="cf-redirect-uri">Microsoft Redirect URL</label>
+      <div class="cf-input-wrap">
+        <input id="cf-redirect-uri" type="text" data-cf="ms_redirect_uri" placeholder="e.g. http://<server-ip>/api/auth/microsoft/callback" />
+        <button class="icon-btn" type="button" data-copy-field="cf-redirect-uri">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          Copy
+        </button>
+      </div>
+    </div>
+
+    <div class="cf-actions">
+      <button class="cf-save" id="cf-save" type="button">💾 Save credentials</button>
+      <span class="cf-status" id="cf-status"></span>
     </div>
   </div>
 
@@ -483,7 +567,7 @@ node server.js</div>
         <div class="tip">💡 For a long-running, auto-restarting process, use PM2 instead (installed in step 4):<br/>
           <code style="background:#dde3ff;border-radius:3px;padding:1px 5px;">pm2 restart all</code> &nbsp;(or <code style="background:#dde3ff;border-radius:3px;padding:1px 5px;">pm2 start server.js --name flowaccel</code> the first time).
         </div>
-        <div class="warn">⚠️ The backend won't authenticate or load workflow data until the <code>.env</code> keys (CLIENT_ID, CLIENT_SECRET, TENANT_ID, JOTFORM_API_KEY, FORM_ID, TEAM_ID) are filled in — see the notes below.</div>
+        <div class="warn">⚠️ The backend won't authenticate or load workflow data until the <code>.env</code> keys (MICROSOFT_CLIENT_ID, MICROSOFT_CLIENT_SECRET, MICROSOFT_TENANT_ID, MICROSOFT_REDIRECT_URI, JOTFORM_API_KEY, JOTFORM_TEAM_ID) are filled in — see the notes below.</div>
       </div>
     </div>
 
@@ -514,21 +598,23 @@ node server.js</div>
       📝 Important — Backend <code>.env</code> configuration
     </div>
     <p style="font-size:0.92rem; color:#5a3700; margin-bottom:12px;">
-      Before starting the backend, add the following keys to the <strong>backend</strong>
-      <span class="hl">.env</span> file (in the <code>api\</code> folder). FlowAccel will not
-      authenticate or pull workflow data until every value below is filled in:
+      <strong>All settings — the JotForm API key, Microsoft credentials, form/team IDs — live in the
+      backend <span class="hl">.env</span> file inside the backend folder</strong>
+      (<code>E:\FlowAccel\api\.env</code>). Anytime you need to change a value, open that
+      <code>.env</code> file and edit it there — then restart the backend. Copy-paste the values you
+      saved in the <strong>Step 0</strong> form at the top of this guide straight into the matching keys
+      below. FlowAccel will not authenticate or pull workflow data until every value is filled in:
     </p>
-    <div class="cmd-block" style="background:#1e2a3a; color:#a8e6cf;">CLIENT_ID=&lt;Azure AD application (client) ID&gt;
-CLIENT_SECRET=&lt;Azure AD client secret&gt;
-TENANT_ID=&lt;Azure AD directory (tenant) ID&gt;
-JOTFORM_API_KEY=&lt;your JotForm API key&gt;
-FORM_ID=&lt;JotForm form ID&gt;
-TEAM_ID=&lt;JotForm team ID&gt;</div>
+    <div class="cmd-block" style="background:#1e2a3a; color:#a8e6cf;">MICROSOFT_CLIENT_ID=&lt;Microsoft Client ID — from Step 0&gt;
+MICROSOFT_CLIENT_SECRET=&lt;Microsoft Client Secret — from Step 0&gt;
+MICROSOFT_TENANT_ID=&lt;Microsoft Tenant ID — from Step 0&gt;
+MICROSOFT_REDIRECT_URI=&lt;Microsoft Redirect URL — from Step 0&gt;
+JOTFORM_API_KEY=&lt;client's JotForm API key&gt;
+JOTFORM_TEAM_ID=&lt;JotForm team ID&gt;</div>
     <ul style="margin:12px 0 0 22px; font-size:0.88rem; color:#5a3700;">
-      <li><strong>CLIENT_ID / CLIENT_SECRET / TENANT_ID</strong> — from the Azure AD app registration (Microsoft sign-in / SSO).</li>
+      <li><strong>MICROSOFT_CLIENT_ID / MICROSOFT_CLIENT_SECRET / MICROSOFT_TENANT_ID / MICROSOFT_REDIRECT_URI</strong> — the client's Azure AD app registration values you entered and saved in <strong>Step 0</strong> at the top of this guide. Use the copy icon there to paste each one here.</li>
       <li><strong>JOTFORM_API_KEY</strong> — JotForm → Account → API → create a key.</li>
-      <li><strong>FORM_ID</strong> — the numeric ID in the JotForm form URL.</li>
-      <li><strong>TEAM_ID</strong> — the JotForm Enterprise team/workspace ID.</li>
+      <li><strong>JOTFORM_TEAM_ID</strong> — the JotForm Enterprise team/workspace ID.</li>
     </ul>
     <div style="background:#ffeaea; border-left:4px solid #e53e3e; border-radius:6px;
                 padding:10px 14px; font-size:0.85rem; color:#7b1a1a; margin-top:14px;">
@@ -586,6 +672,42 @@ TEAM_ID=&lt;JotForm team ID&gt;</div>
         });
       }
     });
+
+    // Copy the live value of a form field (Step 0 credentials)
+    document.querySelectorAll('[data-copy-field]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var input = document.getElementById(btn.getAttribute('data-copy-field'));
+        if (input) copyText(input.value, btn, 'Copied');
+      });
+    });
+
+    // Step 0 credentials form — persist to localStorage
+    var STORE_KEY = 'flowaccel_ms_creds';
+    var fields = document.querySelectorAll('input[data-cf]');
+    try {
+      var saved = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
+      fields.forEach(function (input) {
+        if (saved[input.getAttribute('data-cf')]) input.value = saved[input.getAttribute('data-cf')];
+      });
+    } catch (e) {}
+
+    var saveBtn = document.getElementById('cf-save');
+    var status = document.getElementById('cf-status');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', function () {
+        var data = {};
+        fields.forEach(function (input) { data[input.getAttribute('data-cf')] = input.value; });
+        try {
+          localStorage.setItem(STORE_KEY, JSON.stringify(data));
+          saveBtn.classList.add('saved');
+          saveBtn.textContent = '✓ Saved';
+          if (status) status.textContent = 'Saved to this browser — copy each value into the .env file later.';
+          setTimeout(function () { saveBtn.classList.remove('saved'); saveBtn.textContent = '💾 Save credentials'; }, 1800);
+        } catch (e) {
+          if (status) { status.style.color = '#b91c1c'; status.textContent = 'Could not save (browser storage blocked).'; }
+        }
+      });
+    }
   })();
 </script>
 </body>
