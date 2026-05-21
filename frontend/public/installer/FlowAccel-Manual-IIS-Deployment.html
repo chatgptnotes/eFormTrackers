@@ -239,6 +239,13 @@
   <div class="section-label">Before you start</div>
   <div class="kp-grid">
     <div class="kp kp-red">
+      <div class="kp-icon">💻</div>
+      <div>
+        <div class="kp-title">Install the Microsoft Teams DESKTOP app first (for remote control)</div>
+        <div class="kp-body">Before starting anything, install the <strong>Microsoft Teams desktop application</strong> so the Bettroi team can be <strong>given control</strong> during the session. Teams running in a <strong>browser cannot give/grant control</strong> — the desktop app is required. Do this before the installation begins.</div>
+      </div>
+    </div>
+    <div class="kp kp-red">
       <div class="kp-icon">🛠️</div>
       <div>
         <div class="kp-title">Run every command as Administrator</div>
@@ -600,6 +607,7 @@ start /B node "C:\path\to\your\app.js"</div>
         <p>You should see the FlowAccel login page. From another machine on the LAN, use the server's IP:</p>
         <div class="cmd-block">http://&lt;server-ip&gt;/</div>
         <p>If the page loads, all steps are complete and FlowAccel is live on IIS.</p>
+        <div class="warn">⏳ After an <code>iisreset</code> / IIS restart, the first request from another PC can take <strong>2–3 minutes</strong> while IIS spins the backend service back up. Wait it out — once the process has auto-restarted, data is fetched directly at the defined IP. Don't assume it's broken in the first couple of minutes.</div>
         <div class="tip">💡 Reminder — port <strong>8081</strong> shows the placeholder IIS Default Web Site, port <strong>80</strong> (the default) is the real FlowAccel app.</div>
       </div>
     </div>
