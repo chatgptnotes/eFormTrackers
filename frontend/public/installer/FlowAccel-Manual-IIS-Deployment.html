@@ -389,6 +389,7 @@ xcopy /E /I /Y "&lt;path-to-extracted-zip&gt;\app" "E:\FlowAccel\"</div>
 iisreset</div>
         <div class="tip">💡 After this step you should have <strong>two</strong> sites in IIS Manager: <em>Default Web Site</em> on port 8081 (placeholder) and <em>FlowAccel</em> on port 80 (the real app).</div>
         <div class="warn">⚠️ If <code>iisreset</code> fails with "port 80 already in use", you didn't move the Default Web Site off port 80 in step 2 — go back and complete step 2 before retrying.</div>
+        <div class="warn">📁 The downloaded build files (the FlowAccel app / <code>FlowAccel_Server_Specification</code>) must sit inside the IIS web-root folder <span class="hl">C:\inetpub\wwwroot\flowaccel</span>. Make sure that <code>flowaccel</code> folder exists under <code>C:\inetpub\wwwroot\</code> and contains the build, then point the IIS site's <strong>Physical path</strong> at it.</div>
       </div>
     </div>
 
@@ -571,6 +572,19 @@ node server.js</div>
           <code style="background:#dde3ff;border-radius:3px;padding:1px 5px;">pm2 restart all</code> &nbsp;(or <code style="background:#dde3ff;border-radius:3px;padding:1px 5px;">pm2 start server.js --name flowaccel</code> the first time).
         </div>
         <div class="warn">⚠️ The backend won't authenticate or load workflow data until the <code>.env</code> keys (MICROSOFT_CLIENT_ID, MICROSOFT_CLIENT_SECRET, MICROSOFT_TENANT_ID, MICROSOFT_REDIRECT_URI, JOTFORM_API_KEY, JOTFORM_TEAM_ID) are filled in — see the notes below.</div>
+
+        <p style="margin-top:16px;font-weight:600;color:#1e3a5f;">Auto-start the Node backend on every boot (Startup folder)</p>
+        <p>To make the Node server start automatically when Windows boots, add a startup <code>.bat</code> file:</p>
+        <ol>
+          <li>Press <strong>Windows + R</strong>, type <span class="hl">shell:common startup</span> and press <strong>Enter</strong> — the all-users Startup folder opens.</li>
+          <li>Right-click inside the folder → <strong>New → Text Document</strong>, rename it to <span class="hl">run-server.bat</span> (make sure the extension is <code>.bat</code>, not <code>.txt</code>), then right-click it → <strong>Edit</strong>.</li>
+          <li>Paste in the following and save:</li>
+        </ol>
+        <div class="cmd-block">@echo off
+:: Starts the node app in the background so it doesn't block your screen
+start /B node "C:\path\to\your\app.js"</div>
+        <p>Change <span class="hl">C:\path\to\your\app.js</span> to the real backend entry point on this machine — e.g. <code>E:\FlowAccel\api\server.js</code>.</p>
+        <div class="tip">💡 The server will now launch in the background on each login/boot. To start it once right now without rebooting, double-click <code>run-server.bat</code>.</div>
       </div>
     </div>
 
