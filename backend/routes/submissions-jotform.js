@@ -297,19 +297,6 @@ router.post('/webhook', async (req, res, next) => {
     // Webhook fired — backend wf-task cache for this submission is now stale.
     invalidateWorkflowTaskCache(submissionId);
 
-    // Push minimal change notice to all connected clients. Frontend uses the
-    // IDs to invalidate its local row cache and re-fetch authoritative data.
-    try {
-      const io = req.app.get('io');
-      if (io) {
-        const { emitSubmissionUpdated, emitWorkflowChanged } = require('../lib/realtime');
-        emitSubmissionUpdated(submissionId, { formId, currentLevel: Math.min(currentLevel, maxLevel), status });
-        emitWorkflowChanged(formId, { submissionId, currentLevel: Math.min(currentLevel, maxLevel), status });
-      }
-    } catch (e) {
-      req.log.warn({ err: e }, '[webhook] realtime emit failed');
-    }
-
     res.json({ ok: true, submissionId, currentLevel, status, pendingApproverName, pendingApproverEmail });
   } catch (err) { next(err); }
 });

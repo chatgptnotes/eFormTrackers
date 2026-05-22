@@ -317,24 +317,6 @@ router.post('/workflow-action', validate(workflowActionBodySchema), async (req, 
       req.log.warn({ err: notifErr }, '[workflow-action] Notification logic failed');
     }
 
-    // Push minimal change notice to all connected clients so other dashboards
-    // refresh without waiting for the next JotForm webhook round-trip.
-    try {
-      const io = req.app.get('io');
-      if (io) {
-        const { emitSubmissionUpdated, emitWorkflowChanged } = require('../lib/realtime');
-        const instanceCompleted = result?.content?.instanceCompleted || false;
-        const status = instanceCompleted ? 'completed' : (action === 'reject' ? 'rejected' : 'pending');
-        const formIdForEmit = String(content?.formID || content?.form_id || '');
-        emitSubmissionUpdated(submissionId, { formId: formIdForEmit, status, action });
-        if (formIdForEmit) {
-          emitWorkflowChanged(formIdForEmit, { submissionId, status, action });
-        }
-      }
-    } catch (e) {
-      req.log.warn({ err: e }, '[workflow-action] realtime emit failed');
-    }
-
     res.json({
       ok: true, action, taskId, taskName, taskType, outcomeID,
       instanceCompleted: result?.content?.instanceCompleted || false,
