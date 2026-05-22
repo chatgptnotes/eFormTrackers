@@ -1,9 +1,12 @@
 const { Router } = require('express');
 const pool = require('../db/pool');
 const { validate } = require('../middleware/validate');
+const { requireAuth } = require('../middleware/auth');
 const { syncToSupabaseBodySchema } = require('../schemas/submissions');
 
 const router = Router();
+
+router.use(requireAuth);
 
 // ── POST /api/sync-to-supabase ──
 // Upserts enriched submission records from the frontend into PostgreSQL

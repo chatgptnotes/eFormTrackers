@@ -2,9 +2,14 @@ const { Router } = require('express');
 const env = require('../config/env');
 const { jotformFetch } = require('../lib/jotform');
 const { validate } = require('../middleware/validate');
+const { requireAuth, requireRole } = require('../middleware/auth');
 const { formIdRequiredQuerySchema } = require('../schemas/forms');
 
 const router = Router();
+
+// Admin-only: these endpoints mutate JotForm form definitions (adding hidden
+// fields, registering webhooks). Limit to admins.
+router.use(requireAuth, requireRole('admin'));
 
 // ── POST /api/ensure-fields?formId=xxx ──
 router.post('/ensure-fields', validate(formIdRequiredQuerySchema, 'query'), async (req, res, next) => {

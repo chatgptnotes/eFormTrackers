@@ -2,11 +2,13 @@ const { Router } = require('express');
 const env = require('../config/env');
 const { jotformFetch } = require('../lib/jotform');
 const { pMapLimit } = require('../lib/concurrency');
+const { requireAuth, requireRole } = require('../middleware/auth');
 
 const router = Router();
 
 // ── GET /api/cleanup-submissions?dryRun=true|false ──
-router.get('/cleanup-submissions', async (req, res, next) => {
+// Bulk-delete operation — admin only.
+router.get('/cleanup-submissions', requireAuth, requireRole('admin'), async (req, res, next) => {
   try {
     if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
 

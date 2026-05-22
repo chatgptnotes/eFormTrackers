@@ -11,6 +11,7 @@ import { Submission, ApprovalEntry, ApprovalLevel } from '../types';
 import { apiFetch } from '../lib/api';
 import { fetchUserForms, fetchFormQuestions, detectFields, JFFormMeta } from '../services/formDiscovery';
 import { jotformHeaders } from '../lib/jotformKey';
+import { pMapLimit, pMapLimitSettled } from '../lib/pMapLimit';
 import { WorkflowStep, fetchWorkflowSteps, fetchWorkflowTasks } from './workflowTaskCache';
 import { ApproverConfig, fetchApproverConfigs } from './useApproverConfig';
 import { mapGenericSubmission } from './submissionMappers';
@@ -44,8 +45,9 @@ async function fetchAllFormData(): Promise<{
   } catch { /* ignore */ }
 
   let partialDataWarning = false;
-  const formResults = await Promise.all(
-    forms.map(async (form) => {
+  // Cap outer concurrency so we don't open hundreds of sockets at once when an
+  // account has many forms — each form already fans out 3 inner requests.
+  const formResults = await pMapLimit(forms, 5, async (form) => {
       // Fetch questions, submissions, and workflow steps IN PARALLEL (not sequentially)
       const [questions, rows, steps] = await Promise.all([
         fetchFormQuestions(form.id),
@@ -80,7 +82,7 @@ async function fetchAllFormData(): Promise<{
 
       const detectedFields = detectFields(questions);
       return { form, rows, detectedFields, steps };
-    })
+    }
   );
 
   return { forms, formResults, partialDataWarning };
@@ -103,8 +105,9 @@ async function enrichWithWorkflowTasks(mapped: Submission[]): Promise<void> {
   const pendingSubs = mapped.filter(needsEnrichment).slice(0, 100);
   if (pendingSubs.length === 0) return;
 
-  const taskResults = await Promise.allSettled(
-    pendingSubs.map(sub => fetchWorkflowTasks(sub.id))
+  // Cap inner concurrency to avoid blasting JotForm with 100 parallel requests.
+  const taskResults = await pMapLimitSettled(
+    pendingSubs, 8, sub => fetchWorkflowTasks(sub.id),
   );
   for (let i = 0; i < pendingSubs.length; i++) {
     const result = taskResults[i];

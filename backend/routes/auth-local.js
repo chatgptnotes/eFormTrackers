@@ -3,6 +3,7 @@ const bcrypt = require('bcrypt');
 const pool = require('../db/pool');
 const env = require('../config/env');
 const { validate } = require('../middleware/validate');
+const { authLimiter } = require('../middleware/rateLimit');
 const {
   signupBodySchema,
   loginBodySchema,
@@ -15,7 +16,7 @@ const SALT_ROUNDS = 12;
 const ORG_ID = '971589dd-afcb-4a12-8900-47626e4d59cc';
 
 // ── POST /api/auth/signup ──
-router.post('/signup', validate(signupBodySchema), async (req, res, next) => {
+router.post('/signup', authLimiter, validate(signupBodySchema), async (req, res, next) => {
   try {
     const { email, password, fullName, department } = req.body;
 
@@ -62,7 +63,7 @@ router.post('/signup', validate(signupBodySchema), async (req, res, next) => {
 });
 
 // ── POST /api/auth/login ──
-router.post('/login', validate(loginBodySchema), async (req, res, next) => {
+router.post('/login', authLimiter, validate(loginBodySchema), async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
@@ -153,7 +154,7 @@ router.get('/session', async (req, res, next) => {
 
 // ── POST /api/auth/reset-password ──
 // MVP: logs reset URL to console; add SMTP later
-router.post('/reset-password', validate(resetPasswordBodySchema), async (req, res, next) => {
+router.post('/reset-password', authLimiter, validate(resetPasswordBodySchema), async (req, res, next) => {
   try {
     const { email } = req.body;
 

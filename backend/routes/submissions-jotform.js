@@ -5,6 +5,7 @@ const { jotformFetch, resolveApiKey } = require('../lib/jotform');
 const { readKeyType } = require('../lib/key-type');
 const { detectLevelFields } = require('../lib/detect-fields');
 const { insertNotification } = require('../lib/notifications');
+const { requireAuth } = require('../middleware/auth');
 
 const router = Router();
 
@@ -12,7 +13,8 @@ const router = Router();
 const ALLOWED_PARAMS = new Set(['limit', 'offset', 'orderby', 'direction', 'filter', 'id', 'addWorkflowStatus']);
 
 // ── GET /api/jotform?path=user/forms ──
-router.get('/jotform', async (req, res, next) => {
+// Proxies arbitrary JotForm reads using server-side API key — auth required.
+router.get('/jotform', requireAuth, async (req, res, next) => {
   try {
     const keyType = readKeyType(req);
     if (!resolveApiKey(keyType)) {

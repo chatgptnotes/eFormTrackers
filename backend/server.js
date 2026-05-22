@@ -8,6 +8,7 @@ const logger = require('./config/logger');
 const corsMiddleware = require('./middleware/cors');
 const sessionMiddleware = require('./config/session');
 const errorHandler = require('./middleware/errorHandler');
+const { globalLimiter } = require('./middleware/rateLimit');
 const { initRealtime } = require('./lib/realtime');
 
 const app = express();
@@ -20,10 +21,48 @@ const io = new SocketIO(server, {
 initRealtime(io);
 
 // ── Trust IIS reverse proxy (needed for secure cookies behind HTTPS proxy) ──
+// Also required so express-rate-limit's default req.ip key is the real client
+// IP, not the proxy's address. Set to `1` because we have exactly one proxy
+// (IIS ARR) in front of Node.
 app.set('trust proxy', 1);
 
-// ── Global middleware ──
-app.use(helmet({ contentSecurityPolicy: false, crossOriginOpenerPolicy: false }));
+// ── Security headers (helmet) ──
+// CSP is explicit. If a directive ever breaks the prod frontend, document
+// the failure here and *narrow* the policy — never wholesale-disable.
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      // No 'unsafe-inline' / 'unsafe-eval'. Vite production bundle is hashed
+      // and external; if a future feature needs inline scripts, switch to
+      // nonces, do not relax this directive.
+      scriptSrc: ["'self'"],
+      // Tailwind/Framer inject inline styles, so style-src needs unsafe-inline.
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      // Frontend may call JotForm-hosted assets (eforms.mediaoffice.ae) via
+      // the backend proxy, but XHR/fetch from the page itself only hits 'self'
+      // and the JotForm host (used for some asset URLs).
+      connectSrc: ["'self'", env.JOTFORM_HOST].filter(Boolean),
+      frameSrc: ["'none'"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+    },
+  },
+  frameguard: { action: 'deny' },
+  referrerPolicy: { policy: 'no-referrer' },
+  hsts: env.NODE_ENV === 'production'
+    ? { maxAge: 31536000, includeSubDomains: true }
+    : false,
+  // JotForm embeds (iframes from a different origin) break with COEP enabled.
+  crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: false,
+}));
+
+// ── Global rate limiter (must run before routes) ──
+app.use(globalLimiter);
+
 app.use(corsMiddleware);
 app.use(pinoHttp({ logger }));
 app.use(express.json({ limit: '2mb' }));

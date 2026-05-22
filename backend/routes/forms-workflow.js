@@ -2,6 +2,7 @@ const { Router } = require('express');
 const env = require('../config/env');
 const { jotformFetch } = require('../lib/jotform');
 const { validate } = require('../middleware/validate');
+const { requireAuth } = require('../middleware/auth');
 const { pMapLimit } = require('../lib/concurrency');
 const {
   formIdRequiredQuerySchema,
@@ -10,6 +11,8 @@ const {
 } = require('../schemas/forms');
 
 const router = Router();
+
+router.use(requireAuth);
 
 const JOTFORM_INBOX = `${env.JOTFORM_HOST}/inbox`;
 
@@ -32,6 +35,7 @@ router.get('/form-workflow', validate(formIdRequiredQuerySchema, 'query'), async
 
     const cached = workflowCache[formId];
     if (cached && Date.now() - cached.at < CACHE_TTL) {
+      res.setHeader('Cache-Control', 'private, max-age=60');
       return res.json({ formId, steps: cached.steps, cached: true });
     }
 
@@ -83,6 +87,7 @@ router.get('/form-workflow', validate(formIdRequiredQuerySchema, 'query'), async
     }
 
     workflowCache[formId] = { steps, at: Date.now() };
+    res.setHeader('Cache-Control', 'private, max-age=60');
     res.json({ formId, steps });
   } catch (err) { next(err); }
 });

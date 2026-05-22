@@ -2,9 +2,12 @@ const { Router } = require('express');
 const pool = require('../db/pool');
 const { validate } = require('../middleware/validate');
 const { buildUpdateQuery } = require('../db/queryBuilder');
+const { requireAuth } = require('../middleware/auth');
 const { profilesPutBodySchema } = require('../schemas/data');
 
 const router = Router();
+
+router.use(requireAuth);
 
 // ══════════════════════════════════════════════════════════
 // profiles

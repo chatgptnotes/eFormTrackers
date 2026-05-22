@@ -2,6 +2,7 @@ const { Router } = require('express');
 const bcrypt = require('bcrypt');
 const pool = require('../db/pool');
 const env = require('../config/env');
+const { requireAuth, requireRole } = require('../middleware/auth');
 
 const router = Router();
 const SALT_ROUNDS = 12;
@@ -11,8 +12,10 @@ const VALID_ROLES = ['super_admin', 'admin', 'approver', 'viewer'];
 const ADMIN_EMAIL = env.ADMIN_EMAIL;
 
 // ── POST /api/create-user ──
-// Admin-only user creation (replaces Supabase auth.admin.createUser)
-router.post('/create-user', async (req, res, next) => {
+// Admin-only user creation (replaces Supabase auth.admin.createUser).
+// Session must belong to an admin AND the legacy creatorEmail check below
+// must also match the configured ADMIN_EMAIL — defense in depth.
+router.post('/create-user', requireAuth, requireRole('admin'), async (req, res, next) => {
   try {
     const { email, password, fullName, department, role, creatorEmail } = req.body || {};
 
@@ -70,7 +73,7 @@ router.post('/create-user', async (req, res, next) => {
 const fs = require('fs');
 const path = require('path');
 
-router.get('/setup-db', (req, res) => {
+router.get('/setup-db', requireAuth, requireRole('admin'), (req, res) => {
   const sql = fs.readFileSync(path.join(__dirname, '..', 'db', 'schema.sql'), 'utf8');
   res.json({
     instructions: [
@@ -84,7 +87,7 @@ router.get('/setup-db', (req, res) => {
 
 // ── POST /api/setup-db ──
 // Runs the schema migration
-router.post('/setup-db', async (req, res, next) => {
+router.post('/setup-db', requireAuth, requireRole('admin'), async (req, res, next) => {
   try {
     const sql = fs.readFileSync(path.join(__dirname, '..', 'db', 'schema.sql'), 'utf8');
     await pool.query(sql);

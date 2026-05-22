@@ -178,6 +178,15 @@ export function useSubmissions() {
     loadData();
   }, [loadData, loadFromSupabase]);
 
+  // Listen for JotForm API key toggle from Settings — force a full reload
+  // (which wipes caches + workflow task cache internally) so the dashboard
+  // reflects the new key's data without a manual refresh.
+  useEffect(() => {
+    const onKeyTypeChanged = () => { loadData({ force: true }); };
+    window.addEventListener('jotform-key-type-changed', onKeyTypeChanged);
+    return () => window.removeEventListener('jotform-key-type-changed', onKeyTypeChanged);
+  }, [loadData]);
+
   // Auto-register webhooks on mount (cached for 24h)
   useEffect(() => {
     const WEBHOOK_CACHE_KEY = 'jotflow_webhooks_registered';

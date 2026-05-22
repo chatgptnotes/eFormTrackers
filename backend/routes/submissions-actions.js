@@ -4,6 +4,7 @@ const env = require('../config/env');
 const { jotformFetch, resolveApiKey } = require('../lib/jotform');
 const { readKeyType } = require('../lib/key-type');
 const { validate } = require('../middleware/validate');
+const { requireAuth, requireRole } = require('../middleware/auth');
 const { insertNotification } = require('../lib/notifications');
 const {
   workflowActionBodySchema,
@@ -12,6 +13,9 @@ const {
 } = require('../schemas/submissions');
 
 const router = Router();
+
+// Every endpoint here mutates JotForm or our DB on behalf of a real user.
+router.use(requireAuth);
 
 // ── GET /api/workflow-tasks?submissionId=xxx&workflowInstanceId=yyy ──
 router.get('/workflow-tasks', async (req, res, next) => {
@@ -232,7 +236,8 @@ router.post('/workflow-action', validate(workflowActionBodySchema), async (req, 
 });
 
 // ── DELETE /api/delete-submission?submissionId=xxx ──
-router.delete('/delete-submission', validate(deleteSubmissionQuerySchema, 'query'), async (req, res, next) => {
+// Destructive cross-org operation — admin only.
+router.delete('/delete-submission', requireRole('admin'), validate(deleteSubmissionQuerySchema, 'query'), async (req, res, next) => {
   try {
     const submissionId = req.query.submissionId;
     if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'API key not configured' });

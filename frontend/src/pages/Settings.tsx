@@ -108,7 +108,7 @@ export default function Settings() {
         <p className="text-sm text-gray-500 mt-1">Connect to JotForm API to pull live submission data</p>
       </motion.div>
 
-      {/* API Source switch (Old key ↔ GDMO key) */}
+      {/* API Source switch (Testing ↔ Production) */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -122,7 +122,7 @@ export default function Settings() {
           <div className="flex-1">
             <h3 className="text-sm font-semibold text-white">JotForm API Source</h3>
             <p className="text-xs text-gray-500">
-              Switch between the original API key and the GDMO enterprise key.
+              Switch between the Testing sandbox key and the Production (GDMO) key.
               {user?.email && (
                 <> Choice is saved for <span className="text-gray-400">{user.email}</span>.</>
               )}
@@ -130,46 +130,47 @@ export default function Settings() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col items-center gap-2">
           <button
             type="button"
-            onClick={() => handleKeyTypeChange('default')}
+            onClick={() => handleKeyTypeChange(keyType === 'default' ? 'gdmo' : 'default')}
             disabled={switching}
-            className={`px-4 py-3 rounded-xl border text-left transition-colors disabled:opacity-50 ${
-              keyType === 'default'
-                ? 'border-gold/60 bg-gold/10'
-                : 'border-navy-light/30 bg-navy-dark/40 hover:border-navy-light/50'
-            }`}
+            aria-label={`Switch to ${keyType === 'default' ? 'Production' : 'Testing'}`}
+            className="relative inline-flex items-center gap-0 rounded-full border border-navy-light/30 bg-navy-dark/60 p-1 disabled:opacity-50 transition-colors"
           >
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-white">Default key</span>
-              {keyType === 'default' && <CheckCircle2 className="w-4 h-4 text-gold" />}
-            </div>
-            <p className="text-xs text-gray-500 mt-1">JOTFORM_API_KEY (original)</p>
+            <span
+              className={`px-5 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                keyType === 'default'
+                  ? 'bg-gold/10 text-gold'
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              Testing
+            </span>
+            <span
+              className={`px-5 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                keyType === 'gdmo'
+                  ? 'bg-gold/10 text-gold'
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              Production
+            </span>
+            {switching && (
+              <span className="absolute inset-0 flex items-center justify-center rounded-full bg-navy-dark/60">
+                <Loader2 className="w-4 h-4 text-gold animate-spin" />
+              </span>
+            )}
           </button>
 
-          <button
-            type="button"
-            onClick={() => handleKeyTypeChange('gdmo')}
-            disabled={switching}
-            className={`px-4 py-3 rounded-xl border text-left transition-colors disabled:opacity-50 ${
-              keyType === 'gdmo'
-                ? 'border-gold/60 bg-gold/10'
-                : 'border-navy-light/30 bg-navy-dark/40 hover:border-navy-light/50'
+          <p
+            className={`text-xs ${
+              keyType === 'gdmo' ? 'text-amber-400' : 'text-gray-500'
             }`}
           >
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-white">GDMO key</span>
-              {keyType === 'gdmo' && <CheckCircle2 className="w-4 h-4 text-gold" />}
-            </div>
-            <p className="text-xs text-gray-500 mt-1">JOTFORM_API_KEY_GDMO</p>
-          </button>
+            {keyType === 'gdmo' ? 'Live data' : 'Sandbox data'}
+          </p>
         </div>
-
-        <p className="text-xs text-gray-500">
-          Active source: <span className="text-gray-300 font-mono">{keyType}</span>. Switching
-          clears cached forms/submissions so the dashboard reloads from the selected source.
-        </p>
       </motion.div>
 
       {/* API Key */}

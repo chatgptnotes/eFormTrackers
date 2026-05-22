@@ -2,8 +2,11 @@ const { Router } = require('express');
 const pool = require('../db/pool');
 const env = require('../config/env');
 const { jotformFetch } = require('../lib/jotform');
+const { requireAuth } = require('../middleware/auth');
 
 const router = Router();
+
+router.use(requireAuth);
 
 // ── GET /api/approver-config?formId=xxx ──
 // ── POST /api/approver-config ──
