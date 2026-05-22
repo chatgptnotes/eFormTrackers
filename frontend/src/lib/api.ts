@@ -15,10 +15,14 @@ export async function apiFetch<T = unknown>(
   // Always forward the active JotForm key choice to the backend so handlers
   // that proxy to JotForm pick the right key/team scoping. Harmless on
   // non-JotForm endpoints — they just ignore the header.
+  const jfHdrs = jotformHeaders();
+  // DEBUG: visible in browser console — confirm header is being sent on each call.
+  // eslint-disable-next-line no-console
+  console.log(`[apiFetch] ${init.method || 'GET'} ${path}  x-jotform-key-type=${(jfHdrs as Record<string,string>)['x-jotform-key-type']}`);
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...jotformHeaders(), ...init.headers },
+    headers: { 'Content-Type': 'application/json', ...jfHdrs, ...init.headers },
   });
   if (!res.ok && throwOnError) {
     const body = await res.json().catch(() => ({}));

@@ -67,6 +67,10 @@ function buildJotformUrl(path, keyType) {
   const url = new URL(`${env.JOTFORM_BASE}/${effectivePath}`);
   url.searchParams.set('apiKey', resolveApiKey(keyType));
   if (!isGdmo && env.JOTFORM_TEAM_ID) url.searchParams.set('teamID', env.JOTFORM_TEAM_ID);
+  // DEBUG: visible in backend console — confirm keyType routing per request.
+  // Strip the apiKey from the logged URL so the secret stays out of logs.
+  const safeUrl = url.toString().replace(/apiKey=[^&]+/, 'apiKey=***');
+  console.log(`[jotform] keyType=${keyType || 'default(implicit)'}  path=${path}  ->  ${safeUrl}`);
   return url;
 }
 
