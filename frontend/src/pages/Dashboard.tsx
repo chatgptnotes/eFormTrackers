@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2, XCircle, Clock, AlertTriangle, User, Building2, Calendar, Loader2, ChevronRight, Mail, Shield } from 'lucide-react';
 import SubmissionModal from '../components/SubmissionModal';
 import { Submission } from '../types';
+import { jotformHeaders } from '../lib/jotformKey';
 
 // ── Director context (hardcoded for demo) ───────────────────────────────────
 const DIRECTOR = {
@@ -83,7 +84,7 @@ export default function Dashboard({ data }: Props) {
 
       const res = await fetch(`/api/jotform-update?submissionId=${id}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...jotformHeaders() },
         body: params.toString(),
       });
 

@@ -1,7 +1,12 @@
 const { Router } = require('express');
 const pool = require('../db/pool');
 const env = require('../config/env');
-const { jotformFetch } = require('../lib/jotform');
+const { jotformFetch, resolveApiKey } = require('../lib/jotform');
+
+function readKeyType(req) {
+  const v = req.headers['x-jotform-key-type'];
+  return v === 'gdmo' ? 'gdmo' : 'default';
+}
 const { detectLevelFields } = require('../lib/detect-fields');
 const { insertNotification } = require('../lib/notifications');
 
@@ -13,8 +18,9 @@ const ALLOWED_PARAMS = new Set(['limit', 'offset', 'orderby', 'direction', 'filt
 // ── GET /api/jotform?path=user/forms ──
 router.get('/jotform', async (req, res, next) => {
   try {
-    if (!env.JOTFORM_API_KEY) {
-      return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
+    const keyType = readKeyType(req);
+    if (!resolveApiKey(keyType)) {
+      return res.status(500).json({ error: `JotForm API key for "${keyType}" not set` });
     }
     const apiPath = req.query.path || 'user/forms';
     const params = {};
@@ -23,7 +29,7 @@ router.get('/jotform', async (req, res, next) => {
         params[key] = val;
       }
     }
-    const data = await jotformFetch(apiPath, { params });
+    const data = await jotformFetch(apiPath, { params, keyType });
     res.json(data);
   } catch (err) {
     if (err.status && err.data) return res.status(err.status).json(err.data);
@@ -591,7 +597,9 @@ router.post('/jotform-update', async (req, res, next) => {
   try {
     const submissionId = req.query.submissionId;
     if (!submissionId) return res.status(400).json({ error: 'submissionId required' });
-    if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
+    const keyType = readKeyType(req);
+    const apiKey = resolveApiKey(keyType);
+    if (!apiKey) return res.status(500).json({ error: `JotForm API key for "${keyType}" not set` });
 
     const SIGNATURE_REQUIRED_LEVELS = [1, 2, 3, 4];
     const rawBody = typeof req.body === 'string' ? req.body : new URLSearchParams(req.body).toString();
@@ -611,7 +619,7 @@ router.post('/jotform-update', async (req, res, next) => {
       }
     }
 
-    const url = `${env.JOTFORM_BASE}/submission/${submissionId}?apiKey=${env.JOTFORM_API_KEY}&teamID=${env.JOTFORM_TEAM_ID}`;
+    const url = `${env.JOTFORM_BASE}/submission/${submissionId}?apiKey=${apiKey}&teamID=${env.JOTFORM_TEAM_ID}`;
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

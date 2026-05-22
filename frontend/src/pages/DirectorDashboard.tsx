@@ -16,6 +16,7 @@ import WorkflowDetailsSidebar from '../components/WorkflowDetailsSidebar';
 import { getUserConfig, isSubmissionVisible } from '../config/currentUser';
 import { useAuth } from '../contexts/AuthContext';
 import { apiFetch } from '../lib/api';
+import { jotformHeaders } from '../lib/jotformKey';
 import { exportToExcel } from '../services/exportService';
 
 interface Props {
@@ -832,7 +833,7 @@ export default function DirectorDashboard({ data }: Props) {
 
       const res = await fetch(`/api/jotform-update?submissionId=${sub.id}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...jotformHeaders() },
         body: params.toString(),
       });
       if (!res.ok) throw new Error(`API error: ${res.status}`);

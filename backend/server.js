@@ -45,6 +45,17 @@ app.get('/api/health', (req, res) => {
   res.json({ ok: true, uptime: process.uptime() });
 });
 
+// ── Serve built frontend (production) ──
+const distPath = path.join(__dirname, '..', 'dist');
+const fs = require('fs');
+app.use(express.static(distPath));
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/')) return next();
+  const index = path.join(distPath, 'index.html');
+  if (fs.existsSync(index)) return res.sendFile(index);
+  next();
+});
+
 // ── Error handler ──
 app.use(errorHandler);
 

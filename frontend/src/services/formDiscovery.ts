@@ -5,6 +5,7 @@
  * using label heuristics, so any new form created in JotForm automatically
  * appears in JotFlow without code changes.
  */
+import { jotformHeaders } from '../lib/jotformKey';
 
 export interface JFQuestion {
   qid: string;
@@ -57,7 +58,7 @@ export async function fetchUserForms(): Promise<JFFormMeta[]> {
   } catch {}
 
   try {
-    const res = await fetch('/api/jotform?path=user/forms&limit=200&orderby=updated_at&direction=DESC');
+    const res = await fetch('/api/jotform?path=user/forms&limit=200&orderby=updated_at&direction=DESC', { headers: jotformHeaders() });
     if (!res.ok) return [];
     const data = await res.json();
     const forms: JFFormMeta[] = (data.content || [])
@@ -88,7 +89,7 @@ export async function fetchFormQuestions(formId: string): Promise<Record<string,
   } catch {}
 
   try {
-    const res = await fetch(`/api/jotform?path=form/${formId}/questions`);
+    const res = await fetch(`/api/jotform?path=form/${formId}/questions`, { headers: jotformHeaders() });
     if (!res.ok) return {};
     const data = await res.json();
     // Inject qid from the dict key — JotForm API doesn't include it inside the object

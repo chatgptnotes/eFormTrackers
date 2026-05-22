@@ -2,15 +2,50 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Key, Link2, CheckCircle2, XCircle, Loader2, Plus, Trash2, TestTube2,
-  Zap, FileText, ToggleLeft, ToggleRight, Sparkles,
+  Zap, FileText, ToggleLeft, ToggleRight, Sparkles, RefreshCw,
 } from 'lucide-react';
 import { jotformApi } from '../services/jotformApi';
 import { ApiConfig, DiscoveredForm, AutoApproveRule } from '../types';
 import { useApp } from '../contexts/AppContext';
+import { useAuth } from '../contexts/AuthContext';
+import {
+  JotformKeyType,
+  getJotformKeyTypeFor,
+  setJotformKeyType,
+} from '../lib/jotformKey';
 
 export default function Settings() {
   const { autoApproveRules, setAutoApproveRules } = useApp();
+  const { user } = useAuth();
   const [config, setConfig] = useState<ApiConfig>(jotformApi.getConfig());
+  const [keyType, setKeyTypeState] = useState<JotformKeyType>(() =>
+    getJotformKeyTypeFor(user?.email)
+  );
+  const [switching, setSwitching] = useState(false);
+
+  useEffect(() => {
+    setKeyTypeState(getJotformKeyTypeFor(user?.email));
+  }, [user?.email]);
+
+  const handleKeyTypeChange = async (next: JotformKeyType) => {
+    if (next === keyType) return;
+    setSwitching(true);
+    setJotformKeyType(next, user?.email);
+    setKeyTypeState(next);
+    jotformApi.clearCache();
+    // Clear formDiscovery's localStorage caches so the new source's forms/questions are re-fetched
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('jotflow_q') || k.startsWith('jotflow_forms'))) {
+          localStorage.removeItem(k);
+        }
+      }
+    } catch {}
+    setTestResult(null);
+    setDiscoveredForms([]);
+    setSwitching(false);
+  };
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [newFormId, setNewFormId] = useState('');
@@ -71,6 +106,70 @@ export default function Settings() {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
         <h2 className="text-2xl font-bold text-white">API Configuration</h2>
         <p className="text-sm text-gray-500 mt-1">Connect to JotForm API to pull live submission data</p>
+      </motion.div>
+
+      {/* API Source switch (Old key ↔ GDMO key) */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05 }}
+        className="glass-card p-6 space-y-4"
+      >
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-emerald-500/10">
+            <RefreshCw className={`w-5 h-5 text-emerald-400 ${switching ? 'animate-spin' : ''}`} />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold text-white">JotForm API Source</h3>
+            <p className="text-xs text-gray-500">
+              Switch between the original API key and the GDMO enterprise key.
+              {user?.email && (
+                <> Choice is saved for <span className="text-gray-400">{user.email}</span>.</>
+              )}
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => handleKeyTypeChange('default')}
+            disabled={switching}
+            className={`px-4 py-3 rounded-xl border text-left transition-colors disabled:opacity-50 ${
+              keyType === 'default'
+                ? 'border-gold/60 bg-gold/10'
+                : 'border-navy-light/30 bg-navy-dark/40 hover:border-navy-light/50'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-white">Default key</span>
+              {keyType === 'default' && <CheckCircle2 className="w-4 h-4 text-gold" />}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">JOTFORM_API_KEY (original)</p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleKeyTypeChange('gdmo')}
+            disabled={switching}
+            className={`px-4 py-3 rounded-xl border text-left transition-colors disabled:opacity-50 ${
+              keyType === 'gdmo'
+                ? 'border-gold/60 bg-gold/10'
+                : 'border-navy-light/30 bg-navy-dark/40 hover:border-navy-light/50'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-white">GDMO key</span>
+              {keyType === 'gdmo' && <CheckCircle2 className="w-4 h-4 text-gold" />}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">JOTFORM_API_KEY_GDMO</p>
+          </button>
+        </div>
+
+        <p className="text-xs text-gray-500">
+          Active source: <span className="text-gray-300 font-mono">{keyType}</span>. Switching
+          clears cached forms/submissions so the dashboard reloads from the selected source.
+        </p>
       </motion.div>
 
       {/* API Key */}

@@ -1,4 +1,5 @@
 import { ApiConfig, Submission, DiscoveredForm } from '../types';
+import { jotformHeaders } from '../lib/jotformKey';
 
 // Use local proxy to avoid CORS issues with enterprise JotForm API
 // API key is server-side only (JOTFORM_API_KEY env var in Vercel)
@@ -56,7 +57,7 @@ class JotFormApiService {
 
   async testConnection(): Promise<{ success: boolean; message: string; formCount?: number }> {
     try {
-      const response = await fetch(this.buildUrl('user/forms', { limit: '1' }));
+      const response = await fetch(this.buildUrl('user/forms', { limit: '1' }), { headers: jotformHeaders() });
       if (!response.ok) {
         return { success: false, message: `API returned ${response.status}` };
       }
@@ -72,7 +73,7 @@ class JotFormApiService {
     const cached = this.getCached<unknown[]>('user_forms');
     if (cached) return cached;
 
-    const response = await fetch(this.buildUrl('user/forms', { limit: '1000' }));
+    const response = await fetch(this.buildUrl('user/forms', { limit: '1000' }), { headers: jotformHeaders() });
     const data = await response.json();
     this.setCache('user_forms', data.content);
     return data.content || [];
@@ -84,7 +85,8 @@ class JotFormApiService {
     if (cached) return cached;
 
     const response = await fetch(
-      this.buildUrl(`form/${formId}/submissions`, { offset: String(offset), limit: String(limit) })
+      this.buildUrl(`form/${formId}/submissions`, { offset: String(offset), limit: String(limit) }),
+      { headers: jotformHeaders() }
     );
     const data = await response.json();
     this.setCache(cacheKey, data.content);
@@ -97,7 +99,8 @@ class JotFormApiService {
     if (cached) return cached;
 
     const response = await fetch(
-      this.buildUrl(`submission/${submissionId}`)
+      this.buildUrl(`submission/${submissionId}`),
+      { headers: jotformHeaders() }
     );
     const data = await response.json();
     this.setCache(cacheKey, data.content);
@@ -124,7 +127,7 @@ class JotFormApiService {
       const timeout = setTimeout(() => ctrl.abort(), 20000); // 20s timeout
       const response = await fetch(`/api/jotform-update?submissionId=${submissionId}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...jotformHeaders() },
         body: params.toString(),
         signal: ctrl.signal,
       });
@@ -164,7 +167,8 @@ class JotFormApiService {
     }
     try {
       const response = await fetch(
-        this.buildUrl("user/forms", { limit: "1000", orderby: "created_at" })
+        this.buildUrl("user/forms", { limit: "1000", orderby: "created_at" }),
+        { headers: jotformHeaders() }
       );
       if (!response.ok) {
         return { forms: [], error: `API returned ${response.status}` };
