@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Loader2, Search, AlertCircle, CheckCircle2, Clock, Zap, ExternalLink, User, Calendar,
   FileText, Briefcase, Download, ArrowUpDown, LayoutGrid, List, AlignJustify, Columns,
-  PanelRight, CalendarDays, ChevronLeft, ChevronDown, Building2, X,
+  PanelRight, CalendarDays, ChevronLeft, ChevronDown, Building2, X, Filter,
 } from 'lucide-react';
 import SubmissionModal from '../components/SubmissionModal';
 import WorkflowDetailsModal from '../components/WorkflowDetailsModal';
@@ -188,9 +188,33 @@ export default function ModernDashboard({ data }: Props) {
   const [calYear, setCalYear] = useState(() => new Date().getFullYear());
   const [calMonth, setCalMonth] = useState(() => new Date().getMonth());
 
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterDepartment, setFilterDepartment] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+  const [filterSubmittedBy, setFilterSubmittedBy] = useState('');
+
+  const uniqueDepartments = useMemo(
+    () => Array.from(new Set(allSubmissions.map(s => s.submittedBy.department).filter(Boolean) as string[])).sort(),
+    [allSubmissions],
+  );
+  const uniqueSubmitters = useMemo(
+    () => Array.from(new Set(allSubmissions.map(s => s.submittedBy.name).filter(Boolean) as string[])).sort(),
+    [allSubmissions],
+  );
+  const activeFilterCount = [filterDepartment, filterDateFrom, filterDateTo, filterSubmittedBy].filter(Boolean).length;
+  const clearAllFilters = () => {
+    setFilterDepartment('');
+    setFilterDateFrom('');
+    setFilterDateTo('');
+    setFilterSubmittedBy('');
+  };
+
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
   const filteredAndSortedSubmissions = useMemo(() => {
+    const dateFromTs = filterDateFrom ? new Date(filterDateFrom).getTime() : null;
+    const dateToTs = filterDateTo ? new Date(filterDateTo).getTime() + 24 * 60 * 60 * 1000 - 1 : null;
     let filtered = allSubmissions
       .filter(sub => !sub.formTitle.includes('Workflow Form'))
       .filter(sub => sub.currentApprovalLevel !== 'completed')
@@ -200,13 +224,18 @@ export default function ModernDashboard({ data }: Props) {
           sub.formTitle.toLowerCase().includes(deferredSearchQuery.toLowerCase());
         const status = getSubmissionStatus(sub);
         const matchesStatus = filterStatus === 'all' || status === filterStatus;
-        return matchesSearch && matchesStatus;
+        const matchesDept = !filterDepartment || sub.submittedBy.department === filterDepartment;
+        const matchesSubmitter = !filterSubmittedBy || sub.submittedBy.name === filterSubmittedBy;
+        const submittedTs = sub.submissionDate ? new Date(sub.submissionDate).getTime() : 0;
+        const matchesDateFrom = dateFromTs === null || submittedTs >= dateFromTs;
+        const matchesDateTo = dateToTs === null || submittedTs <= dateToTs;
+        return matchesSearch && matchesStatus && matchesDept && matchesSubmitter && matchesDateFrom && matchesDateTo;
       });
     if (sortBy === 'latest') filtered.sort((a, b) => new Date(b.submissionDate).getTime() - new Date(a.submissionDate).getTime());
     else if (sortBy === 'oldest') filtered.sort((a, b) => new Date(a.submissionDate).getTime() - new Date(b.submissionDate).getTime());
     else if (sortBy === 'days') filtered.sort((a, b) => b.daysAtCurrentLevel - a.daysAtCurrentLevel);
     return filtered;
-  }, [allSubmissions, deferredSearchQuery, filterStatus, sortBy]);
+  }, [allSubmissions, deferredSearchQuery, filterStatus, sortBy, filterDepartment, filterDateFrom, filterDateTo, filterSubmittedBy]);
 
   const totalPages = Math.ceil(filteredAndSortedSubmissions.length / itemsPerPage);
   const paginatedSubmissions = filteredAndSortedSubmissions.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -270,6 +299,8 @@ export default function ModernDashboard({ data }: Props) {
   }, [workflowCache]);
 
   useEffect(() => { if (paginatedSubmissions.length > 0) { preFetchWorkflows(paginatedSubmissions); } }, [paginatedSubmissions, preFetchWorkflows]);
+
+  useEffect(() => { setCurrentPage(1); }, [filterDepartment, filterDateFrom, filterDateTo, filterSubmittedBy]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => { if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setDropdownOpen(false); };
@@ -337,7 +368,7 @@ export default function ModernDashboard({ data }: Props) {
                     <td className="px-4 py-3"><div><p className="text-sm font-semibold text-gray-900 truncate max-w-[220px]">{sub.formTitle || 'Form Submission'}</p><p className="text-xs font-mono text-blue-600">{sub.id.slice(0, 8).toUpperCase()}</p></div></td>
                     <td className="px-4 py-3"><p className="text-sm font-medium text-gray-800">{sub.submittedBy.name}</p><p className="text-xs text-gray-400 truncate max-w-[160px]">{sub.submittedBy.email}</p></td>
                     <td className="px-4 py-3 text-sm text-gray-700">{sub.submittedBy.department || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-800 font-medium">{sub.pendingApproverName || '—'}</td>
+                    <td className="px-4 py-3"><p className="text-sm text-gray-800 font-medium">{sub.pendingApproverName || '—'}</p>{sub.pendingApproverEmail && <p className="text-xs text-gray-400 truncate max-w-[180px]">{sub.pendingApproverEmail}</p>}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{formatDate(sub.submissionDate)}</td>
                     <td className="px-4 py-3"><span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full text-white bg-gradient-to-r ${statusConfig[status].color}`}>{statusConfig[status].label}</span></td>
                   </motion.tr>
@@ -372,7 +403,7 @@ export default function ModernDashboard({ data }: Props) {
                   <td className="px-2 py-1 text-xs text-gray-400 font-mono">{idx + 1}</td>
                   <td className="px-2 py-1"><p className="text-xs font-semibold text-gray-900 truncate max-w-[180px]">{sub.formTitle || '—'}</p><p className="text-[10px] text-gray-400">{sub.submittedBy.department || '—'}</p></td>
                   <td className="px-2 py-1"><p className="text-xs text-gray-800 truncate max-w-[120px]">{sub.submittedBy.name}</p></td>
-                  <td className="px-2 py-1 text-xs text-gray-700 truncate max-w-[120px]">{sub.pendingApproverName || '—'}</td>
+                  <td className="px-2 py-1"><p className="text-xs text-gray-700 truncate max-w-[120px]">{sub.pendingApproverName || '—'}</p>{sub.pendingApproverEmail && <p className="text-[10px] text-gray-400 truncate max-w-[120px]">{sub.pendingApproverEmail}</p>}</td>
                   <td className="px-2 py-1 text-xs text-gray-500">{formatDate(sub.submissionDate)}</td>
                   <td className="px-2 py-1 text-xs text-blue-600 font-medium">{sub.daysAtCurrentLevel || 0}d</td>
                 </motion.tr>
@@ -402,7 +433,7 @@ export default function ModernDashboard({ data }: Props) {
                 <div className="flex items-center gap-3 text-xs text-gray-500 mt-1">
                   <span className="flex items-center gap-1"><User className="w-3 h-3" /> {sub.submittedBy.name}</span>
                   <span className="flex items-center gap-1"><Building2 className="w-3 h-3" /> {sub.submittedBy.department || '—'}</span>
-                  <span className="flex items-center gap-1 text-blue-600"><Briefcase className="w-3 h-3" /> {sub.pendingApproverName || '—'}</span>
+                  <span className="flex items-center gap-1 text-blue-600"><Briefcase className="w-3 h-3" /> {sub.pendingApproverName || '—'}{sub.pendingApproverEmail && <span className="text-gray-400">({sub.pendingApproverEmail})</span>}</span>
                 </div>
                 <div className="flex items-center gap-1 mt-2">
                   {Array.from({ length: Math.min(steps, 5) }).map((_, i) => (<div key={i} className="w-5 h-1 rounded-full bg-blue-300" />))}
@@ -459,7 +490,7 @@ export default function ModernDashboard({ data }: Props) {
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">{sub.formTitle || 'Form Submission'}</p>
               <p className="text-xs font-mono text-blue-600 mb-2">{sub.id.slice(0, 8).toUpperCase()}</p>
               <div className="flex items-center gap-2 py-2 border-t border-gray-100 text-xs"><User className="w-3.5 h-3.5 text-gray-400" /><span className="font-medium text-gray-700">{sub.submittedBy.name}</span></div>
-              <div className="flex items-center gap-2 py-2 border-t border-gray-100 text-xs"><Briefcase className="w-3.5 h-3.5 text-blue-500" /><span className="text-gray-700">{sub.pendingApproverName || '—'}</span></div>
+              <div className="flex items-start gap-2 py-2 border-t border-gray-100 text-xs"><Briefcase className="w-3.5 h-3.5 text-blue-500 mt-0.5 shrink-0" /><div className="min-w-0"><p className="text-gray-700 truncate">{sub.pendingApproverName || '—'}</p>{sub.pendingApproverEmail && <p className="text-[10px] text-gray-400 truncate">{sub.pendingApproverEmail}</p>}</div></div>
               <div className="flex items-center justify-between py-2 border-t border-gray-100 text-xs">
                 <span className="text-gray-400">{formatDate(sub.submissionDate)}</span>
                 <span className={`font-bold px-2 py-0.5 rounded-full text-white text-[10px] bg-gradient-to-r ${statusConfig[status].color}`}>{statusConfig[status].label}</span>
@@ -503,7 +534,7 @@ export default function ModernDashboard({ data }: Props) {
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div><p className="text-xs text-gray-400 uppercase mb-0.5">Submitted By</p><p className="font-semibold text-gray-800">{selected.submittedBy.name}</p><p className="text-xs text-gray-500">{selected.submittedBy.email}</p></div>
               <div><p className="text-xs text-gray-400 uppercase mb-0.5">Department</p><p className="font-semibold text-gray-800">{selected.submittedBy.department || '—'}</p></div>
-              <div><p className="text-xs text-gray-400 uppercase mb-0.5">Pending With</p><p className="font-semibold text-gray-800">{selected.pendingApproverName || '—'}</p></div>
+              <div><p className="text-xs text-gray-400 uppercase mb-0.5">Pending With</p><p className="font-semibold text-gray-800">{selected.pendingApproverName || '—'}</p>{selected.pendingApproverEmail && <p className="text-xs text-gray-500">{selected.pendingApproverEmail}</p>}</div>
               <div><p className="text-xs text-gray-400 uppercase mb-0.5">Priority</p><p className="font-semibold text-gray-800">{selected.priority?.toUpperCase() || '—'}</p></div>
               <div><p className="text-xs text-gray-400 uppercase mb-0.5">Submitted</p><p className="font-semibold text-gray-800">{formatDate(selected.submissionDate)}</p></div>
               <div><p className="text-xs text-gray-400 uppercase mb-0.5">Pending Days</p><p className="font-semibold text-blue-600">{selected.daysAtCurrentLevel || 0} days</p></div>
@@ -562,11 +593,6 @@ export default function ModernDashboard({ data }: Props) {
   return (
     <div className="relative w-full min-h-screen">
       <div className={`space-y-8 w-full px-4 transition-all duration-300 ${workflowSidebarSubmission ? 'md:pr-[620px]' : ''}`}>
-        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="space-y-2">
-          <h1 className="text-3xl md:text-4xl font-black text-black">Workflow Dashboard</h1>
-          <p className="text-gray-600 text-sm md:text-base">Smart submission tracking & approval management</p>
-        </motion.div>
-
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ staggerChildren: 0.1 }} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {stats.map((stat, idx) => (<StatCard key={idx} idx={idx} label={stat.label} value={stat.value} trend={stat.trend} color={stat.color} />))}
         </motion.div>
@@ -593,7 +619,20 @@ export default function ModernDashboard({ data }: Props) {
               })}
             </div>
 
-            <div className="flex gap-2 items-center">
+            <div className="flex gap-2 items-center flex-wrap">
+              <motion.button
+                whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                onClick={() => setShowFilters(s => !s)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-semibold transition-colors shadow-sm ${
+                  showFilters || activeFilterCount > 0
+                    ? 'bg-blue-50 border-blue-400 text-blue-700'
+                    : 'bg-white border-gray-300 text-gray-700 hover:border-blue-400 hover:text-blue-600'
+                }`}
+              >
+                <Filter className="w-4 h-4" />
+                Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+              </motion.button>
+
               {/* View Mode Dropdown */}
               <div className="relative" ref={dropdownRef}>
                 <button onClick={() => setDropdownOpen(o => !o)}
@@ -630,6 +669,76 @@ export default function ModernDashboard({ data }: Props) {
               </motion.button>
             </div>
           </div>
+
+          <AnimatePresence>
+            {showFilters && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-gray-900">Filters</h3>
+                    <div className="flex items-center gap-3">
+                      {activeFilterCount > 0 && (
+                        <button onClick={clearAllFilters} className="text-xs font-semibold text-blue-600 hover:text-blue-800">
+                          Clear All
+                        </button>
+                      )}
+                      <button onClick={() => setShowFilters(false)} className="text-gray-400 hover:text-gray-700">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Department</label>
+                      <select
+                        value={filterDepartment}
+                        onChange={e => startTransition(() => setFilterDepartment(e.target.value))}
+                        className="w-full px-3 py-2 rounded-lg bg-white border border-gray-300 text-sm text-gray-800 focus:border-blue-500 focus:outline-none"
+                      >
+                        <option value="">All Departments</option>
+                        {uniqueDepartments.map(d => <option key={d} value={d}>{d}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Submitted By</label>
+                      <select
+                        value={filterSubmittedBy}
+                        onChange={e => startTransition(() => setFilterSubmittedBy(e.target.value))}
+                        className="w-full px-3 py-2 rounded-lg bg-white border border-gray-300 text-sm text-gray-800 focus:border-blue-500 focus:outline-none"
+                      >
+                        <option value="">All Submitters</option>
+                        {uniqueSubmitters.map(n => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Date From</label>
+                      <input
+                        type="date"
+                        value={filterDateFrom}
+                        onChange={e => startTransition(() => setFilterDateFrom(e.target.value))}
+                        className="w-full px-3 py-2 rounded-lg bg-white border border-gray-300 text-sm text-gray-800 focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Date To</label>
+                      <input
+                        type="date"
+                        value={filterDateTo}
+                        onChange={e => startTransition(() => setFilterDateTo(e.target.value))}
+                        className="w-full px-3 py-2 rounded-lg bg-white border border-gray-300 text-sm text-gray-800 focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
 
         {/* Main Content Area */}
