@@ -35,11 +35,18 @@ const path = require('path');
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ── Routes ──
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api', require('./routes/submissions'));
-app.use('/api', require('./routes/forms'));
+app.use('/api/auth', require('./routes/auth-local'));
+app.use('/api/auth', require('./routes/auth-microsoft'));
+app.use('/api', require('./routes/submissions-jotform'));
+app.use('/api', require('./routes/submissions-sync'));
+app.use('/api', require('./routes/submissions-actions'));
+app.use('/api', require('./routes/submissions-cleanup'));
+app.use('/api', require('./routes/forms-workflow'));
+app.use('/api', require('./routes/forms-admin'));
 app.use('/api', require('./routes/config'));
-app.use('/api', require('./routes/data'));
+app.use('/api', require('./routes/data-submissions'));
+app.use('/api', require('./routes/data-profiles'));
+app.use('/api', require('./routes/data-org'));
 app.use('/api', require('./routes/uploads'));
 app.use('/api', require('./routes/users'));
 

@@ -13,6 +13,11 @@ import CommentPanel from '../components/CommentPanel';
 import SubmissionModal from '../components/SubmissionModal';
 import WorkflowDetailsModal from '../components/WorkflowDetailsModal';
 import WorkflowDetailsSidebar from '../components/WorkflowDetailsSidebar';
+import { DashboardStats } from '../components/dashboard/DashboardStats';
+import { FilterPanel } from '../components/dashboard/FilterPanel';
+import { PaginationFooter } from '../components/dashboard/PaginationFooter';
+import { SyncConfirmModal } from '../components/dashboard/SyncConfirmModal';
+import { SignatureViewerModal } from '../components/dashboard/SignatureViewerModal';
 import { getUserConfig, isSubmissionVisible } from '../config/currentUser';
 import { useAuth } from '../contexts/AuthContext';
 import { apiFetch } from '../lib/api';
@@ -981,34 +986,15 @@ export default function DirectorDashboard({ data }: Props) {
       </motion.div>
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        {[
-          { label: 'Total Requests', value: parentSubmissions.length, icon: TrendingUp, color: 'text-indigo-400', bg: 'bg-indigo-500/10' },
-          { label: syncNeededCount > 0 ? `Pending (${syncNeededCount} sync)` : 'Pending Approval', value: pendingCount, icon: FileText, color: 'text-blue-400', bg: 'bg-blue-500/10' },
-          { label: 'Completed', value: completedCount + approvedToday, icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-500/10', link: '/app/completed' },
-          { label: 'Rejected', value: rejectedCount, icon: XCircle, color: 'text-red-400', bg: 'bg-red-500/10' },
-          { label: 'Critical (>7d)', value: criticalCount, icon: AlertTriangle, color: 'text-amber-400', bg: 'bg-amber-500/10' },
-        ].map((stat, i) => (
-          <motion.div
-            key={stat.label}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.05 }}
-            onClick={() => { if ('link' in stat && stat.link) window.location.href = stat.link; }}
-            className={`glass-card p-4 ${'link' in stat && stat.link ? 'cursor-pointer hover:border-emerald-400/50 transition-colors' : ''}`}
-          >
-            <div className="flex items-center gap-3">
-              <div className={`p-2 rounded-lg ${stat.bg}`}>
-                <stat.icon className={`w-5 h-5 ${stat.color}`} />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-white">{stat.value}</p>
-                <p className="text-xs text-gray-500">{stat.label}</p>
-              </div>
-            </div>
-          </motion.div>
-        ))}
-      </div>
+      <DashboardStats
+        totalCount={parentSubmissions.length}
+        pendingCount={pendingCount}
+        completedCount={completedCount}
+        rejectedCount={rejectedCount}
+        criticalCount={criticalCount}
+        syncNeededCount={syncNeededCount}
+        approvedToday={approvedToday}
+      />
 
       {/* Search + Assigned to Me */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
@@ -1091,115 +1077,27 @@ export default function DirectorDashboard({ data }: Props) {
       </motion.div>
 
       {/* Filter Panel */}
-      <AnimatePresence>
-        {showFilters && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden"
-          >
-            <div className="glass-card p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-white">Filters</h3>
-                <div className="flex items-center gap-2">
-                  {activeFilterCount > 0 && (
-                    <button
-                      onClick={clearAllFilters}
-                      className="text-xs text-gold hover:text-gold/80 transition-colors"
-                    >
-                      Clear All
-                    </button>
-                  )}
-                  <button onClick={() => setShowFilters(false)} className="text-gray-500 hover:text-white transition-colors">
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-                {/* Level */}
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Level</label>
-                  <select
-                    value={filterLevel}
-                    onChange={e => handleFilterLevelChange(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 text-sm text-white focus:border-gold/50 focus:outline-none"
-                  >
-                    <option value="">All Levels</option>
-                    {uniqueLevels.map(l => (
-                      <option key={l} value={l}>
-                        {l === 'completed' ? 'Completed' : l === 'rejected' ? 'Rejected' : `Level ${l}`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {/* Department */}
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Department</label>
-                  <select
-                    value={filterDepartment}
-                    onChange={e => handleFilterDepartmentChange(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 text-sm text-white focus:border-gold/50 focus:outline-none"
-                  >
-                    <option value="">All Departments</option>
-                    {uniqueDepartments.map(d => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
-                  </select>
-                </div>
-                {/* Status */}
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Status</label>
-                  <select
-                    value={filterStatus}
-                    onChange={e => handleFilterStatusChange(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 text-sm text-white focus:border-gold/50 focus:outline-none"
-                  >
-                    <option value="">All Statuses</option>
-                    <option value="pending">Pending</option>
-                    <option value="rejected">Rejected</option>
-                  </select>
-                </div>
-                {/* Date From */}
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Date From</label>
-                  <input
-                    type="date"
-                    value={filterDateFrom}
-                    onChange={e => handleFilterDateFromChange(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 text-sm text-white focus:border-gold/50 focus:outline-none"
-                  />
-                </div>
-                {/* Date To */}
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Date To</label>
-                  <input
-                    type="date"
-                    value={filterDateTo}
-                    onChange={e => handleFilterDateToChange(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 text-sm text-white focus:border-gold/50 focus:outline-none"
-                  />
-                </div>
-                {/* Submitted By */}
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Submitted By</label>
-                  <select
-                    value={filterSubmittedBy}
-                    onChange={e => handleFilterSubmittedByChange(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-navy-dark border border-navy-light/30 text-sm text-white focus:border-gold/50 focus:outline-none"
-                  >
-                    <option value="">All Submitters</option>
-                    {uniqueSubmitters.map(name => (
-                      <option key={name} value={name}>{name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <FilterPanel
+        show={showFilters}
+        onClose={() => setShowFilters(false)}
+        uniqueLevels={uniqueLevels}
+        uniqueDepartments={uniqueDepartments}
+        uniqueSubmitters={uniqueSubmitters}
+        filterLevel={filterLevel}
+        filterDepartment={filterDepartment}
+        filterStatus={filterStatus}
+        filterDateFrom={filterDateFrom}
+        filterDateTo={filterDateTo}
+        filterSubmittedBy={filterSubmittedBy}
+        activeFilterCount={activeFilterCount}
+        onClear={clearAllFilters}
+        onFilterLevelChange={handleFilterLevelChange}
+        onFilterDepartmentChange={handleFilterDepartmentChange}
+        onFilterStatusChange={handleFilterStatusChange}
+        onFilterDateFromChange={handleFilterDateFromChange}
+        onFilterDateToChange={handleFilterDateToChange}
+        onFilterSubmittedByChange={handleFilterSubmittedByChange}
+      />
 
       {/* Table */}
       <motion.div
@@ -1996,62 +1894,13 @@ export default function DirectorDashboard({ data }: Props) {
         </div>
 
         {/* Footer with Pagination */}
-        <div className="px-4 py-3 border-t border-navy-light/20 flex items-center justify-between">
-          <p className="text-xs text-gray-500">
-            {parentSubmissions.length === 0
-              ? 'No submissions'
-              : `Showing ${(safeCurrentPage - 1) * rowsPerPage + 1}–${Math.min(safeCurrentPage * rowsPerPage, parentSubmissions.length)} of ${parentSubmissions.length} submissions`}
-          </p>
-          {totalPages > 1 && (
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={safeCurrentPage <= 1}
-                className="p-1 rounded text-gray-400 hover:text-white hover:bg-navy-light/30 disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              {(() => {
-                const pages: (number | '...')[] = [];
-                if (totalPages <= 5) {
-                  for (let i = 1; i <= totalPages; i++) pages.push(i);
-                } else {
-                  pages.push(1);
-                  if (safeCurrentPage > 3) pages.push('...');
-                  for (let i = Math.max(2, safeCurrentPage - 1); i <= Math.min(totalPages - 1, safeCurrentPage + 1); i++) {
-                    pages.push(i);
-                  }
-                  if (safeCurrentPage < totalPages - 2) pages.push('...');
-                  pages.push(totalPages);
-                }
-                return pages.map((p, idx) =>
-                  p === '...' ? (
-                    <span key={`ellipsis-${idx}`} className="px-1 text-xs text-gray-500">...</span>
-                  ) : (
-                    <button
-                      key={p}
-                      onClick={() => setCurrentPage(p)}
-                      className={`min-w-[28px] h-7 rounded text-xs font-medium ${
-                        p === safeCurrentPage
-                          ? 'bg-gold/90 text-navy-dark'
-                          : 'text-gray-400 hover:text-white hover:bg-navy-light/30'
-                      }`}
-                    >
-                      {p}
-                    </button>
-                  )
-                );
-              })()}
-              <button
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={safeCurrentPage >= totalPages}
-                className="p-1 rounded text-gray-400 hover:text-white hover:bg-navy-light/30 disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          )}
-        </div>
+        <PaginationFooter
+          totalCount={parentSubmissions.length}
+          currentPage={safeCurrentPage}
+          rowsPerPage={rowsPerPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+        />
       </motion.div>
 
       {/* Submission Detail Modal */}
@@ -2118,98 +1967,15 @@ export default function DirectorDashboard({ data }: Props) {
       />
 
       {/* Sync Confirmation Modal */}
-      <AnimatePresence>
-        {syncSubmission && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-            onClick={() => !syncLoading && setSyncSubmission(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              onClick={e => e.stopPropagation()}
-              className="glass-card p-6 max-w-sm w-full mx-4 border border-amber-500/30"
-            >
-              <div className="flex items-center gap-2 mb-4">
-                <AlertTriangle className="w-5 h-5 text-amber-400" />
-                <h3 className="text-lg font-bold text-white">Sync Native Action</h3>
-              </div>
-              <p className="text-sm text-gray-300 mb-1">
-                <span className="text-gold font-mono">{syncSubmission.referenceNumber}</span> — {syncSubmission.submittedBy.name}
-              </p>
-              <p className="text-sm text-gray-400 mb-4">
-                This submission was acted upon in JotForm's native inbox but the dashboard fields weren't updated. What was the action?
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => handleSyncConfirm(syncSubmission, 'approve')}
-                  disabled={syncLoading}
-                  className="flex-1 px-4 py-2.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/30 text-sm font-medium flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
-                >
-                  {syncLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                  Approved
-                </button>
-                <button
-                  onClick={() => handleSyncConfirm(syncSubmission, 'reject')}
-                  disabled={syncLoading}
-                  className="flex-1 px-4 py-2.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30 text-sm font-medium flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
-                >
-                  {syncLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
-                  Rejected
-                </button>
-              </div>
-              <button
-                onClick={() => setSyncSubmission(null)}
-                disabled={syncLoading}
-                className="w-full mt-3 px-4 py-2 rounded-lg text-gray-500 hover:text-gray-300 text-xs transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <SyncConfirmModal
+        submission={syncSubmission}
+        loading={syncLoading}
+        onConfirm={handleSyncConfirm}
+        onClose={() => setSyncSubmission(null)}
+      />
 
       {/* Signature Viewer Modal */}
-      <AnimatePresence>
-        {viewSignature && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
-            onClick={() => setViewSignature(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-navy-dark border border-navy-light/30 rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-white font-semibold">Signature</h3>
-                  <p className="text-xs text-gray-400">Level {viewSignature.level} — {viewSignature.approver}</p>
-                </div>
-                <button
-                  onClick={() => setViewSignature(null)}
-                  className="text-gray-500 hover:text-white transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="bg-white rounded-xl p-3">
-                <img src={viewSignature.url} alt="Signature" className="w-full object-contain max-h-40" />
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <SignatureViewerModal data={viewSignature} onClose={() => setViewSignature(null)} />
 
     </div>
   );
