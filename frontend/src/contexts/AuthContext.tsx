@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { apiFetch } from '../lib/api';
+import { humanizeError } from '../lib/errors';
 import { useIdleTimeout } from '../hooks/useIdleTimeout';
 
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
@@ -148,7 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data.user.orgId) fetchOrg(data.user.orgId);
       return { error: null };
     } catch (err) {
-      return { error: err instanceof Error ? err.message : 'Login failed' };
+      return { error: humanizeError(err, 'Sign in failed. Please check your details and try again.') };
     }
   };
 
@@ -170,7 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       applyUser(data.user);
       return { error: null };
     } catch (err) {
-      return { error: err instanceof Error ? err.message : 'Signup failed' };
+      return { error: humanizeError(err, 'Sign up failed. Please try again.') };
     }
   };
 
@@ -196,7 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       return { error: null };
     } catch (err) {
-      return { error: err instanceof Error ? err.message : 'Reset failed' };
+      return { error: humanizeError(err, 'Could not send the reset link. Please try again.') };
     }
   };
 

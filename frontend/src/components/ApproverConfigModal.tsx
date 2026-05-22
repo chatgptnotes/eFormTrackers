@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { X, Save, Loader2, Users, CheckCircle2, Zap } from 'lucide-react';
+import { humanizeError } from '../lib/errors';
 
 interface ApproverRow {
   formId: string;
@@ -165,8 +166,8 @@ export default function ApproverConfigModal({ activeForms, maxLevels = 10, onClo
       }));
 
       onSaved?.();
-    } catch {
-      setDetectMessage('Auto-detection failed — please try again');
+    } catch (err) {
+      setDetectMessage(humanizeError(err, 'Auto-detection failed — please try again'));
     } finally {
       setDetecting(false);
     }

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Zap, Mail, ArrowLeft, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { humanizeError } from '../lib/errors';
 
 export default function ForgotPassword() {
   const { resetPassword } = useAuth();
@@ -14,7 +15,7 @@ export default function ForgotPassword() {
     e.preventDefault();
     setLoading(true);
     const { error: err } = await resetPassword(email);
-    if (err) setError(String(err));
+    if (err) setError(humanizeError(err, 'Could not send the reset link. Please try again.'));
     else setSent(true);
     setLoading(false);
   };

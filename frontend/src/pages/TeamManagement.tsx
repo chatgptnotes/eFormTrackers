@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Users, Shield, Loader2, RefreshCw, AlertTriangle, UserPlus, Mail, Lock, X, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { ApiError, messageFromStatus, humanizeError } from '../lib/errors';
 
 interface TeamMember {
   id: string;
@@ -66,14 +67,14 @@ export default function TeamManagement() {
     setError(null);
     try {
       const res = await fetch('/api/team-members');
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.error || `API error: ${res.status}`);
+        throw new ApiError(messageFromStatus(res.status, (data as { error?: string }).error), res.status);
       }
       setMembers(data.members || []);
     } catch (err) {
       console.error('Failed to load team members:', err);
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err, 'Could not load team members. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -98,9 +99,9 @@ export default function TeamManagement() {
           creatorEmail: user?.email,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to create user');
+        throw new ApiError(messageFromStatus(res.status, (data as { error?: string }).error), res.status);
       }
       setCreateSuccess(`User ${data.user.email} created as ${data.user.role}`);
       setNewEmail('');
@@ -111,7 +112,7 @@ export default function TeamManagement() {
       // Refresh member list
       loadMembers();
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : String(err));
+      setCreateError(humanizeError(err, 'Could not create the user. Please try again.'));
     } finally {
       setCreating(false);
     }

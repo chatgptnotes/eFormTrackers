@@ -16,6 +16,7 @@ import WorkflowDetailsSidebar from '../components/WorkflowDetailsSidebar';
 import { getUserConfig, isSubmissionVisible } from '../config/currentUser';
 import { useAuth } from '../contexts/AuthContext';
 import { apiFetch } from '../lib/api';
+import { humanizeError, messageFromStatus, ApiError } from '../lib/errors';
 import { jotformHeaders } from '../lib/jotformKey';
 import { exportToExcel } from '../services/exportService';
 
@@ -408,14 +409,14 @@ export default function DirectorDashboard({ data }: Props) {
         body: JSON.stringify({ submissionId, action: 'approve' }),
       });
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `Approve failed: ${res.status}`);
+        const body = await res.json().catch(() => ({}));
+        throw new ApiError(messageFromStatus(res.status, (body as { error?: string }).error), res.status);
       }
       invalidateWorkflowCache(submissionId);
       await refreshExpandedTasks(submissionId);
       data.scheduleRefreshAfterAction();
     } catch (err) {
-      alert(`Approve failed: ${err instanceof Error ? err.message : String(err)}`);
+      alert(`Approve failed: ${humanizeError(err)}`);
     } finally {
       setTaskActionLoading(null);
     }
@@ -430,8 +431,8 @@ export default function DirectorDashboard({ data }: Props) {
         body: JSON.stringify({ submissionId, action: 'reject', comment: reason }),
       });
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `Reject failed: ${res.status}`);
+        const body = await res.json().catch(() => ({}));
+        throw new ApiError(messageFromStatus(res.status, (body as { error?: string }).error), res.status);
       }
       setTaskRejectingId(null);
       setTaskRejectReason('');
@@ -440,7 +441,7 @@ export default function DirectorDashboard({ data }: Props) {
       await refreshExpandedTasks(submissionId);
       data.scheduleRefreshAfterAction();
     } catch (err) {
-      alert(`Reject failed: ${err instanceof Error ? err.message : String(err)}`);
+      alert(`Reject failed: ${humanizeError(err)}`);
     } finally {
       setTaskActionLoading(null);
     }
@@ -455,14 +456,14 @@ export default function DirectorDashboard({ data }: Props) {
         body: JSON.stringify({ submissionId, action: 'complete' }),
       });
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `Complete failed: ${res.status}`);
+        const body = await res.json().catch(() => ({}));
+        throw new ApiError(messageFromStatus(res.status, (body as { error?: string }).error), res.status);
       }
       invalidateWorkflowCache(submissionId);
       await refreshExpandedTasks(submissionId);
       data.scheduleRefreshAfterAction();
     } catch (err) {
-      alert(`Complete failed: ${err instanceof Error ? err.message : String(err)}`);
+      alert(`Complete failed: ${humanizeError(err)}`);
     } finally {
       setTaskActionLoading(null);
     }
@@ -481,7 +482,7 @@ export default function DirectorDashboard({ data }: Props) {
         alert('Signature not found');
       }
     } catch (err) {
-      alert('Failed to fetch signature');
+      alert(humanizeError(err, 'Could not load the signature. Please try again.'));
     } finally {
       setSigLoading(null);
     }
@@ -775,8 +776,8 @@ export default function DirectorDashboard({ data }: Props) {
       body: JSON.stringify({ submissionId: sub.id, action, comment: reason || '' }),
     });
     if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.error || `Workflow action failed: ${res.status}`);
+      const body = await res.json().catch(() => ({}));
+      throw new ApiError(messageFromStatus(res.status, (body as { error?: string }).error), res.status);
     }
   };
 
@@ -801,7 +802,7 @@ export default function DirectorDashboard({ data }: Props) {
       // Staggered refresh — catches webhook delay (3s, 6s, 12s)
       data.scheduleRefreshAfterAction();
     } catch (err) {
-      alert(`Rejection failed: ${err instanceof Error ? err.message : String(err)}`);
+      alert(`Rejection failed: ${humanizeError(err)}`);
     } finally {
       setActionLoading(null);
     }
@@ -836,7 +837,10 @@ export default function DirectorDashboard({ data }: Props) {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...jotformHeaders() },
         body: params.toString(),
       });
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new ApiError(messageFromStatus(res.status, (body as { error?: string }).error), res.status);
+      }
 
       // Clear needs_sync in DB
       fetch(`/api/submissions/${sub.id}`, {
@@ -855,7 +859,7 @@ export default function DirectorDashboard({ data }: Props) {
       setSyncSubmission(null);
       data.scheduleRefreshAfterAction();
     } catch (err) {
-      alert(`Sync failed: ${err instanceof Error ? err.message : String(err)}`);
+      alert(`Sync failed: ${humanizeError(err)}`);
     } finally {
       setSyncLoading(false);
     }

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Submission, ApprovalEntry, ApprovalLevel, FilterConfig, SortConfig, PaginationConfig, RefreshConfig, WorkflowActionType } from '../types';
 import { getDashboardStats, getApprovalLevelStats, getDepartmentStats, getTrendData, getBottleneckData, getHeatmapData } from '../services/mockData';
 import { apiFetch } from '../lib/api';
+import { humanizeError } from '../lib/errors';
 import { io, Socket } from 'socket.io-client';
 import type { JFFormMeta } from '../services/formDiscovery';
 
@@ -161,7 +162,7 @@ export function useSubmissions() {
       setRefreshConfig(prev => ({ ...prev, lastUpdated: new Date().toISOString() }));
     } catch (err) {
       console.warn('[useSubmissions] DB read failed:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load submissions');
+      setError(humanizeError(err, 'Failed to load submissions'));
     } finally {
       setLoading(false);
     }

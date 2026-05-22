@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, ArrowRight, Loader2, Eye, EyeOff, AlertCircle, ShieldCheck, BookOpen } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { humanizeError } from '../lib/errors';
 
 export default function Login() {
   const { signIn, signInWithMicrosoft } = useAuth();
@@ -50,7 +51,7 @@ export default function Login() {
     setError(null);
     const { error: err } = await signIn(email, password);
     if (err) {
-      setError(typeof err === 'string' ? err : (err as { message?: string })?.message || 'Sign in failed');
+      setError(humanizeError(err, 'Sign in failed. Please check your details and try again.'));
       setLoading(false);
     } else {
       navigate('/app');

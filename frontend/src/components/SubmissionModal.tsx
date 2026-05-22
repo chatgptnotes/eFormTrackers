@@ -10,6 +10,7 @@ import SignaturePad from './SignaturePad';
 import { getUserConfig } from '../config/currentUser';
 import { useAuth } from '../contexts/AuthContext';
 import { apiFetch } from '../lib/api';
+import { humanizeError, messageFromStatus } from '../lib/errors';
 
 interface Props {
   submission: Submission | null;
@@ -156,16 +157,14 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
         if (uploadData.signatureUrl) {
           signatureUrl = uploadData.signatureUrl;
         } else {
-          setPushResult({ success: false, message: `Signature could not be saved: ${uploadData.error || 'Unknown error'}. Please try again.` });
+          setPushResult({ success: false, message: messageFromStatus(uploadRes.status, uploadData.error) });
           setUploadingSignature(false);
           setApproving(false);
           return;
         }
       } catch (err) {
         clearTimeout(uploadTimeout);
-        const msg = (err as Error).name === 'AbortError'
-          ? 'Signature upload timed out. Please try again.'
-          : `Signature upload failed: ${(err as Error).message}. Please try again.`;
+        const msg = humanizeError(err, 'Signature upload failed. Please try again.');
         setPushResult({ success: false, message: msg });
         setUploadingSignature(false);
         setApproving(false);
@@ -214,10 +213,10 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
         result = { success: true, message: `${actionLabel} successfully via workflow engine` };
         instanceCompleted = data.instanceCompleted === true;
       } else {
-        result = { success: false, message: data.error || `Workflow action failed: ${res.status}` };
+        result = { success: false, message: messageFromStatus(res.status, data.error) };
       }
     } catch (err) {
-      result = { success: false, message: `Workflow action error: ${(err as Error).message}` };
+      result = { success: false, message: humanizeError(err) };
     }
 
     // Also update form fields as backup (only for forms that have status fields)
