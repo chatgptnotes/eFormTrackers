@@ -255,6 +255,23 @@ export function useSubmissions() {
   const bottleneckData = useMemo(() => getBottleneckData(allSubmissions), [allSubmissions]);
   const heatmapData = useMemo(() => getHeatmapData(allSubmissions), [allSubmissions]);
 
+  // ─── Forms derived from loaded submissions (poller keeps the DB scoped) ─────
+  // The browser no longer calls JotForm /user/forms; the per-form sidebar filters
+  // are rebuilt from the formId/formTitle already present on each submission.
+  const activeForms = useMemo<JFFormMeta[]>(() => {
+    const byId = new Map<string, JFFormMeta>();
+    for (const s of allSubmissions) {
+      if (!s.formId) continue;
+      const existing = byId.get(s.formId);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        byId.set(s.formId, { id: s.formId, title: s.formTitle || s.formId, status: 'ENABLED', count: 1, updatedAt: '' });
+      }
+    }
+    return Array.from(byId.values());
+  }, [allSubmissions]);
+
   // ─── Workflow step cache (for optimistic updates) ─────────────────────────
   const [stepsByForm] = useState<Record<string, WorkflowStep[]>>({});
 
@@ -317,7 +334,7 @@ export function useSubmissions() {
 
   return {
     allSubmissions, filteredSubmissions, paginatedSubmissions,
-    activeForms: [] as JFFormMeta[],
+    activeForms,
     loading, error,
     stats, approvalStats, departmentStats, trendData, bottleneckData, heatmapData,
     filters, setFilters: wrappedSetFilters,
