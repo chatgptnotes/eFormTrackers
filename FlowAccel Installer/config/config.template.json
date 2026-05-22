@@ -1,5 +1,5 @@
 {
-  "_comment": "FlowAccel installer config template. Edit and pass via FlowAccel-Setup.exe /SILENT /CONFIG=path\\to\\this.json. All fields are read by install.ps1 / uninstall.ps1. FlowAccel 1.0.3 is HTTP-only (port 80) and IP-independent — no server IP or certificate settings are needed.",
+  "_comment": "FlowAccel installer config template. Edit and pass via FlowAccel-Setup.exe /SILENT /CONFIG=path\\to\\this.json. All fields are read by install.ps1 / uninstall.ps1. FlowAccel 1.0.3 is HTTP-only (port 80) and IP-independent - no server IP or certificate settings are needed.",
 
   "InstallDir": "C:\\inetpub\\flowaccel",
 

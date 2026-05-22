@@ -13,6 +13,7 @@ module.exports = {
   DATABASE_URL: process.env.DATABASE_URL,
   SESSION_SECRET: process.env.SESSION_SECRET,
   JOTFORM_API_KEY: process.env.JOTFORM_API_KEY || '',
+  JOTFORM_API_KEY_GDMO: process.env.JOTFORM_API_KEY_GDMO || '',
   JOTFORM_TEAM_ID: process.env.JOTFORM_TEAM_ID || '',
   JOTFORM_BASE: process.env.JOTFORM_BASE || 'https://eforms.mediaoffice.ae/API',
   JOTFORM_HOST: process.env.JOTFORM_HOST || 'https://eforms.mediaoffice.ae',

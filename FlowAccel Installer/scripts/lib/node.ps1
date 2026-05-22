@@ -43,25 +43,50 @@ function Install-NodeJS {
 
 function Invoke-NpmInstall {
     param(
-        [Parameter(Mandatory)][string]$BackendPath
+        [Parameter(Mandatory)][string]$BackendPath,
+        [int]$MaxAttempts = 3
     )
     Write-StepHeader -Number 12 -Total 25 -Title 'Installing backend npm dependencies'
     if (-not (Test-Path (Join-Path $BackendPath 'package.json'))) {
         throw "package.json not found in $BackendPath"
     }
+
+    # OFFLINE-FIRST (the single most important reliability fix).
+    # If a production node_modules was bundled with the installer (or left by a
+    # previous run), use it as-is and skip the network entirely. This is what
+    # stops the installer from dying at "Step 12 of 25" on servers that have no
+    # internet, sit behind a proxy, or have aggressive antivirus scanning the
+    # ~30,000 files npm would otherwise download. We check the three packages
+    # the installer itself depends on downstream: express (server), pg
+    # (migration), bcrypt (admin seed).
     $expressDir = Join-Path $BackendPath 'node_modules\express'
-    $lock = Join-Path $BackendPath 'package-lock.json'
-    if ((Test-Path $expressDir) -and (Test-Path $lock)) {
-        Write-Log -Level OK -Message 'node_modules already present; skipping npm install.'
+    $pgDir      = Join-Path $BackendPath 'node_modules\pg'
+    $bcryptDir  = Join-Path $BackendPath 'node_modules\bcrypt'
+    if ((Test-Path $expressDir) -and (Test-Path $pgDir) -and (Test-Path $bcryptDir)) {
+        Write-Log -Level OK -Message 'Bundled node_modules present (express, pg, bcrypt); skipping npm install (offline-safe).'
         return
     }
+    Write-Log -Level WARN -Message 'node_modules not bundled - falling back to ONLINE npm install (needs internet to registry.npmjs.org).'
+
     Push-Location $BackendPath
     try {
-        Write-Log -Level INFO -Message 'Running: npm install --production --no-audit --no-fund'
-        & npm install --production --no-audit --no-fund 2>&1 | ForEach-Object { Write-Log -Level DEBUG -Message $_ }
-        if ($LASTEXITCODE -ne 0) { throw "npm install failed with exit code $LASTEXITCODE" }
+        $ok = $false
+        for ($attempt = 1; ($attempt -le $MaxAttempts) -and (-not $ok); $attempt++) {
+            Write-Log -Level INFO -Message "npm install attempt $attempt of $MaxAttempts (npm install --production --no-audit --no-fund)..."
+            & npm install --production --no-audit --no-fund --loglevel=error 2>&1 |
+                ForEach-Object { Write-Log -Level DEBUG -Message $_ }
+            if (($LASTEXITCODE -eq 0) -and (Test-Path $expressDir)) {
+                $ok = $true
+            } else {
+                Write-Log -Level WARN -Message "npm install attempt $attempt failed (exit $LASTEXITCODE). Retrying in 5s..."
+                Start-Sleep -Seconds 5
+            }
+        }
+        if (-not $ok) {
+            throw "npm install failed after $MaxAttempts attempts. For an offline-safe build, bundle backend\node_modules into the installer payload (see build-installer instructions)."
+        }
     } finally {
         Pop-Location
     }
-    Write-Log -Level OK -Message 'Backend dependencies installed.'
+    Write-Log -Level OK -Message 'Backend dependencies installed (online).'
 }

@@ -69,7 +69,7 @@ function Start-BackendService {
     param(
         [Parameter(Mandatory)][string]$ServiceName,
         [int]$Port = 3001,
-        [int]$TimeoutSec = 30
+        [int]$TimeoutSec = 60
     )
     Write-StepHeader -Number 22 -Total 25 -Title "Starting backend service '$ServiceName'"
 

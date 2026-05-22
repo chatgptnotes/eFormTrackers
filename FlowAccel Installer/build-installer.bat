@@ -62,8 +62,36 @@ copy /y "%REPO%\server.js"  "%APP%\server.js"
 REM web.config is the installer's own HTTP-only template (with __BACKEND_PORT__
 REM token) - NOT the repo-root web.config, which targets the local dev deploy.
 copy /y "%HERE%config\web.config.template" "%APP%\web.config"
-REM Remove node_modules - will be reinstalled on target by Step 12.
+REM ---- 2b. VENDOR production node_modules for an OFFLINE-SAFE install ----
+REM The #1 field failure was the ONLINE npm step dying at "Step 12 of 25" on a
+REM target with no/limited internet, a proxy, or antivirus scanning ~30,000
+REM files - which aborted the whole install and left the box with no website.
+REM We now ship a clean production dependency tree INSIDE the installer so the
+REM target never touches the network. NOTE: this build machine MUST be Windows
+REM x64 with Node 18 so the native bcrypt binary matches the target platform.
 if exist "%APP%\backend\node_modules" rmdir /s /q "%APP%\backend\node_modules"
+if exist "%APP%\backend\package.json" (
+  REM Guard: bcrypt is a native module; it MUST be compiled/prebuilt against the
+  REM same major Node version the target runs (Node 18). Building on a different
+  REM major (e.g. 20/22) ships a binary that crashes the backend on the target.
+  for /f "tokens=1 delims=." %%V in ('node -p "process.versions.node" 2^>nul') do set "NODEMAJOR=%%V"
+  if not defined NODEMAJOR (
+    echo ERROR: node not on PATH - cannot vendor backend deps. Install Node 18 and retry.
+    exit /b 5
+  )
+  if not "!NODEMAJOR!"=="18" (
+    echo ERROR: Node major is !NODEMAJOR! but the installer ships Node 18 to the target.
+    echo        Build on Node 18 x64 so the bundled bcrypt binary matches. Aborting.
+    exit /b 5
+  )
+  echo   Vendoring production backend node_modules ^(offline deps, Node !NODEMAJOR! x64^)...
+  pushd "%APP%\backend"
+  call npm install --production --no-audit --no-fund --loglevel=error
+  if errorlevel 1 ( echo Backend production npm install failed & popd & exit /b 5 )
+  popd
+) else (
+  echo   WARN: backend\package.json not found - node_modules NOT vendored ^(install will fall back to online npm^).
+)
 REM SECURITY: never ship local secrets or runtime data inside the installer.
 REM (The /exclude above can be bypassed by the || fallback xcopy, so scrub explicitly.)
 if exist "%APP%\backend\.env"            del /f /q "%APP%\backend\.env"

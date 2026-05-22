@@ -12,6 +12,8 @@
     "build:frontend": "cd frontend && npm run build",
     "build:backend": "cd backend && npm run build",
     "build": "npm run build:frontend && npm run build:backend",
+    "package": "powershell -ExecutionPolicy Bypass -File build-package.ps1",
+    "package:skip-build": "powershell -ExecutionPolicy Bypass -File build-package.ps1 -SkipFrontendBuild",
     "start": "node server.js",
     "migrate": "cd backend && npm run migrate"
   }

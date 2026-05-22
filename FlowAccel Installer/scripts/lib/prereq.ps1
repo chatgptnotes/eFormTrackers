@@ -40,11 +40,20 @@ function Invoke-PreflightChecks {
         Write-Log -Level OK -Message 'Running with Administrator privileges.'
     }
 
+    $osCaption = (Get-CimInstance Win32_OperatingSystem).Caption
     if (-not (Get-WindowsBuildOK)) {
         $issues += 'Windows 10 / Windows Server 2016 or newer is required.'
+    } elseif ($osCaption -match 'Home') {
+        # Windows Home has no IIS - the install would fail confusingly mid-way.
+        # AWS/Azure/GCP Windows Server and Win 10/11 Pro are all fine.
+        $issues += "This edition ($osCaption) does not include IIS, which FlowAccel requires. Use Windows 10/11 Pro or Windows Server 2016+ (e.g. a standard AWS Windows Server AMI)."
     } else {
-        $os = (Get-CimInstance Win32_OperatingSystem).Caption
-        Write-Log -Level OK -Message "OS supported: $os"
+        Write-Log -Level OK -Message "OS supported: $osCaption"
+    }
+
+    # 64-bit only (the bundled binaries and Node MSI are x64).
+    if (-not [Environment]::Is64BitOperatingSystem) {
+        $issues += 'A 64-bit (x64) edition of Windows is required.'
     }
 
     $free = Get-FreeSpaceGB -Drive $Drive

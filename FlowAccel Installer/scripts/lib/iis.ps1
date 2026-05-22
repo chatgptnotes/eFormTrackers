@@ -2,13 +2,13 @@
 
 $script:IISFeaturesWin = @(
     'IIS-WebServerRole','IIS-WebServer','IIS-CommonHttpFeatures','IIS-StaticContent',
-    'IIS-DefaultDocument','IIS-HttpErrors','IIS-RequestFiltering','IIS-WebSockets',
+    'IIS-DefaultDocument','IIS-DirectoryBrowsing','IIS-HttpErrors','IIS-RequestFiltering','IIS-WebSockets',
     'IIS-HttpRedirect','IIS-ApplicationInit','IIS-ManagementConsole','IIS-ManagementScriptingTools'
 )
 
 $script:IISFeaturesServer = @(
     'Web-Server','Web-WebServer','Web-Common-Http','Web-Static-Content',
-    'Web-Default-Doc','Web-Http-Errors','Web-Filtering','Web-WebSockets',
+    'Web-Default-Doc','Web-Dir-Browsing','Web-Http-Errors','Web-Filtering','Web-WebSockets',
     'Web-Http-Redirect','Web-AppInit','Web-Mgmt-Console','Web-Scripting-Tools'
 )
 

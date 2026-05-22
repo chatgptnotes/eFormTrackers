@@ -3,6 +3,7 @@ import { Submission, ApprovalEntry, ApprovalLevel, FilterConfig, SortConfig, Pag
 import { getDashboardStats, getApprovalLevelStats, getDepartmentStats, getTrendData, getBottleneckData, getHeatmapData } from '../services/mockData';
 import { apiFetch } from '../lib/api';
 import { fetchUserForms, fetchFormQuestions, detectFields, JFFormMeta, DetectedFields } from '../services/formDiscovery';
+import { jotformHeaders } from '../lib/jotformKey';
 
 // ─── Workflow step type cache (per formId) ────────────────────────────────────
 interface WorkflowStep { level: number; type: WorkflowActionType; assigneeEmail?: string; }
@@ -590,7 +591,8 @@ export function useSubmissions() {
               const rows: Record<string, unknown>[] = [];
               while (pageCount < maxPagesInitial) {
                 const res = await fetch(
-                  `/api/jotform?path=form/${form.id}/submissions&limit=${pageLimit}&offset=${offset}&orderby=created_at&direction=DESC&addWorkflowStatus=1`
+                  `/api/jotform?path=form/${form.id}/submissions&limit=${pageLimit}&offset=${offset}&orderby=created_at&direction=DESC&addWorkflowStatus=1`,
+                  { headers: jotformHeaders() }
                 );
                 if (!res.ok) {
                   console.warn(`[JotFlow] Failed to fetch submissions for form ${form.id} (offset=${offset}, status=${res.status})`);
