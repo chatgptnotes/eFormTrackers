@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { X, Save, Loader2, Users, CheckCircle2, Zap } from 'lucide-react';
+import { apiFetch } from '../lib/api';
 
 interface ApproverRow {
   formId: string;
@@ -28,8 +29,7 @@ export default function ApproverConfigModal({ activeForms, maxLevels = 10, onClo
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/approver-config');
-        const data = await res.json();
+        const data = await apiFetch<{ configs?: Record<string, any>[] }>('/api/approver-config');
         const configs = data.configs || [];
 
         // Build rows: for each form, up to maxLevels
@@ -83,9 +83,8 @@ export default function ApproverConfigModal({ activeForms, maxLevels = 10, onClo
     ));
 
     try {
-      const res = await fetch('/api/approver-config', {
+      await apiFetch('/api/approver-config', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           formId,
           level,
@@ -93,7 +92,6 @@ export default function ApproverConfigModal({ activeForms, maxLevels = 10, onClo
           approverEmail: row.approverEmail.trim(),
         }),
       });
-      if (!res.ok) throw new Error('Save failed');
       setRows(prev => prev.map(r =>
         r.formId === formId && r.level === level ? { ...r, saving: false, saved: true } : r
       ));
@@ -116,9 +114,7 @@ export default function ApproverConfigModal({ activeForms, maxLevels = 10, onClo
     setDetecting(true);
     setDetectMessage('');
     try {
-      const res = await fetch('/api/detect-approvers');
-      if (!res.ok) throw new Error('Detection failed');
-      const data = await res.json();
+      const data = await apiFetch<{ detectedApprovers?: { formId: string; level: number; approverName: string; approverEmail: string; count: number }[] }>('/api/detect-approvers');
       const detected: { formId: string; level: number; approverName: string; approverEmail: string; count: number }[] = data.detectedApprovers || [];
 
       if (detected.length === 0) {
@@ -145,16 +141,15 @@ export default function ApproverConfigModal({ activeForms, maxLevels = 10, onClo
 
       // Auto-save detected approvers to Supabase
       for (const d of detected) {
-        await fetch('/api/approver-config', {
+        await apiFetch('/api/approver-config', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             formId: d.formId,
             level: d.level,
             approverName: d.approverName,
             approverEmail: d.approverEmail,
           }),
-        });
+        }).catch(() => {});
       }
 
       // Mark saved rows

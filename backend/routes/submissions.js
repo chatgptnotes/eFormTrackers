@@ -2,6 +2,13 @@ const { Router } = require('express');
 const pool = require('../db/pool');
 const env = require('../config/env');
 const { jotformFetch, resolveApiKey } = require('../lib/jotform');
+const { validate } = require('../middleware/validate');
+const {
+  syncToSupabaseBodySchema,
+  workflowActionBodySchema,
+  deleteSubmissionQuerySchema,
+  jotformUpdateQuerySchema,
+} = require('../schemas/submissions');
 
 function readKeyType(req) {
   const v = req.headers['x-jotform-key-type'];
@@ -39,12 +46,9 @@ router.get('/jotform', async (req, res, next) => {
 
 // ── POST /api/sync-to-supabase ──
 // Upserts enriched submission records from the frontend into PostgreSQL
-router.post('/sync-to-supabase', async (req, res, next) => {
+router.post('/sync-to-supabase', validate(syncToSupabaseBodySchema), async (req, res, next) => {
   try {
-    const records = req.body?.records;
-    if (!Array.isArray(records) || records.length === 0) {
-      return res.status(400).json({ error: 'records array is required' });
-    }
+    const records = req.body.records;
 
     let upserted = 0;
     let errors = 0;
@@ -92,7 +96,7 @@ router.post('/sync-to-supabase', async (req, res, next) => {
           upserted++;
         }
       } catch (err) {
-        console.error('Upsert error:', err.message);
+        req.log.error({ err }, 'Upsert error');
         errorDetails.push(err.message);
         errors += chunk.length;
       }
@@ -268,7 +272,7 @@ router.post('/webhook', async (req, res, next) => {
         }
       }
     } catch (wfErr) {
-      console.warn('Could not fetch workflow tasks:', wfErr.message);
+      req.log.warn({ err: wfErr }, 'Could not fetch workflow tasks');
     }
 
     const levelHistory = levels.map(l => ({
@@ -325,7 +329,7 @@ router.post('/webhook', async (req, res, next) => {
         message: `${title} from ${submittedBy || 'Unknown'} (${department}) needs your approval`,
         submissionId, formId,
         data: { level: currentLevel, submittedBy, department },
-      }).catch(err => console.warn('[webhook] Notification failed:', err.message));
+      }).catch(err => req.log.warn({ err }, '[webhook] Notification failed'));
     }
 
     // Upsert approval history rows
@@ -342,7 +346,7 @@ router.post('/webhook', async (req, res, next) => {
           [submissionId, formId, lvl.id, action,
            lvl.approver || pendingApproverName || '', pendingApproverEmail || '',
            lvl.date ? new Date(lvl.date).toISOString() : new Date().toISOString()]
-        ).catch(e => console.warn(`[submissions] approval_history upsert failed (sub=${submissionId} lvl=${lvl.id}):`, e.message));
+        ).catch(e => req.log.warn({ err: e, submissionId, level: lvl.id }, '[submissions] approval_history upsert failed'));
       }
     }
 
@@ -418,15 +422,11 @@ router.get('/workflow-tasks', async (req, res, next) => {
 });
 
 // ── POST /api/workflow-action ──
-router.post('/workflow-action', async (req, res, next) => {
+router.post('/workflow-action', validate(workflowActionBodySchema), async (req, res, next) => {
   try {
     if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
 
-    const { submissionId, action, comment, signature } = req.body || {};
-    if (!submissionId) return res.status(400).json({ error: 'submissionId required' });
-    if (!action || !['approve', 'reject', 'complete'].includes(action)) {
-      return res.status(400).json({ error: 'action must be "approve", "reject", or "complete"' });
-    }
+    const { submissionId, action, comment, signature } = req.body;
 
     // Step 1: Get workflowInstanceID
     const subData = await jotformFetch(`submission/${submissionId}`, {
@@ -497,7 +497,7 @@ router.post('/workflow-action', async (req, res, next) => {
          comment || '']
       );
     } catch (histErr) {
-      console.warn('[workflow-action] History save failed:', histErr.message);
+      req.log.warn({ err: histErr }, '[workflow-action] History save failed');
     }
 
     // Send notifications
@@ -548,7 +548,7 @@ router.post('/workflow-action', async (req, res, next) => {
               }
             }
           } catch (e) {
-            console.warn('[workflow-action] Next-approver notification failed:', e.message);
+            req.log.warn({ err: e }, '[workflow-action] Next-approver notification failed');
           }
         }
       } else if (action === 'reject' && submitterEmail) {
@@ -562,7 +562,7 @@ router.post('/workflow-action', async (req, res, next) => {
         });
       }
     } catch (notifErr) {
-      console.warn('[workflow-action] Notification logic failed:', notifErr.message);
+      req.log.warn({ err: notifErr }, '[workflow-action] Notification logic failed');
     }
 
     res.json({
@@ -573,10 +573,9 @@ router.post('/workflow-action', async (req, res, next) => {
 });
 
 // ── DELETE /api/delete-submission?submissionId=xxx ──
-router.delete('/delete-submission', async (req, res, next) => {
+router.delete('/delete-submission', validate(deleteSubmissionQuerySchema, 'query'), async (req, res, next) => {
   try {
     const submissionId = req.query.submissionId;
-    if (!submissionId) return res.status(400).json({ error: 'submissionId required' });
     if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'API key not configured' });
 
     const deleteUrl = `${env.JOTFORM_BASE}/submission/${submissionId}?apiKey=${env.JOTFORM_API_KEY}&teamID=${env.JOTFORM_TEAM_ID}`;
@@ -593,10 +592,9 @@ router.delete('/delete-submission', async (req, res, next) => {
 });
 
 // ── POST /api/jotform-update?submissionId=xxx ──
-router.post('/jotform-update', async (req, res, next) => {
+router.post('/jotform-update', validate(jotformUpdateQuerySchema, 'query'), async (req, res, next) => {
   try {
     const submissionId = req.query.submissionId;
-    if (!submissionId) return res.status(400).json({ error: 'submissionId required' });
     const keyType = readKeyType(req);
     const apiKey = resolveApiKey(keyType);
     if (!apiKey) return res.status(500).json({ error: `JotForm API key for "${keyType}" not set` });
@@ -690,7 +688,7 @@ router.get('/cleanup-submissions', async (req, res, next) => {
           }
         }
       } catch (e) {
-        console.warn(`[submissions] workflow task fetch failed (sub=${sub.id}):`, e.message);
+        req.log.warn({ err: e, submissionId: sub.id }, '[submissions] workflow task fetch failed');
       }
     }
 

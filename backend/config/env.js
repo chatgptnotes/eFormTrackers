@@ -4,7 +4,9 @@ require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
 const required = ['DATABASE_URL', 'SESSION_SECRET'];
 for (const key of required) {
   if (!process.env[key]) {
-    console.error(`Missing required env var: ${key}`);
+    // Cannot use the pino logger here because logger.js requires this file.
+    // Write directly to stderr; this is a fatal-config path that runs once.
+    process.stderr.write(`Missing required env var: ${key}\n`);
     process.exit(1);
   }
 }

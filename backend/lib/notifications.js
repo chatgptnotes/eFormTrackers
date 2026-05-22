@@ -1,4 +1,5 @@
 const pool = require('../db/pool');
+const logger = require('../config/logger');
 
 /**
  * Insert a notification row and emit via Socket.IO (if io is attached).
@@ -16,7 +17,7 @@ async function insertNotification(params) {
     const { emitToUser } = require('./realtime');
     emitToUser(userEmail, 'notification', { type, title, message, submissionId });
   } catch (err) {
-    console.warn('[notifications] Insert error:', err.message);
+    logger.warn({ err }, '[notifications] Insert error');
   }
 }
 

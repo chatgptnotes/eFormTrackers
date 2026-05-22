@@ -1,5 +1,13 @@
 const { Router } = require('express');
 const pool = require('../db/pool');
+const { validate } = require('../middleware/validate');
+const {
+  submissionsPutBodySchema,
+  profilesPutBodySchema,
+  organizationsPutBodySchema,
+  activityLogPostBodySchema,
+  subscriptionsPutBodySchema,
+} = require('../schemas/data');
 
 const router = Router();
 
@@ -48,13 +56,10 @@ router.get('/submissions', async (req, res, next) => {
 
 // ── PUT /api/submissions/:id ──
 // Update a submission row (used by DirectorDashboard for inline status updates)
-router.put('/submissions/:jotformSubmissionId', async (req, res, next) => {
+router.put('/submissions/:jotformSubmissionId', validate(submissionsPutBodySchema), async (req, res, next) => {
   try {
     const { jotformSubmissionId } = req.params;
     const updates = req.body;
-    if (!updates || Object.keys(updates).length === 0) {
-      return res.status(400).json({ error: 'No fields to update' });
-    }
 
     // Build dynamic SET clause from allowed columns
     const ALLOWED = new Set([
@@ -187,7 +192,7 @@ router.get('/profiles', async (req, res, next) => {
 });
 
 // ── PUT /api/profiles/:userId ──
-router.put('/profiles/:userId', async (req, res, next) => {
+router.put('/profiles/:userId', validate(profilesPutBodySchema), async (req, res, next) => {
   try {
     const { userId } = req.params;
     const updates = req.body;
@@ -227,7 +232,7 @@ router.get('/organizations/:id', async (req, res, next) => {
 });
 
 // ── PUT /api/organizations/:id ──
-router.put('/organizations/:id', async (req, res, next) => {
+router.put('/organizations/:id', validate(organizationsPutBodySchema), async (req, res, next) => {
   try {
     const { name, settings, logo_url, branding, plan } = req.body;
     const setClauses = ['updated_at = now()'];
@@ -277,7 +282,7 @@ router.get('/activity-log', async (req, res, next) => {
 });
 
 // ── POST /api/activity-log ──
-router.post('/activity-log', async (req, res, next) => {
+router.post('/activity-log', validate(activityLogPostBodySchema), async (req, res, next) => {
   try {
     const { user_id, user_email, action, entity_type, entity_id, details } = req.body;
     await pool.query(
@@ -294,7 +299,7 @@ router.post('/activity-log', async (req, res, next) => {
 // ══════════════════════════════════════════════════════════
 
 // ── PUT /api/subscriptions/:orgId ──
-router.put('/subscriptions/:orgId', async (req, res, next) => {
+router.put('/subscriptions/:orgId', validate(subscriptionsPutBodySchema), async (req, res, next) => {
   try {
     const { orgId } = req.params;
     const { plan, status } = req.body;

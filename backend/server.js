@@ -1,8 +1,10 @@
 const http = require('http');
 const express = require('express');
 const helmet = require('helmet');
+const pinoHttp = require('pino-http');
 const { Server: SocketIO } = require('socket.io');
 const env = require('./config/env');
+const logger = require('./config/logger');
 const corsMiddleware = require('./middleware/cors');
 const sessionMiddleware = require('./config/session');
 const errorHandler = require('./middleware/errorHandler');
@@ -23,6 +25,7 @@ app.set('trust proxy', 1);
 // ── Global middleware ──
 app.use(helmet({ contentSecurityPolicy: false, crossOriginOpenerPolicy: false }));
 app.use(corsMiddleware);
+app.use(pinoHttp({ logger }));
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(sessionMiddleware);
@@ -61,5 +64,5 @@ app.use(errorHandler);
 
 // ── Start ──
 server.listen(env.PORT, () => {
-  console.log(`[JotFlow] Backend listening on port ${env.PORT} (${env.NODE_ENV})`);
+  logger.info({ port: env.PORT, env: env.NODE_ENV }, '[JotFlow] Backend listening');
 });

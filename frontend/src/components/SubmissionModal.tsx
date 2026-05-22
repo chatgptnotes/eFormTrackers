@@ -45,13 +45,14 @@ async function ensureFields(formId: string): Promise<{
   levelFieldMap: { level: number; statusFieldId: string; approverFieldId: string | null; overallStatusFieldId: string | null }[];
 } | null> {
   try {
-    const res = await fetch(`/api/ensure-fields?formId=${formId}`, { method: 'POST' });
-    if (!res.ok) return null;
-    const data = await res.json();
+    const data = await apiFetch<{ fields?: { level: number; statusFieldId: string; approverFieldId: string }[]; overallStatusFieldId?: string }>(
+      `/api/ensure-fields?formId=${formId}`,
+      { method: 'POST' }
+    );
     if (!data.fields || data.fields.length === 0) return null;
     const overallId = data.overallStatusFieldId || null;
     return {
-      levelFieldMap: data.fields.map((f: { level: number; statusFieldId: string; approverFieldId: string }) => ({
+      levelFieldMap: data.fields.map((f) => ({
         level: f.level,
         statusFieldId: f.statusFieldId,
         approverFieldId: f.approverFieldId || null,
@@ -139,9 +140,8 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
       abortRef.current = uploadCtrl;
       const uploadTimeout = setTimeout(() => uploadCtrl.abort(), 20000);
       try {
-        const uploadRes = await fetch('/api/upload-signature', {
+        const uploadData = await apiFetch<{ signatureUrl?: string; error?: string }>('/api/upload-signature', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             submissionId: submission.id,
             level: lvl,
@@ -150,9 +150,9 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
             approverName: currentUser.name,
           }),
           signal: uploadCtrl.signal,
+          throwOnError: false,
         });
         clearTimeout(uploadTimeout);
-        const uploadData = await uploadRes.json();
         if (uploadData.signatureUrl) {
           signatureUrl = uploadData.signatureUrl;
         } else {
@@ -199,22 +199,21 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
     let instanceCompleted = false;
     try {
       const wfAction = action === 'approve' ? 'approve' : 'reject';
-      const res = await fetch('/api/workflow-action', {
+      const data = await apiFetch<{ ok?: boolean; instanceCompleted?: boolean; error?: string }>('/api/workflow-action', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           submissionId: submission.id,
           action: wfAction,
           comment: comment.trim() || approverNote,
           signature: signature || undefined,
         }),
+        throwOnError: false,
       });
-      const data = await res.json();
-      if (res.ok && data.ok) {
+      if (data.ok) {
         result = { success: true, message: `${actionLabel} successfully via workflow engine` };
         instanceCompleted = data.instanceCompleted === true;
       } else {
-        result = { success: false, message: data.error || `Workflow action failed: ${res.status}` };
+        result = { success: false, message: data.error || `Workflow action failed` };
       }
     } catch (err) {
       result = { success: false, message: `Workflow action error: ${(err as Error).message}` };

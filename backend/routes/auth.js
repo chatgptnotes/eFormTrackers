@@ -3,6 +3,13 @@ const bcrypt = require('bcrypt');
 const msal = require('@azure/msal-node');
 const pool = require('../db/pool');
 const env = require('../config/env');
+const { validate } = require('../middleware/validate');
+const {
+  signupBodySchema,
+  loginBodySchema,
+  resetPasswordBodySchema,
+  verifyWorkspaceMemberBodySchema,
+} = require('../schemas/auth');
 
 const router = Router();
 const SALT_ROUNDS = 12;
@@ -28,15 +35,9 @@ function getMsalClient() {
 const MS_SCOPES = ['openid', 'profile', 'email', 'User.Read'];
 
 // ── POST /api/auth/signup ──
-router.post('/signup', async (req, res, next) => {
+router.post('/signup', validate(signupBodySchema), async (req, res, next) => {
   try {
     const { email, password, fullName, department } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
-    }
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
-    }
 
     // Check existing
     const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
@@ -81,12 +82,9 @@ router.post('/signup', async (req, res, next) => {
 });
 
 // ── POST /api/auth/login ──
-router.post('/login', async (req, res, next) => {
+router.post('/login', validate(loginBodySchema), async (req, res, next) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
-    }
 
     const { rows } = await pool.query(
       `SELECT u.id, u.email, u.password_hash, u.full_name,
@@ -175,10 +173,9 @@ router.get('/session', async (req, res, next) => {
 
 // ── POST /api/auth/reset-password ──
 // MVP: logs reset URL to console; add SMTP later
-router.post('/reset-password', async (req, res, next) => {
+router.post('/reset-password', validate(resetPasswordBodySchema), async (req, res, next) => {
   try {
     const { email } = req.body;
-    if (!email) return res.status(400).json({ error: 'email required' });
 
     const { rows } = await pool.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
     // Always return success to avoid email enumeration
@@ -189,7 +186,7 @@ router.post('/reset-password', async (req, res, next) => {
     const { v4: uuidv4 } = require('uuid');
     const token = uuidv4();
     // TODO: store token in a password_resets table with expiry
-    console.log(`[reset-password] Reset link for ${email}: /reset?token=${token}`);
+    req.log.info({ email, resetUrl: `/reset?token=${token}` }, '[reset-password] Reset link generated');
 
     res.json({ ok: true, message: 'If that email exists, a reset link has been sent.' });
   } catch (err) { next(err); }
@@ -200,7 +197,7 @@ router.post('/reset-password', async (req, res, next) => {
 let memberCache = null;
 const CACHE_TTL = 5 * 60 * 1000;
 
-router.post('/verify-workspace-member', async (req, res, next) => {
+router.post('/verify-workspace-member', validate(verifyWorkspaceMemberBodySchema), async (req, res, next) => {
   // Local-dev bypass: the JotForm Enterprise API host (eforms.mediaoffice.ae)
   // is unreachable outside the GDMO network, which would block every login.
   // Skip the workspace-membership gate when not running in production.
@@ -214,9 +211,6 @@ router.post('/verify-workspace-member', async (req, res, next) => {
     }
 
     const email = String(req.body.email || '').trim().toLowerCase();
-    if (!email) {
-      return res.status(400).json({ error: 'email is required', isMember: false });
-    }
 
     // Fetch & cache workspace members
     if (!memberCache || Date.now() - memberCache.fetchedAt > CACHE_TTL) {
@@ -246,7 +240,7 @@ router.post('/verify-workspace-member', async (req, res, next) => {
     const member = isMember ? memberCache.members.get(email) : null;
     res.json({ isMember, member, totalMembers: memberCache.emails.size });
   } catch (err) {
-    console.error('verify-workspace-member error:', err);
+    req.log.error({ err }, 'verify-workspace-member error');
     res.status(502).json({ error: 'Failed to verify workspace membership', isMember: false });
   }
 });
@@ -264,7 +258,7 @@ router.get('/microsoft', async (req, res) => {
     });
     res.send(`<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=${authUrl}"><script>window.location.href="${authUrl}";</script></head><body>Redirecting to Microsoft…</body></html>`);
   } catch (err) {
-    console.error('[microsoft] auth URL error:', err);
+    req.log.error({ err }, '[microsoft] auth URL error');
     res.redirect('/login?error=microsoft_auth_failed');
   }
 });
@@ -343,7 +337,7 @@ router.get('/microsoft/callback', async (req, res) => {
 
     res.redirect('/app');
   } catch (err) {
-    console.error('[microsoft/callback] error:', err);
+    req.log.error({ err }, '[microsoft/callback] error');
     res.redirect('/login?error=microsoft_auth_failed');
   }
 });

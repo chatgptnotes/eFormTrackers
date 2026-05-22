@@ -2,6 +2,12 @@ const { Router } = require('express');
 const env = require('../config/env');
 const { jotformFetch } = require('../lib/jotform');
 const { detectLevelFields } = require('../lib/detect-fields');
+const { validate } = require('../middleware/validate');
+const {
+  formIdRequiredQuerySchema,
+  formIdOptionalQuerySchema,
+  formAndSubmissionQuerySchema,
+} = require('../schemas/forms');
 
 const router = Router();
 
@@ -20,10 +26,9 @@ function detectStepType(label) {
   return 'approval';
 }
 
-router.get('/form-workflow', async (req, res, next) => {
+router.get('/form-workflow', validate(formIdRequiredQuerySchema, 'query'), async (req, res, next) => {
   try {
     const formId = req.query.formId;
-    if (!formId) return res.status(400).json({ error: 'formId required' });
 
     const cached = workflowCache[formId];
     if (cached && Date.now() - cached.at < CACHE_TTL) {
@@ -74,7 +79,7 @@ router.get('/form-workflow', async (req, res, next) => {
         }
       }
     } catch (e) {
-      console.warn(`[forms] form properties fetch failed (form=${formId}):`, e.message);
+      req.log.warn({ err: e, formId }, '[forms] form properties fetch failed');
     }
 
     workflowCache[formId] = { steps, at: Date.now() };
@@ -83,11 +88,10 @@ router.get('/form-workflow', async (req, res, next) => {
 });
 
 // ── POST /api/ensure-fields?formId=xxx ──
-router.post('/ensure-fields', async (req, res, next) => {
+router.post('/ensure-fields', validate(formIdRequiredQuerySchema, 'query'), async (req, res, next) => {
   try {
     if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
     const formId = req.query.formId;
-    if (!formId) return res.status(400).json({ error: 'formId required' });
 
     const qData = await jotformFetch(`form/${formId}/questions`);
     const questions = qData.content || {};
@@ -210,7 +214,7 @@ router.post('/ensure-fields', async (req, res, next) => {
 });
 
 // ── GET /api/detect-approvers?formId=xxx ──
-router.get('/detect-approvers', async (req, res, next) => {
+router.get('/detect-approvers', validate(formIdOptionalQuerySchema, 'query'), async (req, res, next) => {
   try {
     if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
 
@@ -325,10 +329,9 @@ router.post('/register-webhooks', async (req, res, next) => {
 });
 
 // ── GET /api/email-url?formId=xxx&submissionId=yyy ──
-router.get('/email-url', async (req, res, next) => {
+router.get('/email-url', validate(formAndSubmissionQuerySchema, 'query'), async (req, res, next) => {
   try {
     const { formId, submissionId } = req.query;
-    if (!formId || !submissionId) return res.status(400).json({ error: 'formId and submissionId required' });
 
     const subData = await jotformFetch(`submission/${submissionId}`, { params: { addWorkflowStatus: '1' } });
     const content = subData?.content || {};
@@ -369,7 +372,7 @@ router.get('/email-url', async (req, res, next) => {
             }
           }
         } catch (e) {
-          console.warn(`[forms] prefill API fetch failed (form=${formId} sub=${submissionId}):`, e.message);
+          req.log.warn({ err: e, formId, submissionId }, '[forms] prefill API fetch failed');
         }
       }
       return res.json({
@@ -394,16 +397,14 @@ router.get('/email-url', async (req, res, next) => {
 });
 
 // ── GET /api/form-url?formId=xxx&submissionId=yyy ──
-router.get('/form-url', (req, res) => {
+router.get('/form-url', validate(formAndSubmissionQuerySchema, 'query'), (req, res) => {
   const { formId, submissionId } = req.query;
-  if (!formId || !submissionId) return res.status(400).json({ error: 'formId and submissionId required' });
   res.json({ formUrl: `${JOTFORM_INBOX}/${formId}/${submissionId}`, formId, submissionId, source: 'inbox' });
 });
 
 // ── GET /api/task-url?formId=xxx&submissionId=yyy ──
-router.get('/task-url', (req, res) => {
+router.get('/task-url', validate(formAndSubmissionQuerySchema, 'query'), (req, res) => {
   const { formId, submissionId } = req.query;
-  if (!formId || !submissionId) return res.status(400).json({ error: 'formId and submissionId required' });
   res.json({ taskUrl: `${JOTFORM_INBOX}/${formId}/${submissionId}`, formId, submissionId, source: 'inbox' });
 });
 
