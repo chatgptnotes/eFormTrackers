@@ -2,6 +2,7 @@ const { Router } = require('express');
 const env = require('../config/env');
 const { jotformFetch } = require('../lib/jotform');
 const { detectLevelFields } = require('../lib/detect-fields');
+const { requireAuth } = require('../middleware/auth');
 
 const router = Router();
 
@@ -20,7 +21,7 @@ function detectStepType(label) {
   return 'approval';
 }
 
-router.get('/form-workflow', async (req, res, next) => {
+router.get('/form-workflow', requireAuth, async (req, res, next) => {
   try {
     const formId = req.query.formId;
     if (!formId) return res.status(400).json({ error: 'formId required' });
@@ -81,7 +82,7 @@ router.get('/form-workflow', async (req, res, next) => {
 });
 
 // ── POST /api/ensure-fields?formId=xxx ──
-router.post('/ensure-fields', async (req, res, next) => {
+router.post('/ensure-fields', requireAuth, async (req, res, next) => {
   try {
     if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
     const formId = req.query.formId;
@@ -160,10 +161,11 @@ router.post('/ensure-fields', async (req, res, next) => {
       }
     }
 
-    const createUrl = `${env.JOTFORM_BASE}/form/${formId}/questions?apiKey=${env.JOTFORM_API_KEY}&teamID=${env.JOTFORM_TEAM_ID}`;
+    const teamParam = env.JOTFORM_TEAM_ID ? `?teamID=${env.JOTFORM_TEAM_ID}` : '';
+    const createUrl = `${env.JOTFORM_BASE}/form/${formId}/questions${teamParam}`;
     const createRes = await fetch(createUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'APIKEY': env.JOTFORM_API_KEY },
       body: params.toString(),
     });
     if (!createRes.ok) {
@@ -208,7 +210,7 @@ router.post('/ensure-fields', async (req, res, next) => {
 });
 
 // ── GET /api/detect-approvers?formId=xxx ──
-router.get('/detect-approvers', async (req, res, next) => {
+router.get('/detect-approvers', requireAuth, async (req, res, next) => {
   try {
     if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
 
@@ -281,7 +283,7 @@ router.get('/detect-approvers', async (req, res, next) => {
 });
 
 // ── POST /api/register-webhooks ──
-router.post('/register-webhooks', async (req, res, next) => {
+router.post('/register-webhooks', requireAuth, async (req, res, next) => {
   try {
     if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
 
@@ -301,10 +303,11 @@ router.post('/register-webhooks', async (req, res, next) => {
       try {
         const params = new URLSearchParams();
         params.set('webhookURL', webhookURL);
-        const url = `${env.JOTFORM_BASE}/form/${formId}/webhooks?apiKey=${env.JOTFORM_API_KEY}&teamID=${env.JOTFORM_TEAM_ID}`;
+        const teamParam = env.JOTFORM_TEAM_ID ? `?teamID=${env.JOTFORM_TEAM_ID}` : '';
+        const url = `${env.JOTFORM_BASE}/form/${formId}/webhooks${teamParam}`;
         const response = await fetch(url, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'APIKEY': env.JOTFORM_API_KEY },
           body: params.toString(),
         });
         results.push({ formId, status: response.ok ? 'ok' : 'error', detail: response.ok ? undefined : `HTTP ${response.status}` });
@@ -323,7 +326,7 @@ router.post('/register-webhooks', async (req, res, next) => {
 });
 
 // ── GET /api/email-url?formId=xxx&submissionId=yyy ──
-router.get('/email-url', async (req, res, next) => {
+router.get('/email-url', requireAuth, async (req, res, next) => {
   try {
     const { formId, submissionId } = req.query;
     if (!formId || !submissionId) return res.status(400).json({ error: 'formId and submissionId required' });
@@ -390,14 +393,14 @@ router.get('/email-url', async (req, res, next) => {
 });
 
 // ── GET /api/form-url?formId=xxx&submissionId=yyy ──
-router.get('/form-url', (req, res) => {
+router.get('/form-url', requireAuth, (req, res) => {
   const { formId, submissionId } = req.query;
   if (!formId || !submissionId) return res.status(400).json({ error: 'formId and submissionId required' });
   res.json({ formUrl: `${JOTFORM_INBOX}/${formId}/${submissionId}`, formId, submissionId, source: 'inbox' });
 });
 
 // ── GET /api/task-url?formId=xxx&submissionId=yyy ──
-router.get('/task-url', (req, res) => {
+router.get('/task-url', requireAuth, (req, res) => {
   const { formId, submissionId } = req.query;
   if (!formId || !submissionId) return res.status(400).json({ error: 'formId and submissionId required' });
   res.json({ taskUrl: `${JOTFORM_INBOX}/${formId}/${submissionId}`, formId, submissionId, source: 'inbox' });

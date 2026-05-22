@@ -2,13 +2,14 @@ const { Router } = require('express');
 const pool = require('../db/pool');
 const env = require('../config/env');
 const { jotformFetch } = require('../lib/jotform');
+const { requireAuth } = require('../middleware/auth');
 
 const router = Router();
 
 // ── GET /api/approver-config?formId=xxx ──
 // ── POST /api/approver-config ──
 // ── DELETE /api/approver-config?formId=xxx&level=1 ──
-router.get('/approver-config', async (req, res, next) => {
+router.get('/approver-config', requireAuth, async (req, res, next) => {
   try {
     const formId = req.query.formId;
     let result;
@@ -24,7 +25,7 @@ router.get('/approver-config', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/approver-config', async (req, res, next) => {
+router.post('/approver-config', requireAuth, async (req, res, next) => {
   try {
     const { formId, level, approverName, approverEmail } = req.body || {};
     if (!formId || !level) return res.status(400).json({ error: 'formId and level are required' });
@@ -41,7 +42,7 @@ router.post('/approver-config', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.delete('/approver-config', async (req, res, next) => {
+router.delete('/approver-config', requireAuth, async (req, res, next) => {
   try {
     const formId = req.query.formId;
     const level = req.query.level;
@@ -76,7 +77,7 @@ function normalizeMember(raw) {
   };
 }
 
-router.get('/team-members', async (req, res) => {
+router.get('/team-members', requireAuth, async (req, res) => {
   if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
 
   const errors = [];

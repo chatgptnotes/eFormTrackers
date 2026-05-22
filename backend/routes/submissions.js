@@ -1,106 +1,13 @@
 const { Router } = require('express');
 const pool = require('../db/pool');
 const env = require('../config/env');
-const { jotformFetch, resolveApiKey } = require('../lib/jotform');
-
-function readKeyType(req) {
-  const v = req.headers['x-jotform-key-type'];
-  return v === 'gdmo' ? 'gdmo' : 'default';
-}
+const { jotformFetch } = require('../lib/jotform');
+const { requireAuth } = require('../middleware/auth');
 const { detectLevelFields } = require('../lib/detect-fields');
 const { insertNotification } = require('../lib/notifications');
 
 const router = Router();
 
-// ── Whitelisted query params for JotForm proxy ──
-const ALLOWED_PARAMS = new Set(['limit', 'offset', 'orderby', 'direction', 'filter', 'id', 'addWorkflowStatus']);
-
-// ── GET /api/jotform?path=user/forms ──
-router.get('/jotform', async (req, res, next) => {
-  try {
-    const keyType = readKeyType(req);
-    if (!resolveApiKey(keyType)) {
-      return res.status(500).json({ error: `JotForm API key for "${keyType}" not set` });
-    }
-    const apiPath = req.query.path || 'user/forms';
-    const params = {};
-    for (const [key, val] of Object.entries(req.query)) {
-      if (key !== 'path' && ALLOWED_PARAMS.has(key) && typeof val === 'string') {
-        params[key] = val;
-      }
-    }
-    const data = await jotformFetch(apiPath, { params, keyType });
-    res.json(data);
-  } catch (err) {
-    if (err.status && err.data) return res.status(err.status).json(err.data);
-    next(err);
-  }
-});
-
-// ── POST /api/sync-to-supabase ──
-// Upserts enriched submission records from the frontend into PostgreSQL
-router.post('/sync-to-supabase', async (req, res, next) => {
-  try {
-    const records = req.body?.records;
-    if (!Array.isArray(records) || records.length === 0) {
-      return res.status(400).json({ error: 'records array is required' });
-    }
-
-    let upserted = 0;
-    let errors = 0;
-    const errorDetails = [];
-    const CHUNK = 20;
-
-    for (let i = 0; i < records.length; i += CHUNK) {
-      const chunk = records.slice(i, i + CHUNK);
-      try {
-        for (const r of chunk) {
-          const numericLevel = typeof r.currentLevel === 'number' ? r.currentLevel :
-            r.currentLevel === 'completed' ? 999 : 0;
-          const statusStr = r.currentLevel === 'completed' ? 'completed' :
-            r.currentLevel === 'rejected' ? 'rejected' : 'pending';
-
-          await pool.query(
-            `INSERT INTO jf_submissions (
-              jotform_submission_id, form_id, form_title, title, description,
-              submitted_by, submitter_name, submitter_email, department,
-              submission_date, current_level, status, priority, jotform_status,
-              pending_approver_name, pending_approver_email, approver_name,
-              approver_email, answers, level_history, raw_data, approval_url, last_synced
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,now())
-            ON CONFLICT (jotform_submission_id) DO UPDATE SET
-              form_id=$2, form_title=$3, title=$4, description=$5,
-              submitted_by=$6, submitter_name=$7, submitter_email=$8, department=$9,
-              submission_date=$10, current_level=$11, status=$12, priority=$13,
-              jotform_status=$14, pending_approver_name=$15, pending_approver_email=$16,
-              approver_name=$17, approver_email=$18, answers=$19, level_history=$20,
-              raw_data=$21, approval_url=$22, last_synced=now()`,
-            [
-              r.id, r.formId, r.formTitle, r.title, r.description || r.title,
-              r.submitterName, r.submitterName, r.submitterEmail, r.department,
-              r.submissionDate ? new Date(r.submissionDate).toISOString() : new Date().toISOString(),
-              Math.min(numericLevel, 99), statusStr, r.priority || 'medium',
-              r.jotformStatus || 'Pending',
-              r.pendingApproverName || '', r.pendingApproverEmail || '',
-              r.pendingApproverName || '', r.pendingApproverEmail || '',
-              JSON.stringify(r.answers || {}),
-              JSON.stringify(r.approvalHistory || []),
-              JSON.stringify({ _mapped: { levels: r.approvalHistory } }),
-              r.approvalUrl || null,
-            ]
-          );
-          upserted++;
-        }
-      } catch (err) {
-        console.error('Upsert error:', err.message);
-        errorDetails.push(err.message);
-        errors += chunk.length;
-      }
-    }
-
-    res.json({ ok: true, upserted, errors, total: records.length, errorDetails });
-  } catch (err) { next(err); }
-});
 
 // ── POST /api/webhook ──
 // JotForm webhook handler — processes a submission and upserts to DB
@@ -134,11 +41,9 @@ async function getFieldsForForm(formId) {
 
 router.post('/webhook', async (req, res, next) => {
   try {
-    // Validate webhook secret
-    if (env.JOTFORM_WEBHOOK_SECRET) {
-      if (req.query.secret !== env.JOTFORM_WEBHOOK_SECRET) {
-        return res.status(403).json({ error: 'Invalid webhook secret' });
-      }
+    // Webhook secret is mandatory — reject if missing or wrong
+    if (req.query.secret !== env.JOTFORM_WEBHOOK_SECRET) {
+      return res.status(403).json({ error: 'Forbidden' });
     }
     if (!env.JOTFORM_API_KEY) {
       return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
@@ -155,6 +60,9 @@ router.post('/webhook', async (req, res, next) => {
 
     if (!submissionId) {
       return res.json({ ok: true, action: 'no-submission-id' });
+    }
+    if (!/^\d+$/.test(String(submissionId))) {
+      return res.status(400).json({ error: 'Invalid submissionId' });
     }
 
     // Fetch submission from JotForm
@@ -351,7 +259,7 @@ router.post('/webhook', async (req, res, next) => {
 });
 
 // ── GET /api/workflow-tasks?submissionId=xxx&workflowInstanceId=yyy ──
-router.get('/workflow-tasks', async (req, res, next) => {
+router.get('/workflow-tasks', requireAuth, async (req, res, next) => {
   try {
     if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
 
@@ -418,12 +326,13 @@ router.get('/workflow-tasks', async (req, res, next) => {
 });
 
 // ── POST /api/workflow-action ──
-router.post('/workflow-action', async (req, res, next) => {
+router.post('/workflow-action', requireAuth, async (req, res, next) => {
   try {
     if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
 
     const { submissionId, action, comment, signature } = req.body || {};
     if (!submissionId) return res.status(400).json({ error: 'submissionId required' });
+    if (!/^\d+$/.test(String(submissionId))) return res.status(400).json({ error: 'Invalid submissionId' });
     if (!action || !['approve', 'reject', 'complete'].includes(action)) {
       return res.status(400).json({ error: 'action must be "approve", "reject", or "complete"' });
     }
@@ -470,10 +379,11 @@ router.post('/workflow-action', async (req, res, next) => {
     if (comment) body.comment = comment;
     if (signature) body.signature = signature;
 
-    const completeUrl = `${env.JOTFORM_BASE}/workflow/task/${taskId}/complete?apiKey=${env.JOTFORM_API_KEY}&teamID=${env.JOTFORM_TEAM_ID}`;
+    const teamParam = env.JOTFORM_TEAM_ID ? `?teamID=${env.JOTFORM_TEAM_ID}` : '';
+    const completeUrl = `${env.JOTFORM_BASE}/workflow/task/${taskId}/complete${teamParam}`;
     const completeRes = await fetch(completeUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'APIKEY': env.JOTFORM_API_KEY },
       body: JSON.stringify(body),
     });
 
@@ -573,14 +483,15 @@ router.post('/workflow-action', async (req, res, next) => {
 });
 
 // ── DELETE /api/delete-submission?submissionId=xxx ──
-router.delete('/delete-submission', async (req, res, next) => {
+router.delete('/delete-submission', requireAuth, async (req, res, next) => {
   try {
     const submissionId = req.query.submissionId;
     if (!submissionId) return res.status(400).json({ error: 'submissionId required' });
     if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'API key not configured' });
 
-    const deleteUrl = `${env.JOTFORM_BASE}/submission/${submissionId}?apiKey=${env.JOTFORM_API_KEY}&teamID=${env.JOTFORM_TEAM_ID}`;
-    const deleteRes = await fetch(deleteUrl, { method: 'DELETE' });
+    const teamParam = env.JOTFORM_TEAM_ID ? `?teamID=${env.JOTFORM_TEAM_ID}` : '';
+    const deleteUrl = `${env.JOTFORM_BASE}/submission/${submissionId}${teamParam}`;
+    const deleteRes = await fetch(deleteUrl, { method: 'DELETE', headers: { 'APIKEY': env.JOTFORM_API_KEY } });
 
     if (deleteRes.ok) {
       // Also remove from local DB
@@ -593,13 +504,11 @@ router.delete('/delete-submission', async (req, res, next) => {
 });
 
 // ── POST /api/jotform-update?submissionId=xxx ──
-router.post('/jotform-update', async (req, res, next) => {
+router.post('/jotform-update', requireAuth, async (req, res, next) => {
   try {
     const submissionId = req.query.submissionId;
     if (!submissionId) return res.status(400).json({ error: 'submissionId required' });
-    const keyType = readKeyType(req);
-    const apiKey = resolveApiKey(keyType);
-    if (!apiKey) return res.status(500).json({ error: `JotForm API key for "${keyType}" not set` });
+    const apiKey = env.JOTFORM_API_KEY;
 
     const SIGNATURE_REQUIRED_LEVELS = [1, 2, 3, 4];
     const rawBody = typeof req.body === 'string' ? req.body : new URLSearchParams(req.body).toString();
@@ -619,110 +528,15 @@ router.post('/jotform-update', async (req, res, next) => {
       }
     }
 
-    const url = `${env.JOTFORM_BASE}/submission/${submissionId}?apiKey=${apiKey}&teamID=${env.JOTFORM_TEAM_ID}`;
+    const teamParam = env.JOTFORM_TEAM_ID ? `?teamID=${env.JOTFORM_TEAM_ID}` : '';
+    const url = `${env.JOTFORM_BASE}/submission/${submissionId}${teamParam}`;
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'APIKEY': apiKey },
       body: params.toString(),
     });
     const data = await response.json();
     res.status(response.ok ? 200 : response.status).json(data);
-  } catch (err) { next(err); }
-});
-
-// ── GET /api/cleanup-submissions?dryRun=true|false ──
-router.get('/cleanup-submissions', async (req, res, next) => {
-  try {
-    if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
-
-    const KEEP_EMAIL = 'huzaifa.dawasaz@mediaoffice.ae';
-    const dryRun = req.query.dryRun !== 'false';
-
-    const formsData = await jotformFetch('user/forms', { params: { limit: '100' } });
-    const forms = (formsData?.content || []).map(f => ({ id: String(f.id), title: String(f.title || '') }));
-
-    const allSubmissions = [];
-    for (const form of forms) {
-      let offset = 0;
-      const limit = 1000;
-      let hasMore = true;
-      while (hasMore) {
-        const subData = await jotformFetch(`form/${form.id}/submissions`, {
-          params: { limit: String(limit), offset: String(offset), orderby: 'created_at', direction: 'DESC', addWorkflowStatus: '1' },
-        });
-        const submissions = subData?.content || [];
-        for (const sub of submissions) {
-          const answers = sub.answers || {};
-          let submittedBy = '';
-          for (const ans of Object.values(answers)) {
-            if (ans.type === 'control_fullname' && ans.answer) {
-              submittedBy = [ans.answer.first, ans.answer.last].filter(Boolean).join(' ');
-              break;
-            }
-          }
-          allSubmissions.push({
-            id: String(sub.id), formId: form.id, formTitle: form.title,
-            submittedBy, pendingEmail: '', pendingName: '',
-            workflowInstanceId: String(sub.workflowInstanceID || sub.workflow_instance_id || ''),
-          });
-        }
-        hasMore = submissions.length === limit;
-        offset += limit;
-      }
-    }
-
-    // Fetch active task assignee for each submission with a workflow
-    for (const sub of allSubmissions) {
-      if (!sub.workflowInstanceId) continue;
-      try {
-        const instData = await jotformFetch(`workflow/instance/${sub.workflowInstanceId}`);
-        const taskList = instData?.content?.taskList || [];
-        for (const task of taskList) {
-          const st = String(task.status || '').toUpperCase();
-          if (st === 'ACTIVE' || st === 'PENDING') {
-            const props = task.properties || {};
-            const au = props.assigneeUser || {};
-            const recs = Array.isArray(props.recipients) ? props.recipients : [];
-            const first = recs[0] || {};
-            sub.pendingEmail = String(props.assigneeEmail || au.email || first.email || task.assignee || '').toLowerCase();
-            sub.pendingName = String(au.name || first.name || '');
-            break;
-          }
-        }
-      } catch (_) { /* skip */ }
-    }
-
-    const deleteAll = KEEP_EMAIL === '';
-    const toKeep = deleteAll ? [] : allSubmissions.filter(s => s.pendingEmail === KEEP_EMAIL);
-    const toDelete = deleteAll ? allSubmissions : allSubmissions.filter(s => s.pendingEmail !== KEEP_EMAIL);
-
-    if (dryRun) {
-      return res.json({
-        dryRun: true, totalSubmissions: allSubmissions.length,
-        keepCount: toKeep.length, deleteCount: toDelete.length,
-        keep: toKeep.map(s => ({ id: s.id, formTitle: s.formTitle, submittedBy: s.submittedBy, pendingEmail: s.pendingEmail })),
-        delete: toDelete.map(s => ({ id: s.id, formTitle: s.formTitle, submittedBy: s.submittedBy, pendingEmail: s.pendingEmail })),
-      });
-    }
-
-    const deleted = [];
-    const failed = [];
-    for (const sub of toDelete) {
-      try {
-        const url = `${env.JOTFORM_BASE}/submission/${sub.id}?apiKey=${env.JOTFORM_API_KEY}&teamID=${env.JOTFORM_TEAM_ID}`;
-        const r = await fetch(url, { method: 'DELETE' });
-        if (r.ok) deleted.push(sub.id);
-        else failed.push({ id: sub.id, error: `HTTP ${r.status}` });
-      } catch (e) {
-        failed.push({ id: sub.id, error: String(e) });
-      }
-    }
-
-    res.json({
-      dryRun: false, totalSubmissions: allSubmissions.length,
-      kept: toKeep.length, deleted: deleted.length, failed: failed.length,
-      deletedIds: deleted, failedDetails: failed,
-    });
   } catch (err) { next(err); }
 });
 

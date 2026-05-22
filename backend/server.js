@@ -7,6 +7,8 @@ const corsMiddleware = require('./middleware/cors');
 const sessionMiddleware = require('./config/session');
 const errorHandler = require('./middleware/errorHandler');
 const { initRealtime } = require('./lib/realtime');
+const { authLimiter, webhookLimiter, apiLimiter } = require('./middleware/rateLimiter');
+const { startPoller } = require('./lib/poller');
 
 const app = express();
 const server = http.createServer(app);
@@ -30,6 +32,11 @@ app.use(sessionMiddleware);
 // ── Serve uploaded files ──
 const path = require('path');
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// ── Rate limiting ──
+app.use('/api/auth', authLimiter);
+app.use('/api/webhook', webhookLimiter);
+app.use('/api', apiLimiter);
 
 // ── Routes ──
 app.use('/api/auth', require('./routes/auth'));
@@ -62,4 +69,5 @@ app.use(errorHandler);
 // ── Start ──
 server.listen(env.PORT, () => {
   console.log(`[JotFlow] Backend listening on port ${env.PORT} (${env.NODE_ENV})`);
+  startPoller();
 });
