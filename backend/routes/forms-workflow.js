@@ -34,8 +34,11 @@ router.get('/form-workflow', validate(formIdRequiredQuerySchema, 'query'), async
   try {
     const formId = req.query.formId;
     const keyType = readKeyType(req);
+    // Cache key includes keyType — same formId resolved against default vs gdmo
+    // returns different shapes (different teams / scopes), so they must not collide.
+    const cacheKey = `${keyType}:${formId}`;
 
-    const cached = workflowCache[formId];
+    const cached = workflowCache[cacheKey];
     if (cached && Date.now() - cached.at < CACHE_TTL) {
       res.setHeader('Cache-Control', 'private, max-age=60');
       return res.json({ formId, steps: cached.steps, cached: true });
@@ -88,7 +91,7 @@ router.get('/form-workflow', validate(formIdRequiredQuerySchema, 'query'), async
       req.log.warn({ err: e, formId }, '[forms] form properties fetch failed');
     }
 
-    workflowCache[formId] = { steps, at: Date.now() };
+    workflowCache[cacheKey] = { steps, at: Date.now() };
     res.setHeader('Cache-Control', 'private, max-age=60');
     res.json({ formId, steps });
   } catch (err) { next(err); }

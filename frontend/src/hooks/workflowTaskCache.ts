@@ -5,8 +5,12 @@
  * share the same cache without prop drilling or context.
  */
 import { WorkflowActionType } from '../types';
+import { apiFetch } from '../lib/api';
+import { getJotformKeyType } from '../lib/jotformKey';
 
-// ─── Workflow step type cache (per formId) ────────────────────────────────────
+// ─── Workflow step type cache (per formId + keyType) ──────────────────────────
+// Cache key includes the active JotForm key type because the same formId may
+// resolve to different steps under Testing (default) vs Production (gdmo).
 export interface WorkflowStep {
   level: number;
   type: WorkflowActionType;
@@ -14,21 +18,20 @@ export interface WorkflowStep {
 }
 
 const workflowCache: Record<string, { steps: WorkflowStep[]; at: number }> = {};
-const WORKFLOW_CACHE_TTL = 5 * 60 * 1000; // 5 minutes — re-fetches on each page session
+const WORKFLOW_CACHE_TTL = 5 * 60 * 1000;
 
 export async function fetchWorkflowSteps(formId: string): Promise<WorkflowStep[]> {
-  const cached = workflowCache[formId];
+  const cacheKey = `${getJotformKeyType()}:${formId}`;
+  const cached = workflowCache[cacheKey];
   if (cached && Date.now() - cached.at < WORKFLOW_CACHE_TTL) return cached.steps;
   try {
-    const res = await fetch(`/api/form-workflow?formId=${formId}`);
-    if (!res.ok) return [];
-    const data = await res.json();
-    const steps: WorkflowStep[] = (data.steps || []).map((s: WorkflowStep & { assigneeEmail?: string }) => ({
+    const data = await apiFetch<{ steps?: Array<WorkflowStep & { assigneeEmail?: string }> }>(`/api/form-workflow?formId=${formId}`);
+    const steps: WorkflowStep[] = (data.steps || []).map(s => ({
       level: s.level,
       type: s.type,
       assigneeEmail: s.assigneeEmail || undefined,
     }));
-    workflowCache[formId] = { steps, at: Date.now() };
+    workflowCache[cacheKey] = { steps, at: Date.now() };
     return steps;
   } catch {
     return [];
@@ -62,13 +65,12 @@ const workflowTaskCache: Record<string, { result: WorkflowTaskResult; at: number
 const WORKFLOW_TASK_CACHE_TTL = 5 * 60 * 1000;
 
 export async function fetchWorkflowTasks(submissionId: string): Promise<WorkflowTaskResult> {
-  const cached = workflowTaskCache[submissionId];
+  const cacheKey = `${getJotformKeyType()}:${submissionId}`;
+  const cached = workflowTaskCache[cacheKey];
   if (cached && Date.now() - cached.at < WORKFLOW_TASK_CACHE_TTL) return cached.result;
   try {
-    const res = await fetch(`/api/workflow-tasks?submissionId=${submissionId}`);
-    if (!res.ok) return { tasks: [] };
-    const data = await res.json();
-    const tasks: WorkflowTaskInfo[] = (data.tasks || []).map((t: Record<string, unknown>) => ({
+    const data = await apiFetch<{ tasks?: Array<Record<string, unknown>>; workflowInstanceId?: string }>(`/api/workflow-tasks?submissionId=${submissionId}`);
+    const tasks: WorkflowTaskInfo[] = (data.tasks || []).map((t) => ({
       name: String(t.name || ''),
       type: String(t.type || ''),
       level: Number(t.level || 0),
@@ -84,7 +86,7 @@ export async function fetchWorkflowTasks(submissionId: string): Promise<Workflow
       tasks,
       workflowInstanceId: String(data.workflowInstanceId || '') || undefined,
     };
-    workflowTaskCache[submissionId] = { result, at: Date.now() };
+    workflowTaskCache[cacheKey] = { result, at: Date.now() };
     return result;
   } catch {
     return { tasks: [] };
