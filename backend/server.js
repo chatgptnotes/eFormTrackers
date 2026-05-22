@@ -65,20 +65,7 @@ app.use(helmet({
 app.use(globalLimiter);
 
 app.use(corsMiddleware);
-app.use(pinoHttp({
-  logger,
-  customLogLevel: function (req, res, err) {
-    if (err || res.statusCode >= 500) return 'error';
-    if (res.statusCode >= 400) return 'warn';
-    if (res.responseTime > 2000) return 'warn';  // >2s = slow request
-    return 'info';
-  },
-  customProps: function (req, res) {
-    return {
-      slow: res.responseTime > 1000,
-    };
-  },
-}));
+app.use(pinoHttp({ logger }));
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(sessionMiddleware);

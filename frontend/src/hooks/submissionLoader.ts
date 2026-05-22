@@ -11,8 +11,8 @@ import { Submission, ApprovalEntry, ApprovalLevel } from '../types';
 import { apiFetch } from '../lib/api';
 import { fetchUserForms, fetchFormQuestions, detectFields, JFFormMeta } from '../services/formDiscovery';
 import { jotformHeaders } from '../lib/jotformKey';
-import { pMapLimit } from '../lib/pMapLimit';
-import { WorkflowStep, WorkflowTaskInfo, fetchWorkflowSteps } from './workflowTaskCache';
+import { pMapLimit, pMapLimitSettled } from '../lib/pMapLimit';
+import { WorkflowStep, fetchWorkflowSteps, fetchWorkflowTasks } from './workflowTaskCache';
 import { ApproverConfig, fetchApproverConfigs } from './useApproverConfig';
 import { mapGenericSubmission } from './submissionMappers';
 
@@ -112,47 +112,15 @@ async function enrichWithWorkflowTasks(mapped: Submission[], skipIds: Set<string
   const pendingSubs = mapped.filter(needsEnrichment).slice(0, 100);
   if (pendingSubs.length === 0) return;
 
-  // Single batched round-trip — backend fans out with bounded concurrency and
-  // reuses its per-submission cache. Chunked at 50 to honor the API cap.
-  type BatchEntry = { taskList?: Record<string, unknown>[]; workflowInstanceId?: string; error?: string };
-  type BatchResp = { results: Record<string, BatchEntry> };
-  const ids = pendingSubs.map(s => s.id);
-  const CHUNK = 50;
-  const chunks: string[][] = [];
-  for (let i = 0; i < ids.length; i += CHUNK) chunks.push(ids.slice(i, i + CHUNK));
-
-  const allResults: Record<string, BatchEntry> = {};
-  for (const chunk of chunks) {
-    try {
-      const resp = await apiFetch<BatchResp>('/api/workflow-tasks-batch', {
-        method: 'POST',
-        body: JSON.stringify({ submissionIds: chunk }),
-      });
-      Object.assign(allResults, resp?.results || {});
-    } catch (err) {
-      console.warn('[useSubmissions] workflow-tasks-batch failed:', err);
-    }
-  }
-
-  const normalizeTask = (t: Record<string, unknown>): WorkflowTaskInfo => ({
-    name: String(t.name || ''),
-    type: String(t.type || ''),
-    level: Number(t.level || 0),
-    assigneeName: String(t.assigneeName || ''),
-    assigneeEmail: String(t.assigneeEmail || ''),
-    status: String(t.status || 'PENDING').toUpperCase(),
-    updatedAt: String(t.updatedAt || ''),
-    taskId: String(t.taskId || ''),
-    internalFormID: String(t.internalFormID || ''),
-    accessLink: String(t.accessLink || ''),
-  });
-
+  // Cap inner concurrency to avoid blasting JotForm with 100 parallel requests.
+  const taskResults = await pMapLimitSettled(
+    pendingSubs, 8, sub => fetchWorkflowTasks(sub.id),
+  );
   for (let i = 0; i < pendingSubs.length; i++) {
+    const result = taskResults[i];
+    if (result.status !== 'fulfilled') continue;
+    const { tasks, workflowInstanceId: wfInstanceId } = result.value;
     const sub = pendingSubs[i];
-    const entry = allResults[sub.id];
-    if (!entry || entry.error) continue;
-    const tasks = Array.isArray(entry.taskList) ? entry.taskList.map(normalizeTask) : [];
-    const wfInstanceId = entry.workflowInstanceId;
 
     // Capture workflowInstanceId from the workflow API
     console.log(`[useSubmissions] Sub ${sub.id}: API returned wfInstanceId="${wfInstanceId}", before enrichment sub.workflowInstanceId="${sub.workflowInstanceId}"`);

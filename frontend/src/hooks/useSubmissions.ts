@@ -7,7 +7,6 @@ import { WorkflowStep, clearWorkflowStepCache, clearWorkflowTaskCache } from './
 import { clearApproverConfigCache } from './useApproverConfig';
 import { mapSupabaseRow } from './submissionMappers';
 import { loadAndEnrichSubmissions, deltaSyncToSupabase } from './submissionLoader';
-import { onSubmissionUpdated, onWorkflowChanged } from '../lib/socket';
 
 // ─── Workspace version — bump when switching teams to force full cache clear ──
 const WORKSPACE_VERSION = 'gdmo-bettroi-v4'; // bumped: new API key — force cache clear
@@ -200,39 +199,6 @@ export function useSubmissions() {
         .catch(err => console.warn('[JotFlow] Webhook registration failed:', err));
     } catch {}
   }, []);
-
-  // ─── Socket.IO realtime listener — push-driven refresh ──────────────────────
-  // Backend emits `submission-updated` / `workflow-changed` on webhook + action.
-  // We coalesce bursts within 1s into a single loadData() so a flood of events
-  // (e.g. bulk approval) can't trigger N fetches in parallel.
-  useEffect(() => {
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-    const scheduleRefresh = () => {
-      if (debounceTimer) return; // already queued — coalesce
-      debounceTimer = setTimeout(() => {
-        debounceTimer = null;
-        loadData();
-      }, 1000);
-    };
-
-    const unsubSubmission = onSubmissionUpdated(() => {
-      // Per-submission cache clear isn't exposed (cache is all-or-nothing);
-      // wiping it is cheap and the next fetch repopulates it.
-      clearWorkflowTaskCache();
-      scheduleRefresh();
-    });
-    const unsubWorkflow = onWorkflowChanged(() => {
-      // Form-level workflow changed — invalidate the step-type cache.
-      clearWorkflowStepCache();
-      scheduleRefresh();
-    });
-
-    return () => {
-      unsubSubmission();
-      unsubWorkflow();
-      if (debounceTimer) clearTimeout(debounceTimer);
-    };
-  }, [loadData]);
 
   // Polling fallback — replaces Supabase realtime channel (30s)
   useEffect(() => {
