@@ -1,7 +1,7 @@
 const { Router } = require('express');
 const pool = require('../db/pool');
 const env = require('../config/env');
-const { jotformFetch, resolveApiKey } = require('../lib/jotform');
+const { jotformFetch, resolveApiKey, buildJotformUrl } = require('../lib/jotform');
 const { readKeyType } = require('../lib/key-type');
 const { validate } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
@@ -25,11 +25,13 @@ router.get('/workflow-tasks', async (req, res, next) => {
     const submissionId = req.query.submissionId;
     if (!submissionId) return res.status(400).json({ error: 'submissionId required' });
 
+    const keyType = readKeyType(req);
     let workflowInstanceID = req.query.workflowInstanceId;
 
     if (!workflowInstanceID) {
       const subData = await jotformFetch(`submission/${submissionId}`, {
         params: { addWorkflowStatus: '1' },
+        keyType,
       });
       const content = subData?.content || subData;
       workflowInstanceID = content?.workflowInstanceID || content?.workflow_instance_id;
@@ -37,7 +39,7 @@ router.get('/workflow-tasks', async (req, res, next) => {
 
     if (!workflowInstanceID) return res.json({ tasks: [] });
 
-    const instData = await jotformFetch(`workflow/instance/${workflowInstanceID}`);
+    const instData = await jotformFetch(`workflow/instance/${workflowInstanceID}`, { keyType });
     const rawTaskList = instData?.content?.taskList || instData?.taskList || [];
 
     const extractTask = (t) => {
@@ -90,17 +92,19 @@ router.post('/workflow-action', validate(workflowActionBodySchema), async (req, 
     if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
 
     const { submissionId, action, comment, signature } = req.body;
+    const keyType = readKeyType(req);
 
     // Step 1: Get workflowInstanceID
     const subData = await jotformFetch(`submission/${submissionId}`, {
       params: { addWorkflowStatus: '1' },
+      keyType,
     });
     const content = subData?.content || subData;
     const instanceId = content?.workflowInstanceID || content?.workflow_instance_id;
     if (!instanceId) return res.status(404).json({ error: 'No workflow instance found' });
 
     // Step 2: Get workflow instance taskList
-    const instData = await jotformFetch(`workflow/instance/${instanceId}`);
+    const instData = await jotformFetch(`workflow/instance/${instanceId}`, { keyType });
     const taskList = instData?.content?.taskList || [];
 
     // Step 3: Find ACTIVE task
@@ -133,8 +137,8 @@ router.post('/workflow-action', validate(workflowActionBodySchema), async (req, 
     if (comment) body.comment = comment;
     if (signature) body.signature = signature;
 
-    const completeUrl = `${env.JOTFORM_BASE}/workflow/task/${taskId}/complete?apiKey=${env.JOTFORM_API_KEY}&teamID=${env.JOTFORM_TEAM_ID}`;
-    const completeRes = await fetch(completeUrl, {
+    const completeUrl = buildJotformUrl(`workflow/task/${taskId}/complete`, keyType);
+    const completeRes = await fetch(completeUrl.toString(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -189,7 +193,7 @@ router.post('/workflow-action', validate(workflowActionBodySchema), async (req, 
         // Notify next approver if not final
         if (!isFinal) {
           try {
-            const updatedInstData = await jotformFetch(`workflow/instance/${instanceId}`);
+            const updatedInstData = await jotformFetch(`workflow/instance/${instanceId}`, { keyType });
             const updatedTaskList = updatedInstData?.content?.taskList || [];
             const nextTask = updatedTaskList.find(t => t.status === 'ACTIVE');
             if (nextTask) {
@@ -242,8 +246,9 @@ router.delete('/delete-submission', requireRole('admin'), validate(deleteSubmiss
     const submissionId = req.query.submissionId;
     if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'API key not configured' });
 
-    const deleteUrl = `${env.JOTFORM_BASE}/submission/${submissionId}?apiKey=${env.JOTFORM_API_KEY}&teamID=${env.JOTFORM_TEAM_ID}`;
-    const deleteRes = await fetch(deleteUrl, { method: 'DELETE' });
+    const keyType = readKeyType(req);
+    const deleteUrl = buildJotformUrl(`submission/${submissionId}`, keyType);
+    const deleteRes = await fetch(deleteUrl.toString(), { method: 'DELETE' });
 
     if (deleteRes.ok) {
       // Also remove from local DB
@@ -281,8 +286,8 @@ router.post('/jotform-update', validate(jotformUpdateQuerySchema, 'query'), asyn
       }
     }
 
-    const url = `${env.JOTFORM_BASE}/submission/${submissionId}?apiKey=${apiKey}&teamID=${env.JOTFORM_TEAM_ID}`;
-    const response = await fetch(url, {
+    const url = buildJotformUrl(`submission/${submissionId}`, keyType);
+    const response = await fetch(url.toString(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: params.toString(),

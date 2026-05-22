@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const env = require('../config/env');
-const { jotformFetch } = require('../lib/jotform');
+const { jotformFetch, buildJotformUrl } = require('../lib/jotform');
+const { readKeyType } = require('../lib/key-type');
 const { validate } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { formIdRequiredQuerySchema } = require('../schemas/forms');
@@ -16,8 +17,9 @@ router.post('/ensure-fields', validate(formIdRequiredQuerySchema, 'query'), asyn
   try {
     if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
     const formId = req.query.formId;
+    const keyType = readKeyType(req);
 
-    const qData = await jotformFetch(`form/${formId}/questions`);
+    const qData = await jotformFetch(`form/${formId}/questions`, { keyType });
     const questions = qData.content || {};
 
     const existing = {};
@@ -90,8 +92,8 @@ router.post('/ensure-fields', validate(formIdRequiredQuerySchema, 'query'), asyn
       }
     }
 
-    const createUrl = `${env.JOTFORM_BASE}/form/${formId}/questions?apiKey=${env.JOTFORM_API_KEY}&teamID=${env.JOTFORM_TEAM_ID}`;
-    const createRes = await fetch(createUrl, {
+    const createUrl = buildJotformUrl(`form/${formId}/questions`, keyType);
+    const createRes = await fetch(createUrl.toString(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: params.toString(),
@@ -103,7 +105,7 @@ router.post('/ensure-fields', validate(formIdRequiredQuerySchema, 'query'), asyn
     const createData = await createRes.json();
 
     // Re-fetch to get new field IDs
-    const q2Data = await jotformFetch(`form/${formId}/questions`);
+    const q2Data = await jotformFetch(`form/${formId}/questions`, { keyType });
     const updatedQ = q2Data.content || {};
     const finalFields = {};
     let finalOverall = null;
@@ -141,8 +143,9 @@ router.post('/ensure-fields', validate(formIdRequiredQuerySchema, 'query'), asyn
 router.post('/register-webhooks', async (req, res, next) => {
   try {
     if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
+    const keyType = readKeyType(req);
 
-    const formsData = await jotformFetch('user/forms', { params: { limit: '200', orderby: 'updated_at' } });
+    const formsData = await jotformFetch('user/forms', { params: { limit: '200', orderby: 'updated_at' }, keyType });
     const allForms = (formsData.content || []);
     const formIds = allForms.filter(f => f.status === 'ENABLED').map(f => f.id);
 
@@ -158,8 +161,8 @@ router.post('/register-webhooks', async (req, res, next) => {
       try {
         const params = new URLSearchParams();
         params.set('webhookURL', webhookURL);
-        const url = `${env.JOTFORM_BASE}/form/${formId}/webhooks?apiKey=${env.JOTFORM_API_KEY}&teamID=${env.JOTFORM_TEAM_ID}`;
-        const response = await fetch(url, {
+        const url = buildJotformUrl(`form/${formId}/webhooks`, keyType);
+        const response = await fetch(url.toString(), {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           body: params.toString(),

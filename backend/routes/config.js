@@ -2,6 +2,7 @@ const { Router } = require('express');
 const pool = require('../db/pool');
 const env = require('../config/env');
 const { jotformFetch } = require('../lib/jotform');
+const { readKeyType } = require('../lib/key-type');
 const { requireAuth } = require('../middleware/auth');
 
 const router = Router();
@@ -82,11 +83,12 @@ function normalizeMember(raw) {
 router.get('/team-members', async (req, res) => {
   if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
 
+  const keyType = readKeyType(req);
   const errors = [];
 
   // Strategy 1: /team/{TEAM_ID}/members
   try {
-    const data = await jotformFetch(`team/${env.JOTFORM_TEAM_ID}/members`);
+    const data = await jotformFetch(`team/${env.JOTFORM_TEAM_ID}/members`, { keyType });
     const raw = Array.isArray(data?.content) ? data.content : data?.content ? [data.content] : null;
     if (raw && raw.length > 0) {
       return res.json({ members: raw.map(normalizeMember), source: 'team_members', rawCount: raw.length });
@@ -98,7 +100,7 @@ router.get('/team-members', async (req, res) => {
 
   // Strategy 2: /users
   try {
-    const data = await jotformFetch('users');
+    const data = await jotformFetch('users', { keyType });
     const raw = Array.isArray(data?.content) ? data.content : null;
     if (raw && raw.length > 0) {
       return res.json({ members: raw.map(normalizeMember), source: 'users', rawCount: raw.length });
@@ -110,7 +112,7 @@ router.get('/team-members', async (req, res) => {
 
   // Strategy 3: /team/user/me
   try {
-    const data = await jotformFetch('team/user/me');
+    const data = await jotformFetch('team/user/me', { keyType });
     const content = data?.content;
     if (content) {
       const teams = Array.isArray(content) ? content : [content];
