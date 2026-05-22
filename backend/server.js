@@ -27,34 +27,29 @@ initRealtime(io);
 app.set('trust proxy', 1);
 
 // ── Security headers (helmet) ──
-// CSP is explicit. If a directive ever breaks the prod frontend, document
-// the failure here and *narrow* the policy — never wholesale-disable.
+// In production the CSP is strict. In development Vite's HMR needs
+// inline scripts, ws:// for hot-reload, and eval (for some plugins),
+// so we use a lenient CSP locally. NEVER ship the dev variant to prod.
+const isProd = env.NODE_ENV === 'production';
 app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      // No 'unsafe-inline' / 'unsafe-eval'. Vite production bundle is hashed
-      // and external; if a future feature needs inline scripts, switch to
-      // nonces, do not relax this directive.
-      scriptSrc: ["'self'"],
-      // Tailwind/Framer inject inline styles, so style-src needs unsafe-inline.
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:", "https:"],
-      // Frontend may call JotForm-hosted assets (eforms.mediaoffice.ae) via
-      // the backend proxy, but XHR/fetch from the page itself only hits 'self'
-      // and the JotForm host (used for some asset URLs).
-      connectSrc: ["'self'", env.JOTFORM_HOST].filter(Boolean),
-      frameSrc: ["'none'"],
-      objectSrc: ["'none'"],
-      baseUri: ["'self'"],
-      formAction: ["'self'"],
-    },
-  },
+  contentSecurityPolicy: isProd
+    ? {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", "data:", "https:"],
+          connectSrc: ["'self'", env.JOTFORM_HOST].filter(Boolean),
+          frameSrc: ["'none'"],
+          objectSrc: ["'none'"],
+          baseUri: ["'self'"],
+          formAction: ["'self'"],
+        },
+      }
+    : false, // Dev: disable CSP entirely so Vite HMR (inline scripts + ws://) works
   frameguard: { action: 'deny' },
   referrerPolicy: { policy: 'no-referrer' },
-  hsts: env.NODE_ENV === 'production'
-    ? { maxAge: 31536000, includeSubDomains: true }
-    : false,
+  hsts: isProd ? { maxAge: 31536000, includeSubDomains: true } : false,
   // JotForm embeds (iframes from a different origin) break with COEP enabled.
   crossOriginEmbedderPolicy: false,
   crossOriginOpenerPolicy: false,
