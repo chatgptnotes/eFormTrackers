@@ -2,23 +2,24 @@ const http = require('http');
 const express = require('express');
 const helmet = require('helmet');
 const pinoHttp = require('pino-http');
-const { Server: SocketIO } = require('socket.io');
 const env = require('./config/env');
 const logger = require('./config/logger');
 const corsMiddleware = require('./middleware/cors');
 const sessionMiddleware = require('./config/session');
 const errorHandler = require('./middleware/errorHandler');
 const { globalLimiter } = require('./middleware/rateLimit');
+const { etagMiddleware } = require('./middleware/etag');
 const { initRealtime } = require('./lib/realtime');
 
 const app = express();
 const server = http.createServer(app);
 
 // ── Socket.IO ──
-const io = new SocketIO(server, {
-  cors: { origin: env.ALLOWED_ORIGIN, credentials: true },
-});
-initRealtime(io);
+// CORS + connection handlers live in lib/realtime.js; we just hand it the
+// http server and stash the returned io on the app so route handlers can
+// reach it via `req.app.get('io')`.
+const io = initRealtime(server);
+app.set('io', io);
 
 // ── Trust IIS reverse proxy (needed for secure cookies behind HTTPS proxy) ──
 // Also required so express-rate-limit's default req.ip key is the real client
@@ -72,6 +73,8 @@ app.use(sessionMiddleware);
 // ── Serve uploaded files ──
 const path = require('path');
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+app.use('/api', etagMiddleware);
 
 // ── Routes ──
 app.use('/api/auth', require('./routes/auth-local'));

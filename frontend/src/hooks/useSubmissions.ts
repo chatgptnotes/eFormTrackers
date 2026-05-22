@@ -43,7 +43,7 @@ export function useSubmissions() {
   const [error, setError] = useState<string | null>(null);
   const [refreshConfig, setRefreshConfig] = useState<RefreshConfig>({
     autoRefresh: true,
-    intervalMinutes: 1,
+    intervalMinutes: 5,
     lastUpdated: null,
   });
 

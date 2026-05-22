@@ -91,9 +91,16 @@ async function fetchAllFormData(): Promise<{
 /**
  * Pass 2: for pending submissions missing workflow data, fetch real workflow
  * tasks and override the mapped fields. Mutates `mapped` in place.
+ *
+ * `skipIds` carries forward submissions known to be completed/rejected from a
+ * previous run — they are filtered out before the per-submission round-trips
+ * so we don't re-fetch terminal-state workflows. On a force refresh the caller
+ * passes an empty set (or clears the persisted store) so everything is fetched.
  */
-async function enrichWithWorkflowTasks(mapped: Submission[]): Promise<void> {
+async function enrichWithWorkflowTasks(mapped: Submission[], skipIds: Set<string>): Promise<void> {
   const needsEnrichment = (s: Submission): boolean => {
+    // Already known terminal (completed/rejected) from a prior cycle — skip.
+    if (skipIds.has(s.id)) return false;
     if (typeof s.currentApprovalLevel === 'number') {
       // Pending: only fetch if real approver email is missing or workflow instance unknown
       if (!s.pendingApproverEmail || !s.workflowInstanceId) return true;
@@ -205,9 +212,13 @@ async function enrichWithWorkflowTasks(mapped: Submission[]): Promise<void> {
 
 /**
  * Pass 3: pull approval comments from jf_approval_history and attach to entries.
+ *
+ * `skipIds` are submissions known to be in a terminal state from a prior cycle;
+ * their comments were already attached and won't change, so we leave them out
+ * of the IDs sent to /api/approval-history to keep the query small.
  */
-async function enrichWithApprovalComments(mapped: Submission[]): Promise<void> {
-  const submissionIds = mapped.map(s => s.id);
+async function enrichWithApprovalComments(mapped: Submission[], skipIds: Set<string>): Promise<void> {
+  const submissionIds = mapped.filter(s => !skipIds.has(s.id)).map(s => s.id);
   if (submissionIds.length === 0) return;
   try {
     const approvalRecords = await apiFetch<Record<string, unknown>[]>(
@@ -323,6 +334,34 @@ export function deltaSyncToSupabase(mapped: Submission[]): void {
   } catch {} // ignore sync errors — dashboard still works from JotForm API
 }
 
+// ─── Skip-set persistence — carries completed/rejected IDs across cycles ────
+// On a force refresh useSubmissions calls clearAllJotFlowCaches() which wipes
+// every `jotflow_*` localStorage key, including this one. That's how force
+// bypasses the skip: the next load starts with an empty set and re-fetches
+// everything. No explicit force flag needs to be threaded through.
+const ENRICH_SKIP_KEY = 'jotflow_enrich_skip_set';
+
+function loadSkipIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(ENRICH_SKIP_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return new Set();
+    return new Set(arr.map(String));
+  } catch {
+    return new Set();
+  }
+}
+
+function persistSkipIds(mapped: Submission[]): void {
+  try {
+    const ids = mapped
+      .filter(s => s.currentApprovalLevel === 'completed' || s.currentApprovalLevel === 'rejected')
+      .map(s => s.id);
+    localStorage.setItem(ENRICH_SKIP_KEY, JSON.stringify(ids));
+  } catch { /* ignore */ }
+}
+
 /**
  * End-to-end pipeline: forms → submissions → 3-pass enrichment.
  * Returns mapped Submissions plus per-form workflow steps (used for optimistic
@@ -352,11 +391,22 @@ export async function loadAndEnrichSubmissions(): Promise<LoadFromJotFormResult>
     }
   }
 
+  // Load the set of IDs that were completed/rejected in the previous cycle.
+  // Empty on first load and after any force-refresh (cache was cleared).
+  const skipIds = loadSkipIds();
+  if (skipIds.size > 0) {
+    console.log('[useSubmissions] Skipping workflow/comment fetch for', skipIds.size, 'known terminal submissions');
+  }
+
   // Pass 2: enrich pending submissions with real workflow task data
-  await enrichWithWorkflowTasks(mapped);
+  await enrichWithWorkflowTasks(mapped, skipIds);
 
   // Pass 3: attach approval comments from jf_approval_history
-  await enrichWithApprovalComments(mapped);
+  await enrichWithApprovalComments(mapped, skipIds);
+
+  // Refresh the skip set so next cycle can skip whatever is now terminal,
+  // including submissions that just transitioned from pending → completed.
+  persistSkipIds(mapped);
 
   return { submissions: mapped, forms, stepsByForm, partialDataWarning };
 }
