@@ -8,9 +8,11 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { insertNotification } = require('../lib/notifications');
 const {
   workflowActionBodySchema,
+  workflowTasksBatchBodySchema,
   deleteSubmissionQuerySchema,
   jotformUpdateQuerySchema,
 } = require('../schemas/submissions');
+const { pMapLimit } = require('../lib/concurrency');
 
 const router = Router();
 
@@ -132,34 +134,31 @@ router.get('/workflow-tasks', async (req, res, next) => {
   }
 });
 
-// ── POST /api/workflow-tasks-batch  body: { items: [{submissionId, workflowInstanceId?}] } ──
+// ── POST /api/workflow-tasks-batch  body: { submissionIds: string[] } ──
 // Single round-trip from the frontend; backend fans out with bounded concurrency
-// and re-uses the per-submission cache.
-router.post('/workflow-tasks-batch', async (req, res, next) => {
+// and re-uses the per-submission cache. Replaces the N-per-tick GET fanout.
+router.post('/workflow-tasks-batch', validate(workflowTasksBatchBodySchema), async (req, res, next) => {
   try {
     if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
-    const items = Array.isArray(req.body?.items) ? req.body.items : [];
-    if (items.length === 0) return res.json({ results: {} });
-    const capped = items.slice(0, 100); // protect upstream
+    const { submissionIds } = req.body;
     const keyType = readKeyType(req);
 
-    const { pMapLimit } = require('../lib/concurrency');
-    const settled = await pMapLimit(capped, 8, async (item) => {
-      const submissionId = String(item.submissionId || '');
-      if (!submissionId) return [submissionId, { tasks: [] }];
+    const settled = await pMapLimit(submissionIds, 8, async (submissionId) => {
+      const id = String(submissionId);
       try {
-        const r = await _resolveWorkflowTasks(submissionId, item.workflowInstanceId, keyType);
-        return [submissionId, r];
+        const r = await _resolveWorkflowTasks(id, undefined, keyType);
+        return [id, { taskList: r.tasks || [], workflowInstanceId: r.workflowInstanceId }];
       } catch (err) {
-        if (err && err.status === 404) return [submissionId, { tasks: [] }];
-        return [submissionId, { tasks: [], error: String(err && err.message || err) }];
+        if (err && err.status === 404) {
+          return [id, { taskList: [], workflowInstanceId: undefined }];
+        }
+        req.log.warn({ err, submissionId: id }, '[workflow-tasks-batch] per-id fetch failed');
+        return [id, { error: String((err && err.message) || err) }];
       }
     });
 
     const results = {};
-    for (const [id, r] of settled) {
-      if (id) results[id] = r;
-    }
+    for (const [id, r] of settled) results[id] = r;
     res.json({ results });
   } catch (err) { next(err); }
 });

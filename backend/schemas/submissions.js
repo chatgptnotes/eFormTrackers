@@ -37,6 +37,15 @@ const workflowActionBodySchema = z.object({
   signature: z.string().optional(),
 });
 
+// POST /api/workflow-tasks-batch — fetch workflow tasks for many submissions
+// in a single round-trip. Capped at 50 IDs per request to limit upstream fanout.
+const workflowTasksBatchBodySchema = z.object({
+  submissionIds: z
+    .array(z.string().min(1))
+    .min(1, 'submissionIds required')
+    .max(50, 'submissionIds max length is 50'),
+});
+
 // DELETE /api/delete-submission?submissionId=xxx
 const deleteSubmissionQuerySchema = z.object({
   submissionId: z.string().min(1, 'submissionId required'),
@@ -50,6 +59,7 @@ const jotformUpdateQuerySchema = z.object({
 module.exports = {
   syncToSupabaseBodySchema,
   workflowActionBodySchema,
+  workflowTasksBatchBodySchema,
   deleteSubmissionQuerySchema,
   jotformUpdateQuerySchema,
 };

@@ -55,6 +55,18 @@ router.get('/jotform', requireAuth, async (req, res, next) => {
 const fieldCache = {};
 const FIELD_CACHE_TTL = 60 * 60 * 1000;
 
+// Dedup: JotForm sometimes retries webhooks within seconds. Skip duplicates
+// within a 30s window to avoid wasted DB writes + socket emit storms.
+const recentWebhooks = new Map();
+const WEBHOOK_DEDUP_WINDOW_MS = 30 * 1000;
+const WEBHOOK_DEDUP_CLEANUP_MS = 5 * 60 * 1000;
+setInterval(() => {
+  const cutoff = Date.now() - WEBHOOK_DEDUP_CLEANUP_MS;
+  for (const [id, ts] of recentWebhooks) {
+    if (ts < cutoff) recentWebhooks.delete(id);
+  }
+}, WEBHOOK_DEDUP_CLEANUP_MS).unref();
+
 function extractText(answer) {
   if (!answer) return '';
   if (typeof answer === 'string') return answer;
@@ -104,6 +116,14 @@ router.post('/webhook', async (req, res, next) => {
     if (!submissionId) {
       return res.json({ ok: true, action: 'no-submission-id' });
     }
+
+    // Dedup: skip duplicate webhooks for the same submission within 30s.
+    const lastSeen = recentWebhooks.get(submissionId);
+    if (lastSeen && (Date.now() - lastSeen) < WEBHOOK_DEDUP_WINDOW_MS) {
+      req.log.info({ submissionId }, '[webhook] duplicate within 30s, skipping');
+      return res.json({ ok: true, action: 'duplicate-skipped' });
+    }
+    recentWebhooks.set(submissionId, Date.now());
 
     // Fetch submission from JotForm
     const jfData = await jotformFetch(`submission/${submissionId}`, {
