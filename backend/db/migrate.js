@@ -1,11 +1,11 @@
 const fs = require('fs');
 const path = require('path');
 const { Client } = require('pg');
-require('../config/env');
+const env = require('../config/env');
 
 async function migrate() {
   const sql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  const client = new Client({ connectionString: env.DATABASE_URL });
 
   try {
     await client.connect();

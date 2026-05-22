@@ -195,3 +195,9 @@ export interface DiscoveredForm {
   status: string;
   created_at: string;
 }
+
+export interface RechartsTooltipProps {
+  active?: boolean;
+  payload?: Array<{ name: string; value: number | string; color: string }>;
+  label?: string | number;
+}

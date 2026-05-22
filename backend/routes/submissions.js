@@ -342,7 +342,7 @@ router.post('/webhook', async (req, res, next) => {
           [submissionId, formId, lvl.id, action,
            lvl.approver || pendingApproverName || '', pendingApproverEmail || '',
            lvl.date ? new Date(lvl.date).toISOString() : new Date().toISOString()]
-        ).catch(() => {}); // best-effort
+        ).catch(e => console.warn(`[submissions] approval_history upsert failed (sub=${submissionId} lvl=${lvl.id}):`, e.message));
       }
     }
 
@@ -689,7 +689,9 @@ router.get('/cleanup-submissions', async (req, res, next) => {
             break;
           }
         }
-      } catch (_) { /* skip */ }
+      } catch (e) {
+        console.warn(`[submissions] workflow task fetch failed (sub=${sub.id}):`, e.message);
+      }
     }
 
     const deleteAll = KEEP_EMAIL === '';

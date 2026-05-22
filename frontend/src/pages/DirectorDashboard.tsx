@@ -754,15 +754,28 @@ export default function DirectorDashboard({ data }: Props) {
     }
   }, [paginatedSubmissions, preFetchWorkflows]);
 
-  // Stats
-  const syncNeededCount = parentSubmissions.filter(s => s.needsSync).length;
-  const pendingCount = parentSubmissions.filter(s => typeof s.currentApprovalLevel === 'number').length;
-  const completedCount = data.allSubmissions.filter(s => s.currentApprovalLevel === 'completed').length;
-  const rejectedCount = parentSubmissions.filter(s => s.currentApprovalLevel === 'rejected').length;
-  const criticalCount = parentSubmissions.filter(s => s.daysAtCurrentLevel > 7 && typeof s.currentApprovalLevel === 'number').length;
-  const avgWait = pendingCount > 0
-    ? Math.round(parentSubmissions.filter(s => typeof s.currentApprovalLevel === 'number').reduce((sum, s) => sum + s.daysAtCurrentLevel, 0) / pendingCount)
-    : 0;
+  // Stats — single pass over parentSubmissions, memoized so stat counters only recompute when data changes.
+  const { syncNeededCount, pendingCount, rejectedCount, criticalCount, avgWait } = useMemo(() => {
+    let sync = 0, pending = 0, rejected = 0, critical = 0, waitSum = 0;
+    for (const s of parentSubmissions) {
+      if (s.needsSync) sync++;
+      const isPending = typeof s.currentApprovalLevel === 'number';
+      if (isPending) { pending++; waitSum += s.daysAtCurrentLevel; }
+      if (s.currentApprovalLevel === 'rejected') rejected++;
+      if (isPending && s.daysAtCurrentLevel > 7) critical++;
+    }
+    return {
+      syncNeededCount: sync,
+      pendingCount: pending,
+      rejectedCount: rejected,
+      criticalCount: critical,
+      avgWait: pending > 0 ? Math.round(waitSum / pending) : 0,
+    };
+  }, [parentSubmissions]);
+  const completedCount = useMemo(
+    () => data.allSubmissions.filter(s => s.currentApprovalLevel === 'completed').length,
+    [data.allSubmissions]
+  );
   const approvedToday = approvedIds.size;
 
   const pushToJotForm = async (sub: Submission, decision: 'approved' | 'rejected', reason?: string) => {

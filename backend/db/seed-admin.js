@@ -10,18 +10,18 @@
 
 const bcrypt = require('bcrypt');
 const { Client } = require('pg');
-require('../config/env');
+const env = require('../config/env');
 
 const SALT_ROUNDS = 12;
 // Matches the default org seeded by schema.sql and the ORG_ID in routes/auth.js
 const ORG_ID = '971589dd-afcb-4a12-8900-47626e4d59cc';
 
-const email = String(process.env.ADMIN_EMAIL || 'admin@flowaccel.local').trim().toLowerCase();
-const password = process.env.ADMIN_PASSWORD || 'Admin@12345';
-const fullName = process.env.ADMIN_NAME || 'Administrator';
+const email = env.ADMIN_EMAIL || 'admin@flowaccel.local';
+const password = env.ADMIN_PASSWORD || 'Admin@12345';
+const fullName = env.ADMIN_NAME || 'Administrator';
 
 async function seed() {
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  const client = new Client({ connectionString: env.DATABASE_URL });
   try {
     await client.connect();
     const hash = await bcrypt.hash(password, SALT_ROUNDS);

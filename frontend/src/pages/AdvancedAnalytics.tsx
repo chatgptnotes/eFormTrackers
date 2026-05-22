@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, LineChart, Line, Legend, PieChart, Pie, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
 import { TrendingUp, Calendar, Award, Target, Brain, Download, ChevronRight, BarChart3, Users, Clock, Zap, Star, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
-import { Submission } from '../types';
+import { Submission, RechartsTooltipProps } from '../types';
 import { exportChartAsPng } from '../services/exportService';
 
 interface Props {
@@ -117,12 +117,12 @@ export default function AdvancedAnalytics({ data }: Props) {
   const COLORS = ['#D4A843', '#3B82F6', '#10B981', '#8B5CF6', '#EF4444', '#F59E0B', '#EC4899', '#6366F1'];
   const heatColors = ['#1B2A4A', '#1a3a2a', '#1a5a2a', '#2a8a3a', '#3aba4a'];
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload, label }: RechartsTooltipProps) => {
     if (!active || !payload?.length) return null;
     return (
       <div className="glass-card p-3 text-sm">
         <p className="text-gray-400 mb-1">{label}</p>
-        {payload.map((p: any, i: number) => (
+        {payload.map((p, i) => (
           <p key={i} style={{ color: p.color }} className="font-medium">{p.name}: {p.value}</p>
         ))}
       </div>

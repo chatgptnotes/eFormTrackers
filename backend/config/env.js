@@ -25,4 +25,7 @@ module.exports = {
   MICROSOFT_TENANT_ID: process.env.MICROSOFT_TENANT_ID || '',
   MICROSOFT_CLIENT_SECRET: process.env.MICROSOFT_CLIENT_SECRET || '',
   MICROSOFT_REDIRECT_URI: process.env.MICROSOFT_REDIRECT_URI || '',
+  ADMIN_EMAIL: (process.env.ADMIN_EMAIL || '').trim().toLowerCase(),
+  ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || '',
+  ADMIN_NAME: process.env.ADMIN_NAME || '',
 };

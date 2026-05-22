@@ -15,3 +15,10 @@ backend/.env.production
 # Runtime data - never commit (user PII + logs)
 backend/uploads/
 backend/logs/
+
+# Pull-rescue backups (created when git pull conflicts with untracked files)
+.pull-backup/
+.claude.local-backup/
+
+# Aider tool cache
+.aider.*

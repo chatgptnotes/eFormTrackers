@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from 'recharts';
 import { AlertTriangle, Clock, TrendingUp, Download, User } from 'lucide-react';
 import { exportBottleneckPdf, exportChartAsPng } from '../services/exportService';
+import { RechartsTooltipProps } from '../types';
 
 interface Props {
   data: ReturnType<typeof import('../hooks/useSubmissions').useSubmissions>;
@@ -19,12 +20,12 @@ export default function BottleneckAnalysis({ data }: Props) {
   const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const hours = ['9AM', '10AM', '11AM', '12PM', '1PM', '2PM', '3PM', '4PM'];
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload, label }: RechartsTooltipProps) => {
     if (!active || !payload?.length) return null;
     return (
       <div className="glass-card p-3 text-sm">
         <p className="text-gray-400 mb-1">{label}</p>
-        {payload.map((p: any, i: number) => (
+        {payload.map((p, i) => (
           <p key={i} style={{ color: p.color }} className="font-medium">{p.name}: {p.value}</p>
         ))}
       </div>

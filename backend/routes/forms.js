@@ -73,7 +73,9 @@ router.get('/form-workflow', async (req, res, next) => {
           if (step && !step.assigneeEmail && value.includes('@')) step.assigneeEmail = value;
         }
       }
-    } catch (_) { /* non-critical */ }
+    } catch (e) {
+      console.warn(`[forms] form properties fetch failed (form=${formId}):`, e.message);
+    }
 
     workflowCache[formId] = { steps, at: Date.now() };
     res.json({ formId, steps });
@@ -366,7 +368,9 @@ router.get('/email-url', async (req, res, next) => {
               });
             }
           }
-        } catch (_) { /* fallback */ }
+        } catch (e) {
+          console.warn(`[forms] prefill API fetch failed (form=${formId} sub=${submissionId}):`, e.message);
+        }
       }
       return res.json({
         approvalUrl: `${env.JOTFORM_HOST}/${taskFormID}?workflowAssignFormTask=1&taskID=${taskId}`,

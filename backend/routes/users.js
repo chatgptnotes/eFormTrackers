@@ -1,13 +1,14 @@
 const { Router } = require('express');
 const bcrypt = require('bcrypt');
 const pool = require('../db/pool');
+const env = require('../config/env');
 
 const router = Router();
 const SALT_ROUNDS = 12;
 const ORG_ID = '971589dd-afcb-4a12-8900-47626e4d59cc';
 const VALID_ROLES = ['super_admin', 'admin', 'approver', 'viewer'];
 // Configured at install time via the installer-generated backend/.env.
-const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || '').toLowerCase();
+const ADMIN_EMAIL = env.ADMIN_EMAIL;
 
 // ── POST /api/create-user ──
 // Admin-only user creation (replaces Supabase auth.admin.createUser)
