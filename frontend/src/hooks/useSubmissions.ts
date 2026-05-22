@@ -7,6 +7,7 @@ import { WorkflowStep, clearWorkflowStepCache, clearWorkflowTaskCache } from './
 import { clearApproverConfigCache } from './useApproverConfig';
 import { mapSupabaseRow } from './submissionMappers';
 import { loadAndEnrichSubmissions, deltaSyncToSupabase } from './submissionLoader';
+import { getJotformKeyType } from '../lib/jotformKey';
 
 // ─── Workspace version — bump when switching teams to force full cache clear ──
 const WORKSPACE_VERSION = 'gdmo-bettroi-v4'; // bumped: new API key — force cache clear
@@ -21,6 +22,14 @@ function checkAndClearWorkspaceCaches() {
     });
     localStorage.setItem(WS_VERSION_KEY, WORKSPACE_VERSION);
     clearWorkflowStepCache();
+  }
+  // One-shot migration: drop pre-keyType-scoped caches so old default-key data
+  // never paints when the user is on gdmo (and vice versa).
+  if (localStorage.getItem('jotflow_submissions_cache')) {
+    localStorage.removeItem('jotflow_submissions_cache');
+  }
+  if (localStorage.getItem('jotflow_sync_fingerprints')) {
+    localStorage.removeItem('jotflow_sync_fingerprints');
   }
 }
 
@@ -67,16 +76,20 @@ export function useSubmissions() {
   // Workflow step cache (populated during loadData; used for optimistic updates)
   const [stepsByForm, setStepsByForm] = useState<Record<string, WorkflowStep[]>>({});
 
-  const loadData = useCallback(async (opts?: { force?: boolean }) => {
+  const loadData = useCallback(async (opts?: { force?: boolean; silent?: boolean }) => {
     const force = opts?.force ?? false;
+    const silent = opts?.silent ?? false;
     checkAndClearWorkspaceCaches();
     if (force) clearAllJotFlowCaches();
 
-    setLoading(true);
+    // Silent mode: skip the loading spinner (used for background refresh
+    // after an instant keyType swap that already painted from cache).
+    if (!silent) setLoading(true);
     setError(null);
 
     // ── First paint from localStorage cache (≤30min old) ─────────────────────
-    const cacheKey = 'jotflow_submissions_cache';
+    // Scoped by JotForm key type so default vs gdmo never show each other's cache.
+    const cacheKey = `jotflow_submissions_cache_${getJotformKeyType()}`;
     let hasCachedData = false;
     try {
       const cached = localStorage.getItem(cacheKey);
@@ -133,7 +146,7 @@ export function useSubmissions() {
         setAllSubmissions([]);
       }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
@@ -178,11 +191,39 @@ export function useSubmissions() {
     loadData();
   }, [loadData, loadFromSupabase]);
 
-  // Listen for JotForm API key toggle from Settings — force a full reload
-  // (which wipes caches + workflow task cache internally) so the dashboard
-  // reflects the new key's data without a manual refresh.
+  // Listen for JotForm API key toggle from Settings.
+  // Instant swap UX: paint the new key's localStorage cache immediately
+  // (no loading spinner, no "No submissions found" flash), then refresh
+  // silently in the background. Falls back to a normal load if no cache
+  // exists for the new key (first-time switch).
   useEffect(() => {
-    const onKeyTypeChanged = () => { loadData({ force: true }); };
+    const onKeyTypeChanged = () => {
+      const newKey = getJotformKeyType();
+      const cacheKey = `jotflow_submissions_cache_${newKey}`;
+      let cachePainted = false;
+      try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          const { submissions, forms } = JSON.parse(cached);
+          // Instant re-render: swap visible data atomically, no spinner.
+          setAllSubmissions(submissions);
+          setActiveForms(forms);
+          cachePainted = true;
+        } else {
+          // First-time switch to this key — clear stale display so the
+          // user doesn't see the old key's data while the fresh fetch runs.
+          setAllSubmissions([]);
+          setActiveForms([]);
+        }
+      } catch (e) {
+        console.warn('[useSubmissions] key-toggle cache read failed:', e);
+      }
+      // Clear in-memory workflow caches (they were keyed by old keyType),
+      // then refresh. Silent if we painted from cache.
+      clearWorkflowStepCache();
+      clearWorkflowTaskCache();
+      loadData({ silent: cachePainted });
+    };
     window.addEventListener('jotform-key-type-changed', onKeyTypeChanged);
     return () => window.removeEventListener('jotform-key-type-changed', onKeyTypeChanged);
   }, [loadData]);

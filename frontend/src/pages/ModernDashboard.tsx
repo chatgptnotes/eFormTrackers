@@ -8,6 +8,7 @@ import {
 import SubmissionModal from '../components/SubmissionModal';
 import WorkflowDetailsModal from '../components/WorkflowDetailsModal';
 import WorkflowDetailsSidebar from '../components/WorkflowDetailsSidebar';
+import { Skeleton, SkeletonStatCard, SkeletonSubmissionCard } from '../components/Skeleton';
 import { Submission, WorkflowTask } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { exportToExcel } from '../services/exportService';
@@ -566,11 +567,28 @@ export default function ModernDashboard({ data }: Props) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-32">
-        <motion.div className="text-center space-y-4">
-          <Loader2 className="w-12 h-12 text-blue-500 animate-spin mx-auto" />
-          <p className="text-gray-400 text-sm">Loading modern dashboard...</p>
-        </motion.div>
+      <div className="space-y-8 w-full px-4">
+        <div className="space-y-2">
+          <Skeleton className="h-10 w-72" />
+          <Skeleton className="h-4 w-96" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => <SkeletonStatCard key={i} />)}
+        </div>
+        <div className="space-y-4">
+          <Skeleton className="h-12 w-full rounded-xl" />
+          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+            <div className="flex gap-2 flex-wrap">
+              {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-10 w-20 rounded-lg" />)}
+            </div>
+            <div className="flex gap-2 items-center flex-wrap">
+              {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-10 w-24 rounded-lg" />)}
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {Array.from({ length: 6 }).map((_, i) => <SkeletonSubmissionCard key={i} />)}
+        </div>
       </div>
     );
   }
