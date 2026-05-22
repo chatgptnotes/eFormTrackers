@@ -83,6 +83,7 @@ app.use('/api', require('./routes/data-profiles'));
 app.use('/api', require('./routes/data-org'));
 app.use('/api', require('./routes/uploads'));
 app.use('/api', require('./routes/users'));
+app.use('/api', require('./routes/admin-sync'));
 
 // ── Health check ──
 app.get('/api/health', (req, res) => {

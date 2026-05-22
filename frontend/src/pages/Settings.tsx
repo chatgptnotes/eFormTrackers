@@ -13,6 +13,15 @@ import {
   getJotformKeyTypeFor,
   setJotformKeyType,
 } from '../lib/jotformKey';
+import { apiFetch } from '../lib/api';
+
+interface SyncSummary {
+  totalUpserted: number;
+  totalFailed: number;
+  formCount: number;
+  elapsedMs: number;
+  perForm: Array<{ formId: string; formTitle: string; total: number; upserted: number }>;
+}
 
 export default function Settings() {
   const { autoApproveRules, setAutoApproveRules } = useApp();
@@ -48,6 +57,25 @@ export default function Settings() {
   };
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<SyncSummary | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+
+  const handleSyncAll = async () => {
+    if (syncing) return;
+    if (!confirm(`Sync ALL ${keyType === 'gdmo' ? 'Production' : 'Testing'} submissions to the database? This may take several minutes for large datasets.`)) return;
+    setSyncing(true);
+    setSyncResult(null);
+    setSyncError(null);
+    try {
+      const data = await apiFetch<SyncSummary & { ok: boolean }>('/api/admin/sync-all', { method: 'POST' });
+      setSyncResult(data);
+    } catch (e) {
+      setSyncError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSyncing(false);
+    }
+  };
   const [newFormId, setNewFormId] = useState('');
   const [discovering, setDiscovering] = useState(false);
   const [discoveredForms, setDiscoveredForms] = useState<DiscoveredForm[]>([]);
@@ -289,6 +317,43 @@ export default function Settings() {
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
+            ))}
+          </div>
+        )}
+      </motion.div>
+
+      {/* Full DB Sync (admin) */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.28 }} className="glass-card p-6 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-emerald-500/10">
+            <RefreshCw className={`w-5 h-5 text-emerald-400 ${syncing ? 'animate-spin' : ''}`} />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold text-white">Sync All Submissions</h3>
+            <p className="text-xs text-gray-500">
+              Pull every submission from every form on the active key ({keyType === 'gdmo' ? 'Production' : 'Testing'}) and upsert into jf_submissions. Runs server-side so it's not bottlenecked by your browser.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={handleSyncAll}
+          disabled={syncing}
+          className="w-full px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-semibold text-sm transition-colors"
+        >
+          {syncing ? 'Syncing…' : `Sync All ${keyType === 'gdmo' ? 'Production' : 'Testing'} Submissions`}
+        </button>
+        {syncError && <p className="text-xs text-red-400">Error: {syncError}</p>}
+        {syncResult && (
+          <div className="text-xs text-gray-400 space-y-1 mt-2 max-h-48 overflow-y-auto">
+            <p className="text-emerald-400 font-semibold">
+              ✓ Upserted {syncResult.totalUpserted} across {syncResult.formCount} forms in {(syncResult.elapsedMs / 1000).toFixed(1)}s
+              {syncResult.totalFailed > 0 && <span className="text-amber-400"> ({syncResult.totalFailed} failed)</span>}
+            </p>
+            {syncResult.perForm.filter(f => f.total > 0).slice(0, 8).map(f => (
+              <p key={f.formId} className="font-mono">
+                {f.upserted}/{f.total} — {f.formTitle}
+              </p>
             ))}
           </div>
         )}

@@ -52,9 +52,11 @@ async function fetchAllFormData(): Promise<{
       const [questions, rows, steps] = await Promise.all([
         fetchFormQuestions(form.id),
         (async () => {
-          // Fetch initial submissions (2 pages max = ~2000 submissions for fast initial load)
+          // Fetch initial submissions: 10 pages max = up to 10,000 per form per session.
+          // Bulk backfill should be done via POST /api/admin/sync-all instead of relying
+          // on dashboard navigation to fill the DB.
           const pageLimit = 1000;
-          const maxPagesInitial = 2;
+          const maxPagesInitial = 10;
           let offset = 0;
           let pageCount = 0;
           const rows: Record<string, unknown>[] = [];
@@ -294,7 +296,8 @@ export function deltaSyncToSupabase(mapped: Submission[]): void {
       workflowInstanceId: s.workflowInstanceId,
     }));
 
-    const FP_KEY = 'jotflow_sync_fingerprints';
+    const keyType = (typeof localStorage !== 'undefined' && localStorage.getItem('jotform_key_type') === 'gdmo') ? 'gdmo' : 'default';
+    const FP_KEY = `jotflow_sync_fingerprints_${keyType}`;
     let prevFp: Record<string, string> = {};
     try { prevFp = JSON.parse(localStorage.getItem(FP_KEY) || '{}'); } catch {}
 
@@ -310,7 +313,7 @@ export function deltaSyncToSupabase(mapped: Submission[]): void {
       // Fire-and-forget — don't block the UI
       fetch('/api/sync-to-supabase', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...jotformHeaders() },
         body: JSON.stringify({ records: changed }),
       })
         .then(() => { try { localStorage.setItem(FP_KEY, JSON.stringify(nextFp)); } catch {} })
