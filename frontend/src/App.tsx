@@ -8,7 +8,6 @@ import ErrorBoundary from './components/ErrorBoundary';
 import { Loader2 } from 'lucide-react';
 import { ToastProvider } from './components/ToastNotification';
 import { getUserConfig, isSubmissionVisible } from './config/currentUser';
-import { canAccessSettings } from './config/access';
 
 // Lazy-loaded pages — only downloaded when the user navigates to them
 const ModernDashboard = lazy(() => import('./pages/ModernDashboard'));
@@ -46,12 +45,6 @@ function RoleGuard({ allowed, children }: { allowed: string[]; children: React.R
   return <>{children}</>;
 }
 
-function SettingsGuard({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
-  if (!canAccessSettings(user?.email)) return <Navigate to="/app/director" replace />;
-  return <>{children}</>;
-}
-
 function ProtectedApp() {
   const data = useSubmissions();
   const { user, orgRole } = useAuth();
@@ -76,7 +69,7 @@ function ProtectedApp() {
           <Route path="/tracker" element={<RoleGuard allowed={['super_admin', 'admin', 'approver']}><WorkflowTracker data={data} /></RoleGuard>} />
           <Route path="/bottlenecks" element={<RoleGuard allowed={['super_admin', 'admin']}><BottleneckAnalysis data={data} /></RoleGuard>} />
           <Route path="/approval/:level" element={<RoleGuard allowed={['super_admin', 'admin', 'approver']}><ApprovalDetail data={data} /></RoleGuard>} />
-          <Route path="/settings" element={<SettingsGuard><Settings /></SettingsGuard>} />
+          <Route path="/settings" element={<RoleGuard allowed={['super_admin', 'admin', 'approver']}><Settings /></RoleGuard>} />
           <Route path="/team" element={<RoleGuard allowed={['super_admin', 'admin']}><TeamManagement /></RoleGuard>} />
           <Route path="/org-settings" element={<RoleGuard allowed={['super_admin']}><OrgSettings /></RoleGuard>} />
           <Route path="/billing" element={<RoleGuard allowed={['super_admin']}><Billing /></RoleGuard>} />

@@ -12,7 +12,6 @@ import { RefreshConfig, SidebarCategory } from '../types';
 import { JFFormMeta } from '../services/formDiscovery';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
-import { canAccessSettings } from '../config/access';
 import { SIDEBAR_CATEGORIES } from '../services/mockData';
 import NotificationBell from './NotificationBell';
 import UserDropdown from './UserDropdown';
@@ -42,7 +41,7 @@ const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>
 export default function Layout({ children, refreshConfig, setRefreshConfig, onRefresh, activeForms, activeDepartments = [] }: Props) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, orgRole, organization, hasPermission } = useAuth();
+  const { orgRole, organization, hasPermission } = useAuth();
   const { activeSidebarCategory, setActiveSidebarCategory, activeWorkflowId, setActiveWorkflowId, themeMode, toggleTheme } = useApp();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -87,9 +86,9 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
     // { path: '/app/activity', icon: FileText, label: 'Activity Log', roles: ['super_admin', 'admin'] },
     // { path: '/app/billing', icon: CreditCard, label: 'Billing', roles: ['super_admin'] },
     { path: '/app/org-settings', icon: Building2, label: 'Organization', roles: ['super_admin'] },
-    { path: '/app/settings', icon: Settings, label: 'Settings', roles: ['super_admin', 'admin', 'approver'], emailGate: canAccessSettings },
+    { path: '/app/settings', icon: Settings, label: 'Settings', roles: ['super_admin', 'admin', 'approver'] },
     // { path: '/app/help', icon: HelpCircle, label: 'Help & Support', roles: ['super_admin', 'admin', 'approver', 'viewer'] },
-  ].filter(item => item.roles.includes(orgRole) && (!item.emailGate || item.emailGate(user?.email)));
+  ].filter(item => item.roles.includes(orgRole));
 
   const currentLabel = location.pathname === '/app/director'
     ? "Dashboard"
@@ -342,7 +341,6 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
                   onChange={e => setRefreshConfig(prev => ({ ...prev, intervalMinutes: Number(e.target.value) }))}
                   className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-gray-300"
                 >
-                  <option value={1}>Every 1 min</option>
                   <option value={5}>Every 5 min</option>
                   <option value={15}>Every 15 min</option>
                   <option value={30}>Every 30 min</option>

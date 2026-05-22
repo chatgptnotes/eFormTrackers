@@ -4,19 +4,17 @@ import {
   Key, Link2, CheckCircle2, XCircle, Loader2, Plus, Trash2, TestTube2,
   Zap, FileText, ToggleLeft, ToggleRight, Sparkles, RefreshCw,
 } from 'lucide-react';
-import { Navigate } from 'react-router-dom';
 import { jotformApi } from '../services/jotformApi';
 import { ApiConfig, DiscoveredForm, AutoApproveRule } from '../types';
 import { useApp } from '../contexts/AppContext';
 import { useAuth } from '../contexts/AuthContext';
-import { canAccessSettings } from '../config/access';
 import {
   JotformKeyType,
   getJotformKeyTypeFor,
   setJotformKeyType,
 } from '../lib/jotformKey';
 
-function SettingsInner() {
+export default function Settings() {
   const { autoApproveRules, setAutoApproveRules } = useApp();
   const { user } = useAuth();
   const [config, setConfig] = useState<ApiConfig>(jotformApi.getConfig());
@@ -359,10 +357,4 @@ function SettingsInner() {
       </motion.div>
     </div>
   );
-}
-
-export default function Settings() {
-  const { user } = useAuth();
-  if (!canAccessSettings(user?.email)) return <Navigate to="/app/director" replace />;
-  return <SettingsInner />;
 }

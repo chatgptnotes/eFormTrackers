@@ -2,16 +2,9 @@ const { Router } = require('express');
 const pool = require('../db/pool');
 const env = require('../config/env');
 const { jotformFetch } = require('../lib/jotform');
-const { readKeyType } = require('../lib/key-type');
-const { requireAuth, requireEmail } = require('../middleware/auth');
+const { requireAuth } = require('../middleware/auth');
 
 const router = Router();
-
-// Mutations on global dashboard config (approver mapping, team-member listing)
-// are restricted to the Settings-page operator. Keep this list in sync with
-// frontend/src/config/access.ts SETTINGS_ALLOWED_EMAILS.
-const SETTINGS_ALLOWED_EMAILS = ['bk@bettroi.com'];
-const requireSettingsEmail = requireEmail(SETTINGS_ALLOWED_EMAILS);
 
 router.use(requireAuth);
 
@@ -34,7 +27,7 @@ router.get('/approver-config', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/approver-config', requireSettingsEmail, async (req, res, next) => {
+router.post('/approver-config', async (req, res, next) => {
   try {
     const { formId, level, approverName, approverEmail } = req.body || {};
     if (!formId || !level) return res.status(400).json({ error: 'formId and level are required' });
@@ -51,7 +44,7 @@ router.post('/approver-config', requireSettingsEmail, async (req, res, next) => 
   } catch (err) { next(err); }
 });
 
-router.delete('/approver-config', requireSettingsEmail, async (req, res, next) => {
+router.delete('/approver-config', async (req, res, next) => {
   try {
     const formId = req.query.formId;
     const level = req.query.level;
@@ -86,15 +79,14 @@ function normalizeMember(raw) {
   };
 }
 
-router.get('/team-members', requireSettingsEmail, async (req, res) => {
+router.get('/team-members', async (req, res) => {
   if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
 
-  const keyType = readKeyType(req);
   const errors = [];
 
   // Strategy 1: /team/{TEAM_ID}/members
   try {
-    const data = await jotformFetch(`team/${env.JOTFORM_TEAM_ID}/members`, { keyType });
+    const data = await jotformFetch(`team/${env.JOTFORM_TEAM_ID}/members`);
     const raw = Array.isArray(data?.content) ? data.content : data?.content ? [data.content] : null;
     if (raw && raw.length > 0) {
       return res.json({ members: raw.map(normalizeMember), source: 'team_members', rawCount: raw.length });
@@ -106,7 +98,7 @@ router.get('/team-members', requireSettingsEmail, async (req, res) => {
 
   // Strategy 2: /users
   try {
-    const data = await jotformFetch('users', { keyType });
+    const data = await jotformFetch('users');
     const raw = Array.isArray(data?.content) ? data.content : null;
     if (raw && raw.length > 0) {
       return res.json({ members: raw.map(normalizeMember), source: 'users', rawCount: raw.length });
@@ -118,7 +110,7 @@ router.get('/team-members', requireSettingsEmail, async (req, res) => {
 
   // Strategy 3: /team/user/me
   try {
-    const data = await jotformFetch('team/user/me', { keyType });
+    const data = await jotformFetch('team/user/me');
     const content = data?.content;
     if (content) {
       const teams = Array.isArray(content) ? content : [content];
