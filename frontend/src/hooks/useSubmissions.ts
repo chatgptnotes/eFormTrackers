@@ -173,7 +173,7 @@ export function useSubmissions() {
 
     try {
       const data = await apiFetch<Record<string, unknown>[]>(
-        `/api/submissions?form_ids=${activeFormIds.join(',')}&limit=2000&order=desc`
+        `/api/submissions?form_ids=${activeFormIds.join(',')}&limit=20000&order=desc`
       );
       if (!data || data.length === 0) return; // never wipe state with empty result
 
@@ -235,7 +235,7 @@ export function useSubmissions() {
     try {
       const cached = localStorage.getItem(WEBHOOK_CACHE_KEY);
       if (cached && Date.now() - Number(cached) < WEBHOOK_CACHE_TTL) return;
-      fetch('/api/register-webhooks', { method: 'POST' })
+      apiFetch('/api/register-webhooks', { method: 'POST' })
         .then(() => localStorage.setItem(WEBHOOK_CACHE_KEY, String(Date.now())))
         .catch(err => console.warn('[JotFlow] Webhook registration failed:', err));
     } catch {}

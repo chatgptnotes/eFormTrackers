@@ -4,6 +4,7 @@
  * Exposed as plain functions (the hook is only the cache lifetime — the actual
  * resolution logic stays pure so mappers can call it without React).
  */
+import { apiFetch } from '../lib/api';
 
 export interface ApproverConfig {
   formId: string;
@@ -20,9 +21,7 @@ export async function fetchApproverConfigs(): Promise<ApproverConfig[]> {
     return approverConfigCache.configs;
   }
   try {
-    const res = await fetch('/api/approver-config');
-    if (!res.ok) return [];
-    const data = await res.json();
+    const data = await apiFetch<{ configs?: Record<string, unknown>[] }>('/api/approver-config');
     const configs: ApproverConfig[] = (data.configs || []).map((c: Record<string, unknown>) => ({
       formId: String(c.form_id || ''),
       level: Number(c.level || 0),

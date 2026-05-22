@@ -13,14 +13,13 @@ import {
   getJotformKeyTypeFor,
   setJotformKeyType,
 } from '../lib/jotformKey';
-import { apiFetch } from '../lib/api';
 
 interface SyncSummary {
   totalUpserted: number;
   totalFailed: number;
   formCount: number;
   elapsedMs: number;
-  perForm: Array<{ formId: string; formTitle: string; total: number; upserted: number }>;
+  perForm?: Array<{ formId: string; formTitle: string; total: number; upserted: number }>;
 }
 
 export default function Settings() {
@@ -60,21 +59,62 @@ export default function Settings() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<SyncSummary | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncLog, setSyncLog] = useState<string[]>([]);
 
-  const handleSyncAll = async () => {
+  const handleSyncAll = () => {
     if (syncing) return;
     if (!confirm(`Sync ALL ${keyType === 'gdmo' ? 'Production' : 'Testing'} submissions to the database? This may take several minutes for large datasets.`)) return;
     setSyncing(true);
     setSyncResult(null);
     setSyncError(null);
-    try {
-      const data = await apiFetch<SyncSummary & { ok: boolean }>('/api/admin/sync-all', { method: 'POST' });
-      setSyncResult(data);
-    } catch (e) {
-      setSyncError(e instanceof Error ? e.message : String(e));
-    } finally {
+    setSyncLog([]);
+
+    // EventSource is GET-only and can't carry custom headers, so pass the
+    // key type as a query param. Cookies (session) are forwarded automatically.
+    const url = `/api/admin/sync-all-stream?keyType=${encodeURIComponent(keyType)}`;
+    const es = new EventSource(url, { withCredentials: true });
+
+    const append = (line: string) => setSyncLog(log => [...log, line]);
+
+    es.addEventListener('start', (e: MessageEvent) => {
+      const d = JSON.parse(e.data);
+      append(`Starting sync of ${d.formCount} forms (key=${d.keyType})`);
+    });
+
+    es.addEventListener('form-start', (e: MessageEvent) => {
+      const d = JSON.parse(e.data);
+      append(`Fetching ${d.formTitle}…`);
+    });
+
+    es.addEventListener('form-done', (e: MessageEvent) => {
+      const d = JSON.parse(e.data);
+      append(`✓ ${d.formTitle}: 200 — ${d.upserted}/${d.total} (${(d.ms / 1000).toFixed(1)}s)`);
+    });
+
+    es.addEventListener('form-error', (e: MessageEvent) => {
+      const d = JSON.parse(e.data);
+      append(`✗ ${d.formTitle}: ${d.status} — ${d.error}`);
+    });
+
+    es.addEventListener('done', (e: MessageEvent) => {
+      const d = JSON.parse(e.data) as SyncSummary & { ok: boolean };
+      setSyncResult({ ...d, perForm: d.perForm || [] });
       setSyncing(false);
-    }
+      es.close();
+    });
+
+    // Native 'error' on EventSource fires for both transport errors and
+    // server-emitted `event: error`. Either way we close and surface a message.
+    es.addEventListener('error', () => {
+      // If the stream already finished cleanly, readyState is CLOSED; ignore.
+      if (es.readyState === EventSource.CLOSED) {
+        setSyncing(false);
+        return;
+      }
+      setSyncError('Stream connection lost');
+      setSyncing(false);
+      es.close();
+    });
   };
   const [newFormId, setNewFormId] = useState('');
   const [discovering, setDiscovering] = useState(false);
@@ -344,13 +384,31 @@ export default function Settings() {
           {syncing ? 'Syncing…' : `Sync All ${keyType === 'gdmo' ? 'Production' : 'Testing'} Submissions`}
         </button>
         {syncError && <p className="text-xs text-red-400">Error: {syncError}</p>}
+        {syncLog.length > 0 && (
+          <div className="max-h-64 overflow-y-auto text-xs font-mono space-y-0.5 bg-black/30 rounded p-2">
+            {syncLog.slice(-50).map((line, i) => (
+              <div
+                key={i}
+                className={
+                  line.startsWith('✓')
+                    ? 'text-emerald-400'
+                    : line.startsWith('✗')
+                      ? 'text-red-400'
+                      : 'text-gray-400'
+                }
+              >
+                {line}
+              </div>
+            ))}
+          </div>
+        )}
         {syncResult && (
           <div className="text-xs text-gray-400 space-y-1 mt-2 max-h-48 overflow-y-auto">
             <p className="text-emerald-400 font-semibold">
               ✓ Upserted {syncResult.totalUpserted} across {syncResult.formCount} forms in {(syncResult.elapsedMs / 1000).toFixed(1)}s
               {syncResult.totalFailed > 0 && <span className="text-amber-400"> ({syncResult.totalFailed} failed)</span>}
             </p>
-            {syncResult.perForm.filter(f => f.total > 0).slice(0, 8).map(f => (
+            {(syncResult.perForm || []).filter(f => f.total > 0).slice(0, 8).map(f => (
               <p key={f.formId} className="font-mono">
                 {f.upserted}/{f.total} — {f.formTitle}
               </p>

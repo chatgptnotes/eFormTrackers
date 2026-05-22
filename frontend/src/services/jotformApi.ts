@@ -1,5 +1,6 @@
 import { ApiConfig, Submission, DiscoveredForm } from '../types';
 import { jotformHeaders } from '../lib/jotformKey';
+import { apiFetch } from '../lib/api';
 
 // Use local proxy to avoid CORS issues with enterprise JotForm API
 // API key is server-side only (JOTFORM_API_KEY env var in Vercel)
@@ -125,14 +126,14 @@ class JotFormApiService {
       }
       const ctrl = new AbortController();
       const timeout = setTimeout(() => ctrl.abort(), 20000); // 20s timeout
-      const response = await fetch(`/api/jotform-update?submissionId=${submissionId}`, {
+      const data = await apiFetch<{ responseCode?: number; error?: string; message?: string }>(`/api/jotform-update?submissionId=${submissionId}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...jotformHeaders() },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: params.toString(),
         signal: ctrl.signal,
+        throwOnError: false,
       });
       clearTimeout(timeout);
-      const data = await response.json();
       if (data.responseCode === 200) {
         // Clear ALL cached data — submission list must be re-fetched after any write
         this.cache.clear();

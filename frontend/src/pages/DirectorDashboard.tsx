@@ -21,7 +21,6 @@ import { SignatureViewerModal } from '../components/dashboard/SignatureViewerMod
 import { getUserConfig, isSubmissionVisible } from '../config/currentUser';
 import { useAuth } from '../contexts/AuthContext';
 import { apiFetch } from '../lib/api';
-import { jotformHeaders } from '../lib/jotformKey';
 import { exportToExcel } from '../services/exportService';
 
 interface Props {
@@ -275,9 +274,8 @@ export default function DirectorDashboard({ data }: Props) {
     }
     setExpandLoading(sub.id);
     try {
-      const res = await fetch(`/api/workflow-tasks?submissionId=${sub.id}`);
-      if (!res.ok) { setExpandLoading(null); return; }
-      const json = await res.json();
+      const json = await apiFetch<{ tasks?: WorkflowTask[] }>(`/api/workflow-tasks?submissionId=${sub.id}`, { throwOnError: false });
+      if (!json || !('tasks' in json)) { setExpandLoading(null); return; }
       setExpandedRowId(sub.id);
       setExpandedTasks(json.tasks || []);
     } catch {
@@ -290,16 +288,13 @@ export default function DirectorDashboard({ data }: Props) {
 
   const refreshExpandedTasks = async (submissionId: string) => {
     try {
-      const res = await fetch(`/api/workflow-tasks?submissionId=${submissionId}`);
-      if (res.ok) {
-        const json = await res.json();
-        setExpandedTasks(json.tasks || []);
-        setWorkflowCache(prev => {
-          const next = new Map(prev);
-          next.set(submissionId, json.tasks || []);
-          return next;
-        });
-      }
+      const json = await apiFetch<{ tasks?: WorkflowTask[] }>(`/api/workflow-tasks?submissionId=${submissionId}`);
+      setExpandedTasks(json.tasks || []);
+      setWorkflowCache(prev => {
+        const next = new Map(prev);
+        next.set(submissionId, json.tasks || []);
+        return next;
+      });
     } catch { /* ignore */ }
   };
 
@@ -328,9 +323,8 @@ export default function DirectorDashboard({ data }: Props) {
     try {
       // Pass workflowInstanceId to skip slow submission fetch in API
       const url = `/api/workflow-tasks?submissionId=${sub.id}${sub.workflowInstanceId ? `&workflowInstanceId=${sub.workflowInstanceId}` : ''}`;
-      const res = await fetch(url);
-      if (!res.ok) { setExpandLoading(null); return; }
-      const json = await res.json();
+      const json = await apiFetch<{ tasks?: WorkflowTask[] }>(url, { throwOnError: false });
+      if (!json || !('tasks' in json)) { setExpandLoading(null); return; }
       const tasks = json.tasks || [];
       setExpandedTasks(tasks);
       setWorkflowCache(prev => new Map(prev).set(sub.id, tasks));
@@ -352,9 +346,8 @@ export default function DirectorDashboard({ data }: Props) {
     await Promise.all(toFetch.map(async (sub) => {
       try {
         const url = `/api/workflow-tasks?submissionId=${sub.id}${sub.workflowInstanceId ? `&workflowInstanceId=${sub.workflowInstanceId}` : ''}`;
-        const res = await fetch(url);
-        if (res.ok) {
-          const json = await res.json();
+        const json = await apiFetch<{ tasks?: WorkflowTask[] }>(url, { throwOnError: false });
+        if (json && 'tasks' in json) {
           const tasks = json.tasks || [];
           setWorkflowCache(prevCache => {
             if (prevCache.has(sub.id)) return prevCache;
@@ -373,9 +366,8 @@ export default function DirectorDashboard({ data }: Props) {
     setWorkflowModalSubmission(sub);
     setExpandLoading(sub.id);
     try {
-      const res = await fetch(`/api/workflow-tasks?submissionId=${sub.id}`);
-      if (!res.ok) { setExpandLoading(null); return; }
-      const json = await res.json();
+      const json = await apiFetch<{ tasks?: WorkflowTask[] }>(`/api/workflow-tasks?submissionId=${sub.id}`, { throwOnError: false });
+      if (!json || !('tasks' in json)) { setExpandLoading(null); return; }
       setExpandedTasks(json.tasks || []);
     } catch {
       setExpandedTasks([]);
@@ -391,9 +383,8 @@ export default function DirectorDashboard({ data }: Props) {
     let failed = 0;
     for (const id of ids) {
       try {
-        const res = await fetch(`/api/delete-submission?submissionId=${id}`, { method: 'DELETE' });
-        if (res.ok) deleted++;
-        else failed++;
+        await apiFetch(`/api/delete-submission?submissionId=${id}`, { method: 'DELETE' });
+        deleted++;
       } catch {
         failed++;
       }
@@ -407,15 +398,10 @@ export default function DirectorDashboard({ data }: Props) {
   const handleTaskApprove = async (submissionId: string) => {
     setTaskActionLoading(submissionId);
     try {
-      const res = await fetch('/api/workflow-action', {
+      await apiFetch('/api/workflow-action', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ submissionId, action: 'approve' }),
       });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `Approve failed: ${res.status}`);
-      }
       invalidateWorkflowCache(submissionId);
       await refreshExpandedTasks(submissionId);
       data.scheduleRefreshAfterAction();
@@ -429,15 +415,10 @@ export default function DirectorDashboard({ data }: Props) {
   const handleTaskReject = async (submissionId: string, reason: string) => {
     setTaskActionLoading(submissionId);
     try {
-      const res = await fetch('/api/workflow-action', {
+      await apiFetch('/api/workflow-action', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ submissionId, action: 'reject', comment: reason }),
       });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `Reject failed: ${res.status}`);
-      }
       setTaskRejectingId(null);
       setTaskRejectReason('');
       setTaskConfirmRejectId(null);
@@ -454,15 +435,10 @@ export default function DirectorDashboard({ data }: Props) {
   const handleTaskComplete = async (submissionId: string) => {
     setTaskActionLoading(submissionId);
     try {
-      const res = await fetch('/api/workflow-action', {
+      await apiFetch('/api/workflow-action', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ submissionId, action: 'complete' }),
       });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `Complete failed: ${res.status}`);
-      }
       invalidateWorkflowCache(submissionId);
       await refreshExpandedTasks(submissionId);
       data.scheduleRefreshAfterAction();
@@ -504,8 +480,7 @@ export default function DirectorDashboard({ data }: Props) {
 
     if (sub) {
       try {
-        const res = await fetch(`/api/email-url?formId=${sub.formId}&submissionId=${sub.id}`);
-        const json = await res.json();
+        const json = await apiFetch<{ approvalUrl?: string }>(`/api/email-url?formId=${sub.formId}&submissionId=${sub.id}`, { throwOnError: false });
         if (json?.approvalUrl) {
           window.open(json.approvalUrl, '_blank', 'noopener,noreferrer');
           return;
@@ -533,8 +508,7 @@ export default function DirectorDashboard({ data }: Props) {
     setTaskUrlLoading(sub.id);
     try {
       // Use email-url endpoint which builds the correct workflow-aware URL with taskID
-      const res = await fetch(`/api/email-url?formId=${sub.formId}&submissionId=${sub.id}`);
-      const data = await res.json();
+      const data = await apiFetch<{ approvalUrl?: string }>(`/api/email-url?formId=${sub.formId}&submissionId=${sub.id}`, { throwOnError: false });
       const url = data.approvalUrl || sub.approvalUrl || sub.taskUrl;
       if (url) window.open(url, '_blank', 'noopener,noreferrer');
     } catch {
@@ -548,8 +522,7 @@ export default function DirectorDashboard({ data }: Props) {
     setFormUrlLoading(sub.id);
     try {
       // Use email-url endpoint which builds the correct workflow-aware URL with taskID
-      const res = await fetch(`/api/email-url?formId=${sub.formId}&submissionId=${sub.id}`);
-      const data = await res.json();
+      const data = await apiFetch<{ approvalUrl?: string }>(`/api/email-url?formId=${sub.formId}&submissionId=${sub.id}`, { throwOnError: false });
       const url = data.approvalUrl || sub.approvalUrl || sub.formUrl || sub.editLink;
       if (url) window.open(url, '_blank', 'noopener,noreferrer');
     } catch {
@@ -787,15 +760,10 @@ export default function DirectorDashboard({ data }: Props) {
     if (typeof sub.currentApprovalLevel !== 'number') return;
     // Use the workflow action API to approve/reject directly in JotForm's workflow engine
     const action = decision === 'approved' ? 'approve' : 'reject';
-    const res = await fetch('/api/workflow-action', {
+    await apiFetch('/api/workflow-action', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ submissionId: sub.id, action, comment: reason || '' }),
     });
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.error || `Workflow action failed: ${res.status}`);
-    }
   };
 
   const handleReject = async (sub: Submission) => {
@@ -807,9 +775,8 @@ export default function DirectorDashboard({ data }: Props) {
       // Optimistic update — dashboard reflects immediately
       data.optimisticUpdate(sub.id, { newLevel: 'rejected', newJotformStatus: 'Rejected', approverName: currentUser.name });
       // Patch DB cache so next reload also reflects rejection
-      fetch(`/api/submissions/${sub.id}`, {
-        method: 'PUT', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+      apiFetch(`/api/submissions/${sub.id}`, {
+        method: 'PUT',
         body: JSON.stringify({ current_level: sub.currentApprovalLevel, status: 'rejected', approver_name: currentUser.name, last_synced: new Date().toISOString() }),
       }).catch(() => {});
       setRejectReason('');
@@ -849,17 +816,15 @@ export default function DirectorDashboard({ data }: Props) {
           action === 'reject' ? 'Rejected' : isLastLevel ? 'Completed' : 'In Progress');
       }
 
-      const res = await fetch(`/api/jotform-update?submissionId=${sub.id}`, {
+      await apiFetch(`/api/jotform-update?submissionId=${sub.id}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...jotformHeaders() },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: params.toString(),
       });
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
 
       // Clear needs_sync in DB
-      fetch(`/api/submissions/${sub.id}`, {
-        method: 'PUT', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+      apiFetch(`/api/submissions/${sub.id}`, {
+        method: 'PUT',
         body: JSON.stringify({ needs_sync: false, last_synced: new Date().toISOString() }),
       }).catch(() => {});
 

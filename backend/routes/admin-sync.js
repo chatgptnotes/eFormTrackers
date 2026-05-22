@@ -124,6 +124,16 @@ function mapRawToUpsertParams(raw, formId, formTitle, fields) {
   ];
 }
 
+async function fetchFieldsForForm(formId, keyType, log) {
+  try {
+    const qData = await jotformFetch(`form/${formId}/questions`, { keyType });
+    return detectLevelFields(qData.content || {});
+  } catch (e) {
+    log.warn({ formId, err: e.message }, '[admin-sync] fields fetch failed, using empty');
+    return { levelFields: [], overallStatusFieldId: null };
+  }
+}
+
 async function upsertChunk(rows, log) {
   if (rows.length === 0) return 0;
   let ok = 0;
@@ -178,14 +188,7 @@ router.post('/admin/sync-all', requireAuth, requireRole('admin'), async (req, re
       const formTitle = String(form.title || `Form ${formId}`);
       const formStart = Date.now();
 
-      let fields;
-      try {
-        const qData = await jotformFetch(`form/${formId}/questions`, { keyType });
-        fields = detectLevelFields(qData.content || {});
-      } catch (e) {
-        req.log.warn({ formId, err: e.message }, '[admin-sync] fields fetch failed, using empty');
-        fields = { levelFields: [], overallStatusFieldId: null };
-      }
+      const fields = await fetchFieldsForForm(formId, keyType, req.log);
 
       const rawSubs = await fetchAllSubmissionsForForm(formId, keyType, req.log);
       if (rawSubs.length === 0) {
@@ -213,6 +216,102 @@ router.post('/admin/sync-all', requireAuth, requireRole('admin'), async (req, re
     req.log.info({ keyType, totalUpserted, totalFailed, elapsedMs, formCount: forms.length }, '[admin-sync] complete');
     res.json({ ok: true, keyType, totalUpserted, totalFailed, formCount: forms.length, elapsedMs, perForm });
   } catch (err) { next(err); }
+});
+
+// ── GET /api/admin/sync-all-stream ──
+// Same logic as POST /admin/sync-all but emits per-form progress over
+// Server-Sent Events. EventSource is GET-only and cannot set custom headers,
+// so keyType is read from ?keyType=... (or the header for non-SSE clients).
+router.get('/admin/sync-all-stream', requireAuth, requireRole('admin'), async (req, res) => {
+  const keyType = readKeyType(req);
+  const startedAt = Date.now();
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const emit = (event, data) => {
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  // Keep the connection alive through any front-line proxy idle timeouts.
+  const keepalive = setInterval(() => {
+    try { res.write(': ping\n\n'); } catch {}
+  }, 15000);
+
+  let clientGone = false;
+  req.on('close', () => { clientGone = true; clearInterval(keepalive); });
+
+  try {
+    req.log.info({ keyType }, '[admin-sync-stream] starting full sync');
+    const formsData = await jotformFetch('user/forms', { params: { limit: 1000 }, keyType });
+    const forms = (formsData.content || []).filter(f => f.id);
+
+    emit('start', { keyType, formCount: forms.length });
+
+    let totalUpserted = 0;
+    let totalFailed = 0;
+    let completedCount = 0;
+
+    await pMapLimit(forms, FORM_CONCURRENCY, async (form) => {
+      if (clientGone) return;
+      const formId = String(form.id);
+      const formTitle = String(form.title || `Form ${formId}`);
+      const formStart = Date.now();
+
+      emit('form-start', { formId, formTitle, index: completedCount, total: forms.length });
+
+      try {
+        const fields = await fetchFieldsForForm(formId, keyType, req.log);
+        const rawSubs = await fetchAllSubmissionsForForm(formId, keyType, req.log);
+
+        let formUpserted = 0;
+        for (let i = 0; i < rawSubs.length; i += UPSERT_CHUNK) {
+          const chunk = rawSubs.slice(i, i + UPSERT_CHUNK).map(raw =>
+            mapRawToUpsertParams(raw, formId, formTitle, fields)
+          );
+          formUpserted += await upsertChunk(chunk, req.log);
+        }
+
+        const failed = rawSubs.length - formUpserted;
+        totalUpserted += formUpserted;
+        totalFailed += failed;
+        completedCount++;
+
+        emit('form-done', {
+          formId, formTitle,
+          status: 200,
+          total: rawSubs.length,
+          upserted: formUpserted,
+          failed,
+          ms: Date.now() - formStart,
+          progress: { completed: completedCount, total: forms.length },
+        });
+      } catch (e) {
+        completedCount++;
+        emit('form-error', {
+          formId, formTitle,
+          error: e.message,
+          status: e.status || 500,
+          ms: Date.now() - formStart,
+          progress: { completed: completedCount, total: forms.length },
+        });
+      }
+    });
+
+    const elapsedMs = Date.now() - startedAt;
+    req.log.info({ keyType, totalUpserted, totalFailed, elapsedMs, formCount: forms.length }, '[admin-sync-stream] complete');
+    emit('done', { ok: true, keyType, totalUpserted, totalFailed, formCount: forms.length, elapsedMs });
+  } catch (err) {
+    req.log.error({ err: err.message }, '[admin-sync-stream] failed');
+    try { emit('error', { message: err.message }); } catch {}
+  } finally {
+    clearInterval(keepalive);
+    try { res.end(); } catch {}
+  }
 });
 
 module.exports = router;

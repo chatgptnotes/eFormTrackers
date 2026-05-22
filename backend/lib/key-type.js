@@ -3,7 +3,7 @@
  * 'gdmo' → the GDMO-specific key; everything else → default.
  */
 function readKeyType(req) {
-  const v = req.headers['x-jotform-key-type'];
+  const v = req.headers['x-jotform-key-type'] || req.query?.keyType;
   return v === 'gdmo' ? 'gdmo' : 'default';
 }
 

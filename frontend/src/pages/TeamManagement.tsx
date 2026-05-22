@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Users, Shield, Loader2, RefreshCw, AlertTriangle, UserPlus, Mail, Lock, X, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { apiFetch } from '../lib/api';
 
 interface TeamMember {
   id: string;
@@ -65,11 +66,7 @@ export default function TeamManagement() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/team-members');
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || `API error: ${res.status}`);
-      }
+      const data = await apiFetch<{ members?: TeamMember[] }>('/api/team-members');
       setMembers(data.members || []);
     } catch (err) {
       console.error('Failed to load team members:', err);
@@ -86,9 +83,8 @@ export default function TeamManagement() {
     setCreateSuccess(null);
 
     try {
-      const res = await fetch('/api/create-user', {
+      const data = await apiFetch<{ user?: { email: string; role: string }; error?: string }>('/api/create-user', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: newEmail,
           password: newPassword,
@@ -97,9 +93,9 @@ export default function TeamManagement() {
           role: newRole,
           creatorEmail: user?.email,
         }),
+        throwOnError: false,
       });
-      const data = await res.json();
-      if (!res.ok) {
+      if (!data.user) {
         throw new Error(data.error || 'Failed to create user');
       }
       setCreateSuccess(`User ${data.user.email} created as ${data.user.role}`);

@@ -42,7 +42,7 @@ router.get('/submissions', async (req, res, next) => {
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     const order = req.query.order === 'asc' ? 'ASC' : 'DESC';
-    const limit = Math.min(parseInt(req.query.limit || '200'), 2000);
+    const limit = Math.min(parseInt(req.query.limit || '200'), 20000);
     const offset = parseInt(req.query.offset || '0');
 
     const { rows } = await pool.query(

@@ -311,9 +311,8 @@ export function deltaSyncToSupabase(mapped: Submission[]): void {
 
     if (changed.length > 0) {
       // Fire-and-forget — don't block the UI
-      fetch('/api/sync-to-supabase', {
+      apiFetch('/api/sync-to-supabase', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...jotformHeaders() },
         body: JSON.stringify({ records: changed }),
       })
         .then(() => { try { localStorage.setItem(FP_KEY, JSON.stringify(nextFp)); } catch {} })

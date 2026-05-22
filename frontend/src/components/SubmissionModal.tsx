@@ -262,9 +262,8 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
       // Immediately patch Supabase cache with complete data
       const sbStatus = action === 'reject' ? 'rejected' : (instanceCompleted ? 'completed' : 'in_progress');
       const sbLevel = action === 'reject' ? lvl : (instanceCompleted ? 999 : lvl + 1);
-      fetch(`/api/submissions/${submission.id}`, {
-        method: 'PUT', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+      apiFetch(`/api/submissions/${submission.id}`, {
+        method: 'PUT',
         body: JSON.stringify({
           current_level: sbLevel,
           status: sbStatus,

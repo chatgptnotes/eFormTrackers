@@ -5,7 +5,7 @@
  * using label heuristics, so any new form created in JotForm automatically
  * appears in JotFlow without code changes.
  */
-import { jotformHeaders } from '../lib/jotformKey';
+import { apiFetch } from '../lib/api';
 
 export interface JFQuestion {
   qid: string;
@@ -58,9 +58,7 @@ export async function fetchUserForms(): Promise<JFFormMeta[]> {
   } catch {}
 
   try {
-    const res = await fetch('/api/jotform?path=user/forms&limit=200&orderby=updated_at&direction=DESC', { headers: jotformHeaders() });
-    if (!res.ok) return [];
-    const data = await res.json();
+    const data = await apiFetch<{ content?: Array<{ id: string; title: string; status: string; count: string; updated_at: string }> }>('/api/jotform?path=user/forms&limit=200&orderby=updated_at&direction=DESC');
     const forms: JFFormMeta[] = (data.content || [])
       .filter((f: { status: string }) => f.status === 'ENABLED')
       .map((f: { id: string; title: string; status: string; count: string; updated_at: string }) => ({
@@ -89,9 +87,7 @@ export async function fetchFormQuestions(formId: string): Promise<Record<string,
   } catch {}
 
   try {
-    const res = await fetch(`/api/jotform?path=form/${formId}/questions`, { headers: jotformHeaders() });
-    if (!res.ok) return {};
-    const data = await res.json();
+    const data = await apiFetch<{ content?: Record<string, unknown> }>(`/api/jotform?path=form/${formId}/questions`);
     // Inject qid from the dict key — JotForm API doesn't include it inside the object
     const raw = data.content || {};
     const questions: Record<string, JFQuestion> = {};

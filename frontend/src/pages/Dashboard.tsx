@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2, XCircle, Clock, AlertTriangle, User, Building2, Calendar, Loader2, ChevronRight, Mail, Shield } from 'lucide-react';
 import SubmissionModal from '../components/SubmissionModal';
 import { Submission } from '../types';
-import { jotformHeaders } from '../lib/jotformKey';
+import { apiFetch } from '../lib/api';
 
 // ── Director context (hardcoded for demo) ───────────────────────────────────
 const DIRECTOR = {
@@ -82,20 +82,17 @@ export default function Dashboard({ data }: Props) {
         params.set('submission[20]', 'In Progress');
       }
 
-      const res = await fetch(`/api/jotform-update?submissionId=${id}`, {
+      await apiFetch(`/api/jotform-update?submissionId=${id}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...jotformHeaders() },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: params.toString(),
       });
-
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
 
       setDecisions(prev => ({ ...prev, [id]: decision }));
 
       // Trigger webhook sync so Supabase is updated too
-      fetch(`/api/webhook`, {
+      apiFetch(`/api/webhook`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ submissionID: id }),
       }).catch(err => console.warn('[JotFlow] Approval action failed:', err));
     } catch (err) {
