@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const env = require('../config/env');
 const { jotformFetch } = require('../lib/jotform');
+const { readKeyType } = require('../lib/key-type');
 const { validate } = require('../middleware/validate');
 const { requireAuth } = require('../middleware/auth');
 const { pMapLimit } = require('../lib/concurrency');
@@ -32,10 +33,11 @@ function detectStepType(label) {
 router.get('/form-workflow', validate(formIdRequiredQuerySchema, 'query'), async (req, res, next) => {
   try {
     const formId = req.query.formId;
+    const keyType = readKeyType(req);
 
     const cached = workflowCache[formId];
     if (cached && Date.now() - cached.at < CACHE_TTL) {
-      res.setHeader('Cache-Control', 'private, max-age=60');
+      res.setHeader('Cache-Control', 'private, max-age=300');
       return res.json({ formId, steps: cached.steps, cached: true });
     }
 
@@ -43,7 +45,7 @@ router.get('/form-workflow', validate(formIdRequiredQuerySchema, 'query'), async
       return res.json({ formId, steps: [], source: 'no-api-key' });
     }
 
-    const qData = await jotformFetch(`form/${formId}/questions`);
+    const qData = await jotformFetch(`form/${formId}/questions`, { keyType });
     const questions = qData.content || {};
 
     const candidates = [];
@@ -62,7 +64,7 @@ router.get('/form-workflow', validate(formIdRequiredQuerySchema, 'query'), async
 
     // Try form properties for assignee emails
     try {
-      const propsData = await jotformFetch(`form/${formId}/properties`);
+      const propsData = await jotformFetch(`form/${formId}/properties`, { keyType });
       const props = propsData.content || {};
       if (props.flow || props.approverEmails || props.conditions) {
         const flowData = props.flow || props.approverEmails || props.conditions;
@@ -87,7 +89,7 @@ router.get('/form-workflow', validate(formIdRequiredQuerySchema, 'query'), async
     }
 
     workflowCache[formId] = { steps, at: Date.now() };
-    res.setHeader('Cache-Control', 'private, max-age=60');
+    res.setHeader('Cache-Control', 'private, max-age=300');
     res.json({ formId, steps });
   } catch (err) { next(err); }
 });
@@ -97,12 +99,13 @@ router.get('/detect-approvers', validate(formIdOptionalQuerySchema, 'query'), as
   try {
     if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
 
+    const keyType = readKeyType(req);
     const targetFormId = req.query.formId;
     let forms = [];
     if (targetFormId) {
       forms = [{ id: targetFormId }];
     } else {
-      const formsData = await jotformFetch('user/forms', { params: { limit: '100', status: 'ENABLED' } });
+      const formsData = await jotformFetch('user/forms', { params: { limit: '100', status: 'ENABLED' }, keyType });
       forms = (formsData.content || []).map(f => ({ id: String(f.id) }));
     }
 
@@ -110,7 +113,7 @@ router.get('/detect-approvers', validate(formIdOptionalQuerySchema, 'query'), as
     // so run per-form work with bounded concurrency. Within each form the two
     // independent fetches (questions + submissions) run in parallel.
     const perForm = await pMapLimit(forms, 5, async (form) => {
-      const qData = await jotformFetch(`form/${form.id}/questions`);
+      const qData = await jotformFetch(`form/${form.id}/questions`, { keyType });
       const questions = qData.content || {};
 
       const approverFields = [];
@@ -123,6 +126,7 @@ router.get('/detect-approvers', validate(formIdOptionalQuerySchema, 'query'), as
 
       const subData = await jotformFetch(`form/${form.id}/submissions`, {
         params: { limit: '100', orderby: 'created_at', direction: 'DESC' },
+        keyType,
       });
       const submissions = subData.content || [];
 
@@ -173,14 +177,15 @@ router.get('/detect-approvers', validate(formIdOptionalQuerySchema, 'query'), as
 router.get('/email-url', validate(formAndSubmissionQuerySchema, 'query'), async (req, res, next) => {
   try {
     const { formId, submissionId } = req.query;
+    const keyType = readKeyType(req);
 
-    const subData = await jotformFetch(`submission/${submissionId}`, { params: { addWorkflowStatus: '1' } });
+    const subData = await jotformFetch(`submission/${submissionId}`, { params: { addWorkflowStatus: '1' }, keyType });
     const content = subData?.content || {};
     const workflowInstanceID = content?.workflowInstanceID || content?.workflow_instance_id;
 
     if (!workflowInstanceID) return res.json({ approvalUrl: null, formId, submissionId, reason: 'no workflow instance' });
 
-    const instData = await jotformFetch(`workflow/instance/${workflowInstanceID}`);
+    const instData = await jotformFetch(`workflow/instance/${workflowInstanceID}`, { keyType });
     const taskList = instData?.content?.taskList || [];
     const activeTask = taskList.find(t => String(t.status).toUpperCase() === 'ACTIVE');
 
@@ -200,7 +205,7 @@ router.get('/email-url', validate(formAndSubmissionQuerySchema, 'query'), async 
       const prefillEnabled = String(element.prefillEnabled || '') === 'Yes';
       if (prefillEnabled && taskFormID) {
         try {
-          const prefillData = await jotformFetch(`form/${taskFormID}/prefills`);
+          const prefillData = await jotformFetch(`form/${taskFormID}/prefills`, { keyType });
           const prefills = prefillData?.content || [];
           for (const p of prefills) {
             const urls = p.urls || [];

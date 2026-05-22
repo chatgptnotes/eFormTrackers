@@ -27,4 +27,23 @@ function requireRole(role) {
   };
 }
 
-module.exports = { requireAuth, requireRole };
+/**
+ * Gate an endpoint to a fixed allowlist of email addresses. Comparison is
+ * case-insensitive. Use for endpoints that mutate global config which only a
+ * specific operator should ever touch (e.g. the Settings page).
+ */
+function requireEmail(allowedEmails) {
+  const allow = new Set(allowedEmails.map(e => String(e).toLowerCase()));
+  return function requireEmailMiddleware(req, res, next) {
+    if (!req.session || !req.session.userId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    const email = String(req.session.email || '').toLowerCase();
+    if (!email || !allow.has(email)) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+    next();
+  };
+}
+
+module.exports = { requireAuth, requireRole, requireEmail };

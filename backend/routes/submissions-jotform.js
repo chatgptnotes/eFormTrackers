@@ -6,6 +6,16 @@ const { readKeyType } = require('../lib/key-type');
 const { detectLevelFields } = require('../lib/detect-fields');
 const { insertNotification } = require('../lib/notifications');
 const { requireAuth } = require('../middleware/auth');
+// Lazy-require to avoid circular require at module-load time.
+let _invalidateWorkflowTaskCache = null;
+function invalidateWorkflowTaskCache(submissionId) {
+  if (!_invalidateWorkflowTaskCache) {
+    try {
+      _invalidateWorkflowTaskCache = require('./submissions-actions').invalidateWorkflowTaskCache || (() => {});
+    } catch { _invalidateWorkflowTaskCache = () => {}; }
+  }
+  try { _invalidateWorkflowTaskCache(submissionId); } catch { /* ignore */ }
+}
 
 const router = Router();
 
@@ -28,6 +38,11 @@ router.get('/jotform', requireAuth, async (req, res, next) => {
       }
     }
     const data = await jotformFetch(apiPath, { params, keyType });
+    // Browser cache for metadata that rarely changes (form schema + form list).
+    // Submissions are NOT cached — they change every webhook.
+    if (apiPath === 'user/forms' || /^form\/\d+\/questions$/.test(apiPath) || /^form\/\d+\/properties$/.test(apiPath)) {
+      res.setHeader('Cache-Control', 'private, max-age=300');
+    }
     res.json(data);
   } catch (err) {
     if (err.status && err.data) return res.status(err.status).json(err.data);
@@ -278,6 +293,9 @@ router.post('/webhook', async (req, res, next) => {
         ).catch(e => req.log.warn({ err: e, submissionId, level: lvl.id }, '[submissions] approval_history upsert failed'));
       }
     }
+
+    // Webhook fired — backend wf-task cache for this submission is now stale.
+    invalidateWorkflowTaskCache(submissionId);
 
     res.json({ ok: true, submissionId, currentLevel, status, pendingApproverName, pendingApproverEmail });
   } catch (err) { next(err); }

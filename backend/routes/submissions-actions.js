@@ -17,6 +17,101 @@ const router = Router();
 // Every endpoint here mutates JotForm or our DB on behalf of a real user.
 router.use(requireAuth);
 
+// ── In-memory workflow-tasks cache (keyed by submissionId + keyType) ───────
+// Most refresh ticks need the same per-submission tasks the previous tick
+// already resolved. A 3-min TTL keeps it fresh enough for the dashboard while
+// eliminating the 2 JotForm round-trips per visible row on each refresh.
+const wfTaskCache = new Map(); // `${keyType}:${submissionId}` -> { result, at }
+const WF_TASK_TTL = 3 * 60 * 1000;
+
+function _wfCacheKey(keyType, submissionId) { return `${keyType || 'default'}:${submissionId}`; }
+function _wfCacheGet(keyType, submissionId) {
+  const e = wfTaskCache.get(_wfCacheKey(keyType, submissionId));
+  if (!e) return null;
+  if (Date.now() - e.at > WF_TASK_TTL) { wfTaskCache.delete(_wfCacheKey(keyType, submissionId)); return null; }
+  return e.result;
+}
+function _wfCacheSet(keyType, submissionId, result) {
+  wfTaskCache.set(_wfCacheKey(keyType, submissionId), { result, at: Date.now() });
+  // Keep cache bounded — drop oldest 500 entries when over 5000.
+  if (wfTaskCache.size > 5000) {
+    const keys = Array.from(wfTaskCache.keys()).slice(0, 500);
+    for (const k of keys) wfTaskCache.delete(k);
+  }
+}
+function _wfCacheInvalidate(submissionId) {
+  if (!submissionId) { wfTaskCache.clear(); return; }
+  for (const k of Array.from(wfTaskCache.keys())) {
+    if (k.endsWith(`:${submissionId}`)) wfTaskCache.delete(k);
+  }
+}
+
+function _extractTask(t) {
+  const element = t.element || {};
+  const props = t.properties || {};
+  const assigneeUser = props.assigneeUser || {};
+  const recipients = Array.isArray(props.recipients) ? props.recipients : [];
+  const firstRecipient = recipients[0] || {};
+  const result = t.result || {};
+  const completedBy = t.completedBy || t.completed_by || {};
+
+  return {
+    name: String(element.name || props.taskName || t.name || ''),
+    type: String(element.type || ''),
+    status: String(t.status || 'PENDING').toUpperCase(),
+    assigneeName: String(assigneeUser.name || firstRecipient.name || t.assignee_name || ''),
+    assigneeEmail: String(props.assigneeEmail || assigneeUser.email || firstRecipient.email || t.assignee || ''),
+    updatedAt: String(t.updated_at || ''),
+    taskId: String(t.id || ''),
+    internalFormID: String(element.internalFormID || element.resourceID || element.formID || props.formID || ''),
+    accessLink: String(t.accessLink || props.accessLink || element.accessLink || ''),
+    submittedBy: String(completedBy.name || result.submittedBy || result.completed_by ||
+      (String(t.status || '').toUpperCase() === 'COMPLETED' ? (assigneeUser.name || firstRecipient.name || '') : '') || ''),
+    submittedByEmail: String(completedBy.email || result.submittedByEmail || result.completed_by_email ||
+      (String(t.status || '').toUpperCase() === 'COMPLETED' ? (props.assigneeEmail || assigneeUser.email || firstRecipient.email || '') : '') || ''),
+  };
+}
+
+async function _resolveWorkflowTasks(submissionId, workflowInstanceIdHint, keyType) {
+  const cached = _wfCacheGet(keyType, submissionId);
+  if (cached) return cached;
+
+  let workflowInstanceID = workflowInstanceIdHint;
+
+  if (!workflowInstanceID) {
+    const subData = await jotformFetch(`submission/${submissionId}`, {
+      params: { addWorkflowStatus: '1' },
+      keyType,
+    });
+    const content = subData?.content || subData;
+    workflowInstanceID = content?.workflowInstanceID || content?.workflow_instance_id;
+  }
+
+  if (!workflowInstanceID) {
+    const result = { tasks: [] };
+    _wfCacheSet(keyType, submissionId, result);
+    return result;
+  }
+
+  const instData = await jotformFetch(`workflow/instance/${workflowInstanceID}`, { keyType });
+  const rawTaskList = instData?.content?.taskList || instData?.taskList || [];
+
+  const filteredTasks = rawTaskList.filter((t) => {
+    const { name, status, assigneeEmail } = _extractTask(t);
+    if (name === 'Form' && status === 'COMPLETED' && !assigneeEmail) return false;
+    return true;
+  });
+
+  const tasks = filteredTasks.map((t, index) => {
+    const e = _extractTask(t);
+    return { ...e, level: index + 1 };
+  });
+
+  const result = { tasks, workflowInstanceId: workflowInstanceID };
+  _wfCacheSet(keyType, submissionId, result);
+  return result;
+}
+
 // ── GET /api/workflow-tasks?submissionId=xxx&workflowInstanceId=yyy ──
 router.get('/workflow-tasks', async (req, res, next) => {
   try {
@@ -25,63 +120,48 @@ router.get('/workflow-tasks', async (req, res, next) => {
     const submissionId = req.query.submissionId;
     if (!submissionId) return res.status(400).json({ error: 'submissionId required' });
 
-    let workflowInstanceID = req.query.workflowInstanceId;
-
-    if (!workflowInstanceID) {
-      const subData = await jotformFetch(`submission/${submissionId}`, {
-        params: { addWorkflowStatus: '1' },
-      });
-      const content = subData?.content || subData;
-      workflowInstanceID = content?.workflowInstanceID || content?.workflow_instance_id;
-    }
-
-    if (!workflowInstanceID) return res.json({ tasks: [] });
-
-    const instData = await jotformFetch(`workflow/instance/${workflowInstanceID}`);
-    const rawTaskList = instData?.content?.taskList || instData?.taskList || [];
-
-    const extractTask = (t) => {
-      const element = t.element || {};
-      const props = t.properties || {};
-      const assigneeUser = props.assigneeUser || {};
-      const recipients = Array.isArray(props.recipients) ? props.recipients : [];
-      const firstRecipient = recipients[0] || {};
-      const result = t.result || {};
-      const completedBy = t.completedBy || t.completed_by || {};
-
-      return {
-        name: String(element.name || props.taskName || t.name || ''),
-        type: String(element.type || ''),
-        status: String(t.status || 'PENDING').toUpperCase(),
-        assigneeName: String(assigneeUser.name || firstRecipient.name || t.assignee_name || ''),
-        assigneeEmail: String(props.assigneeEmail || assigneeUser.email || firstRecipient.email || t.assignee || ''),
-        updatedAt: String(t.updated_at || ''),
-        taskId: String(t.id || ''),
-        internalFormID: String(element.internalFormID || element.resourceID || element.formID || props.formID || ''),
-        accessLink: String(t.accessLink || props.accessLink || element.accessLink || ''),
-        submittedBy: String(completedBy.name || result.submittedBy || result.completed_by ||
-          (String(t.status || '').toUpperCase() === 'COMPLETED' ? (assigneeUser.name || firstRecipient.name || '') : '') || ''),
-        submittedByEmail: String(completedBy.email || result.submittedByEmail || result.completed_by_email ||
-          (String(t.status || '').toUpperCase() === 'COMPLETED' ? (props.assigneeEmail || assigneeUser.email || firstRecipient.email || '') : '') || ''),
-      };
-    };
-
-    const filteredTasks = rawTaskList.filter((t) => {
-      const { name, status, assigneeEmail } = extractTask(t);
-      if (name === 'Form' && status === 'COMPLETED' && !assigneeEmail) return false;
-      return true;
-    });
-
-    const tasks = filteredTasks.map((t, index) => {
-      const e = extractTask(t);
-      return { ...e, level: index + 1 };
-    });
-
-    res.json({ tasks, workflowInstanceId: workflowInstanceID });
+    const keyType = readKeyType(req);
+    const result = await _resolveWorkflowTasks(submissionId, req.query.workflowInstanceId, keyType);
+    // Short browser cache — backend already caches, this just collapses
+    // duplicate calls from re-renders within the same minute.
+    res.setHeader('Cache-Control', 'private, max-age=60');
+    res.json(result);
   } catch (err) {
     if (err.status === 404) return res.json({ tasks: [] });
     next(err);
   }
+});
+
+// ── POST /api/workflow-tasks-batch  body: { items: [{submissionId, workflowInstanceId?}] } ──
+// Single round-trip from the frontend; backend fans out with bounded concurrency
+// and re-uses the per-submission cache.
+router.post('/workflow-tasks-batch', async (req, res, next) => {
+  try {
+    if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    if (items.length === 0) return res.json({ results: {} });
+    const capped = items.slice(0, 100); // protect upstream
+    const keyType = readKeyType(req);
+
+    const { pMapLimit } = require('../lib/concurrency');
+    const settled = await pMapLimit(capped, 8, async (item) => {
+      const submissionId = String(item.submissionId || '');
+      if (!submissionId) return [submissionId, { tasks: [] }];
+      try {
+        const r = await _resolveWorkflowTasks(submissionId, item.workflowInstanceId, keyType);
+        return [submissionId, r];
+      } catch (err) {
+        if (err && err.status === 404) return [submissionId, { tasks: [] }];
+        return [submissionId, { tasks: [], error: String(err && err.message || err) }];
+      }
+    });
+
+    const results = {};
+    for (const [id, r] of settled) {
+      if (id) results[id] = r;
+    }
+    res.json({ results });
+  } catch (err) { next(err); }
 });
 
 // ── POST /api/workflow-action ──
@@ -90,17 +170,19 @@ router.post('/workflow-action', validate(workflowActionBodySchema), async (req, 
     if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
 
     const { submissionId, action, comment, signature } = req.body;
+    const keyType = readKeyType(req);
 
     // Step 1: Get workflowInstanceID
     const subData = await jotformFetch(`submission/${submissionId}`, {
       params: { addWorkflowStatus: '1' },
+      keyType,
     });
     const content = subData?.content || subData;
     const instanceId = content?.workflowInstanceID || content?.workflow_instance_id;
     if (!instanceId) return res.status(404).json({ error: 'No workflow instance found' });
 
     // Step 2: Get workflow instance taskList
-    const instData = await jotformFetch(`workflow/instance/${instanceId}`);
+    const instData = await jotformFetch(`workflow/instance/${instanceId}`, { keyType });
     const taskList = instData?.content?.taskList || [];
 
     // Step 3: Find ACTIVE task
@@ -133,8 +215,12 @@ router.post('/workflow-action', validate(workflowActionBodySchema), async (req, 
     if (comment) body.comment = comment;
     if (signature) body.signature = signature;
 
-    const completeUrl = `${env.JOTFORM_BASE}/workflow/task/${taskId}/complete?apiKey=${env.JOTFORM_API_KEY}&teamID=${env.JOTFORM_TEAM_ID}`;
-    const completeRes = await fetch(completeUrl, {
+    const completeUrlObj = new URL(`${env.JOTFORM_BASE}/workflow/task/${taskId}/complete`);
+    completeUrlObj.searchParams.set('apiKey', resolveApiKey(keyType));
+    if (keyType !== 'gdmo' && env.JOTFORM_TEAM_ID) {
+      completeUrlObj.searchParams.set('teamID', env.JOTFORM_TEAM_ID);
+    }
+    const completeRes = await fetch(completeUrlObj.toString(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -145,6 +231,9 @@ router.post('/workflow-action', validate(workflowActionBodySchema), async (req, 
       throw new Error(`Workflow task complete failed: ${completeRes.status} — ${errText}`);
     }
     const result = await completeRes.json();
+
+    // Cached workflow tasks for this submission are now stale — drop them.
+    _wfCacheInvalidate(submissionId);
 
     // Save to jf_approval_history
     try {
@@ -189,7 +278,7 @@ router.post('/workflow-action', validate(workflowActionBodySchema), async (req, 
         // Notify next approver if not final
         if (!isFinal) {
           try {
-            const updatedInstData = await jotformFetch(`workflow/instance/${instanceId}`);
+            const updatedInstData = await jotformFetch(`workflow/instance/${instanceId}`, { keyType });
             const updatedTaskList = updatedInstData?.content?.taskList || [];
             const nextTask = updatedTaskList.find(t => t.status === 'ACTIVE');
             if (nextTask) {
@@ -242,8 +331,13 @@ router.delete('/delete-submission', requireRole('admin'), validate(deleteSubmiss
     const submissionId = req.query.submissionId;
     if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'API key not configured' });
 
-    const deleteUrl = `${env.JOTFORM_BASE}/submission/${submissionId}?apiKey=${env.JOTFORM_API_KEY}&teamID=${env.JOTFORM_TEAM_ID}`;
-    const deleteRes = await fetch(deleteUrl, { method: 'DELETE' });
+    const keyType = readKeyType(req);
+    const deleteUrlObj = new URL(`${env.JOTFORM_BASE}/submission/${submissionId}`);
+    deleteUrlObj.searchParams.set('apiKey', resolveApiKey(keyType));
+    if (keyType !== 'gdmo' && env.JOTFORM_TEAM_ID) {
+      deleteUrlObj.searchParams.set('teamID', env.JOTFORM_TEAM_ID);
+    }
+    const deleteRes = await fetch(deleteUrlObj.toString(), { method: 'DELETE' });
 
     if (deleteRes.ok) {
       // Also remove from local DB
@@ -281,15 +375,22 @@ router.post('/jotform-update', validate(jotformUpdateQuerySchema, 'query'), asyn
       }
     }
 
-    const url = `${env.JOTFORM_BASE}/submission/${submissionId}?apiKey=${apiKey}&teamID=${env.JOTFORM_TEAM_ID}`;
-    const response = await fetch(url, {
+    const urlObj = new URL(`${env.JOTFORM_BASE}/submission/${submissionId}`);
+    urlObj.searchParams.set('apiKey', apiKey);
+    if (keyType !== 'gdmo' && env.JOTFORM_TEAM_ID) {
+      urlObj.searchParams.set('teamID', env.JOTFORM_TEAM_ID);
+    }
+    const response = await fetch(urlObj.toString(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: params.toString(),
     });
     const data = await response.json();
+    if (response.ok) _wfCacheInvalidate(submissionId);
     res.status(response.ok ? 200 : response.status).json(data);
   } catch (err) { next(err); }
 });
 
+// Export cache invalidator so other routes (e.g. webhook) can drop stale tasks.
 module.exports = router;
+module.exports.invalidateWorkflowTaskCache = _wfCacheInvalidate;

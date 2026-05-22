@@ -2,6 +2,7 @@ const { Router } = require('express');
 const bcrypt = require('bcrypt');
 const pool = require('../db/pool');
 const env = require('../config/env');
+const { jotformFetch } = require('../lib/jotform');
 const { validate } = require('../middleware/validate');
 const { authLimiter } = require('../middleware/rateLimit');
 const {
@@ -193,12 +194,12 @@ router.post('/verify-workspace-member', validate(verifyWorkspaceMemberBodySchema
 
     const email = String(req.body.email || '').trim().toLowerCase();
 
-    // Fetch & cache workspace members
+    // Fetch & cache workspace members.
+    // This endpoint is pre-auth (membership gate) and intentionally pinned to
+    // the default (test) key/team — keyType defaults to 'default', which adds
+    // teamID via jotformFetch.
     if (!memberCache || Date.now() - memberCache.fetchedAt > CACHE_TTL) {
-      const url = `${env.JOTFORM_BASE}/users?apiKey=${env.JOTFORM_API_KEY}&teamID=${env.JOTFORM_TEAM_ID}`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`JotForm API ${response.status}`);
-      const data = await response.json();
+      const data = await jotformFetch('users');
       const raw = Array.isArray(data?.content) ? data.content : [];
 
       const emails = new Set();

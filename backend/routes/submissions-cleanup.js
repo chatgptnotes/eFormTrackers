@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const env = require('../config/env');
-const { jotformFetch } = require('../lib/jotform');
+const { jotformFetch, resolveApiKey } = require('../lib/jotform');
+const { readKeyType } = require('../lib/key-type');
 const { pMapLimit } = require('../lib/concurrency');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
@@ -12,10 +13,11 @@ router.get('/cleanup-submissions', requireAuth, requireRole('admin'), async (req
   try {
     if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
 
+    const keyType = readKeyType(req);
     const KEEP_EMAIL = 'huzaifa.dawasaz@mediaoffice.ae';
     const dryRun = req.query.dryRun !== 'false';
 
-    const formsData = await jotformFetch('user/forms', { params: { limit: '100' } });
+    const formsData = await jotformFetch('user/forms', { params: { limit: '100' }, keyType });
     const forms = (formsData?.content || []).map(f => ({ id: String(f.id), title: String(f.title || '') }));
 
     // Per-form submission pagination must stay sequential inside a form
@@ -29,6 +31,7 @@ router.get('/cleanup-submissions', requireAuth, requireRole('admin'), async (req
       while (hasMore) {
         const subData = await jotformFetch(`form/${form.id}/submissions`, {
           params: { limit: String(limit), offset: String(offset), orderby: 'created_at', direction: 'DESC', addWorkflowStatus: '1' },
+          keyType,
         });
         const submissions = subData?.content || [];
         for (const sub of submissions) {
@@ -59,7 +62,7 @@ router.get('/cleanup-submissions', requireAuth, requireRole('admin'), async (req
     await pMapLimit(allSubmissions, 8, async (sub) => {
       if (!sub.workflowInstanceId) return;
       try {
-        const instData = await jotformFetch(`workflow/instance/${sub.workflowInstanceId}`);
+        const instData = await jotformFetch(`workflow/instance/${sub.workflowInstanceId}`, { keyType });
         const taskList = instData?.content?.taskList || [];
         for (const task of taskList) {
           const st = String(task.status || '').toUpperCase();
@@ -95,8 +98,12 @@ router.get('/cleanup-submissions', requireAuth, requireRole('admin'), async (req
     const failed = [];
     await pMapLimit(toDelete, 8, async (sub) => {
       try {
-        const url = `${env.JOTFORM_BASE}/submission/${sub.id}?apiKey=${env.JOTFORM_API_KEY}&teamID=${env.JOTFORM_TEAM_ID}`;
-        const r = await fetch(url, { method: 'DELETE' });
+        const urlObj = new URL(`${env.JOTFORM_BASE}/submission/${sub.id}`);
+        urlObj.searchParams.set('apiKey', resolveApiKey(keyType));
+        if (keyType !== 'gdmo' && env.JOTFORM_TEAM_ID) {
+          urlObj.searchParams.set('teamID', env.JOTFORM_TEAM_ID);
+        }
+        const r = await fetch(urlObj.toString(), { method: 'DELETE' });
         if (r.ok) deleted.push(sub.id);
         else failed.push({ id: sub.id, error: `HTTP ${r.status}` });
       } catch (e) {

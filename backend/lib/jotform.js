@@ -6,16 +6,24 @@ function resolveApiKey(keyType) {
 }
 
 /**
- * Fetch from JotForm API. Appends apiKey and teamID automatically.
+ * Fetch from JotForm API. Appends apiKey automatically. teamID is appended
+ * ONLY for the default ("Testing") key — that key is a regular JotForm API
+ * key that needs explicit team scoping. The 'gdmo' key is a JotForm
+ * Enterprise key with implicit team-wide access; appending teamID to GDMO
+ * calls would re-scope them to the test team (or be rejected by the
+ * Enterprise endpoint), so we skip it.
  * @param {string} path  e.g. "user/forms", "submission/123"
  * @param {object} [opts]  { params, method, body, headers, keyType }
- *   keyType: 'default' (env JOTFORM_API_KEY) | 'gdmo' (env JOTFORM_API_KEY_GDMO)
+ *   keyType: 'default' (env JOTFORM_API_KEY, gets teamID) |
+ *            'gdmo'    (env JOTFORM_API_KEY_GDMO, no teamID)
+ *   Undefined keyType is treated as 'default'.
  * @returns {Promise<object>} parsed JSON response
  */
 async function jotformFetch(path, opts = {}) {
   const url = new URL(`${env.JOTFORM_BASE}/${path}`);
   url.searchParams.set('apiKey', resolveApiKey(opts.keyType));
-  if (env.JOTFORM_TEAM_ID) url.searchParams.set('teamID', env.JOTFORM_TEAM_ID);
+  const isDefaultKey = opts.keyType !== 'gdmo';
+  if (isDefaultKey && env.JOTFORM_TEAM_ID) url.searchParams.set('teamID', env.JOTFORM_TEAM_ID);
 
   if (opts.params) {
     for (const [k, v] of Object.entries(opts.params)) {
