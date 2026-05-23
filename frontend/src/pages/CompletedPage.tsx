@@ -5,6 +5,7 @@ import {
   LayoutGrid, List, AlignJustify, Columns, PanelRight, CalendarDays, ChevronLeft, ChevronDown,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useApp } from '../contexts/AppContext';
 import { getUserConfig, isSubmissionVisible } from '../config/currentUser';
 import { Submission, WorkflowTask, ApprovalEntry } from '../types';
 import WorkflowDetailsSidebar from '../components/WorkflowDetailsSidebar';
@@ -134,6 +135,7 @@ function getCalendarDays(year: number, month: number) {
 
 export default function CompletedPage({ data }: Props) {
   const { user, orgRole } = useAuth();
+  const { activeWorkflowId } = useApp();
   const currentUser = getUserConfig(user?.email);
 
   const [search, setSearch] = useState('');
@@ -153,9 +155,10 @@ export default function CompletedPage({ data }: Props) {
   const completedSubmissions = useMemo(() => {
     return data.allSubmissions.filter(s =>
       s.currentApprovalLevel === 'completed' &&
+      (!activeWorkflowId || s.formId === activeWorkflowId) &&
       isSubmissionVisible(s, user?.email, currentUser, orgRole)
     );
-  }, [data.allSubmissions, user?.email, currentUser, orgRole]);
+  }, [data.allSubmissions, activeWorkflowId, user?.email, currentUser, orgRole]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();

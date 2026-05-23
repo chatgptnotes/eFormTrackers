@@ -11,6 +11,7 @@ import WorkflowDetailsSidebar from '../components/WorkflowDetailsSidebar';
 import { Skeleton, SkeletonStatCard, SkeletonSubmissionCard } from '../components/Skeleton';
 import { Submission, WorkflowTask } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { useApp } from '../contexts/AppContext';
 import { exportToExcel } from '../services/exportService';
 import { apiFetch } from '../lib/api';
 
@@ -179,6 +180,7 @@ const SubmissionCard = memo(function SubmissionCard({ submission, idx, user, onV
 export default function ModernDashboard({ data }: Props) {
   const { allSubmissions, loading } = data;
   const { user } = useAuth();
+  const { activeWorkflowId } = useApp();
 
   const [isPending, startTransition] = useTransition();
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
@@ -230,6 +232,7 @@ export default function ModernDashboard({ data }: Props) {
     const dateFromTs = filterDateFrom ? new Date(filterDateFrom).getTime() : null;
     const dateToTs = filterDateTo ? new Date(filterDateTo).getTime() + 24 * 60 * 60 * 1000 - 1 : null;
     let filtered = allSubmissions
+      .filter(sub => !activeWorkflowId || sub.formId === activeWorkflowId)
       .filter(sub => !sub.formTitle.includes('Workflow Form'))
       .filter(sub => sub.currentApprovalLevel !== 'completed')
       .filter(sub => {
@@ -249,7 +252,7 @@ export default function ModernDashboard({ data }: Props) {
     else if (sortBy === 'oldest') filtered.sort((a, b) => new Date(a.submissionDate).getTime() - new Date(b.submissionDate).getTime());
     else if (sortBy === 'days') filtered.sort((a, b) => b.daysAtCurrentLevel - a.daysAtCurrentLevel);
     return filtered;
-  }, [allSubmissions, deferredSearchQuery, filterStatus, sortBy, filterDepartment, filterDateFrom, filterDateTo, filterSubmittedBy]);
+  }, [allSubmissions, activeWorkflowId, deferredSearchQuery, filterStatus, sortBy, filterDepartment, filterDateFrom, filterDateTo, filterSubmittedBy]);
 
   const totalPages = Math.ceil(filteredAndSortedSubmissions.length / itemsPerPage);
   const paginatedSubmissions = filteredAndSortedSubmissions.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);

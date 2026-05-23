@@ -5,6 +5,7 @@ const { readKeyType } = require('../lib/key-type');
 const { pMapLimit } = require('../lib/concurrency');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { detectLevelFields } = require('../lib/detect-fields');
+const { extractTask } = require('../lib/workflow-task');
 
 const router = Router();
 
@@ -60,7 +61,10 @@ async function fetchWorkflowInstance(raw, keyType, log) {
     const data = await jotformFetch(`workflow/instance/${instanceId}`, { keyType });
     const content = data?.content || {};
     const wfStatus = String(content.status || '').toUpperCase();
-    const taskList = Array.isArray(content.taskList) ? content.taskList : [];
+    const rawTasks = Array.isArray(content.taskList) ? content.taskList : [];
+    // Flatten raw JotForm tasks to the shape WorkflowDetailsSidebar expects.
+    // Level derives from 1-based taskList order when properties.level is absent.
+    const taskList = rawTasks.map((t, idx) => extractTask(t, idx + 1));
     let status = null;
     if (wfStatus === 'COMPLETED') status = 'completed';
     else if (wfStatus === 'REJECTED' || wfStatus === 'CANCELLED') status = 'rejected';

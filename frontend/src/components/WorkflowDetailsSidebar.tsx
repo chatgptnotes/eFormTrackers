@@ -320,7 +320,7 @@ export default function WorkflowDetailsSidebar({
                 );
               })()}
 
-              {/* Card 3: Form Submission Data */}
+              {/* Card 3: Form Submission Data (legacy formTableData path) */}
               {submission?.formTableData && submission.formTableData.length > 0 && (
                 <div className="bg-navy-dark/50 border border-navy-light/20 rounded-lg p-4">
                   <h3 className="text-sm font-bold text-white mb-3 uppercase tracking-wide">Form Submission Data</h3>
@@ -329,6 +329,22 @@ export default function WorkflowDetailsSidebar({
                       <div key={i} className="p-3 bg-navy-dark/40 rounded border border-navy-light/10">
                         <p className="text-[10px] text-gray-500 font-semibold mb-1 uppercase tracking-wide">{field.label}</p>
                         <p className="text-xs text-gray-300 break-words">{field.value || '—'}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Card 4: Form Field Values (from DB row's answers column) —
+                  renders for DB-mapped submissions that don't have formTableData. */}
+              {submission?.answers && Object.keys(submission.answers).length > 0 && (
+                <div className="bg-navy-dark/50 border border-navy-light/20 rounded-lg p-4">
+                  <h3 className="text-sm font-bold text-white mb-3 uppercase tracking-wide">Form Field Values</h3>
+                  <div className="grid grid-cols-1 gap-2">
+                    {Object.entries(submission.answers).map(([key, value]) => (
+                      <div key={key} className="p-3 bg-navy-dark/40 rounded border border-navy-light/10">
+                        <p className="text-[10px] text-gray-500 font-semibold mb-1 uppercase tracking-wide">{key}</p>
+                        <p className="text-xs text-gray-300 break-words">{String(value || '—')}</p>
                       </div>
                     ))}
                   </div>

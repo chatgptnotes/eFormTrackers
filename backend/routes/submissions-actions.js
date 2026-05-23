@@ -6,6 +6,7 @@ const { readKeyType } = require('../lib/key-type');
 const { validate } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { insertNotification } = require('../lib/notifications');
+const { extractTask } = require('../lib/workflow-task');
 const {
   workflowActionBodySchema,
   deleteSubmissionQuerySchema,
@@ -41,32 +42,6 @@ router.get('/workflow-tasks', async (req, res, next) => {
 
     const instData = await jotformFetch(`workflow/instance/${workflowInstanceID}`, { keyType });
     const rawTaskList = instData?.content?.taskList || instData?.taskList || [];
-
-    const extractTask = (t) => {
-      const element = t.element || {};
-      const props = t.properties || {};
-      const assigneeUser = props.assigneeUser || {};
-      const recipients = Array.isArray(props.recipients) ? props.recipients : [];
-      const firstRecipient = recipients[0] || {};
-      const result = t.result || {};
-      const completedBy = t.completedBy || t.completed_by || {};
-
-      return {
-        name: String(element.name || props.taskName || t.name || ''),
-        type: String(element.type || ''),
-        status: String(t.status || 'PENDING').toUpperCase(),
-        assigneeName: String(assigneeUser.name || firstRecipient.name || t.assignee_name || ''),
-        assigneeEmail: String(props.assigneeEmail || assigneeUser.email || firstRecipient.email || t.assignee || ''),
-        updatedAt: String(t.updated_at || ''),
-        taskId: String(t.id || ''),
-        internalFormID: String(element.internalFormID || element.resourceID || element.formID || props.formID || ''),
-        accessLink: String(t.accessLink || props.accessLink || element.accessLink || ''),
-        submittedBy: String(completedBy.name || result.submittedBy || result.completed_by ||
-          (String(t.status || '').toUpperCase() === 'COMPLETED' ? (assigneeUser.name || firstRecipient.name || '') : '') || ''),
-        submittedByEmail: String(completedBy.email || result.submittedByEmail || result.completed_by_email ||
-          (String(t.status || '').toUpperCase() === 'COMPLETED' ? (props.assigneeEmail || assigneeUser.email || firstRecipient.email || '') : '') || ''),
-      };
-    };
 
     const filteredTasks = rawTaskList.filter((t) => {
       const { name, status, assigneeEmail } = extractTask(t);
