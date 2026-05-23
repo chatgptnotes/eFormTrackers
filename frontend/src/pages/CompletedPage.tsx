@@ -687,27 +687,40 @@ export default function CompletedPage({ data }: Props) {
             onClick={() => setViewSignature(null)}>
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
               onClick={e => e.stopPropagation()}
-              className="bg-white rounded-2xl overflow-hidden w-full max-w-4xl shadow-2xl">
+              className="bg-white rounded-2xl overflow-hidden w-full max-w-md shadow-2xl">
               <div className="p-4 border-b border-gray-200 flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-gray-900">Signature</h3>
                 <button onClick={() => setViewSignature(null)} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
               </div>
-              <div className="p-6 text-center" style={{ minHeight: '640px' }}>
-                <p className="text-xs text-gray-500 mb-4">L{viewSignature.level} — {viewSignature.approver}</p>
-                {/* Larger modal per user request. */}
-                <img
-                  src={viewSignature.url}
-                  alt="Signature"
-                  className="max-w-full max-h-[600px] mx-auto rounded-lg border border-gray-200"
-                />
-                <a
-                  href={viewSignature.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium text-sm transition-colors"
-                >
-                  <ExternalLink className="w-4 h-4" /> Open in JotForm
-                </a>
+              <div className="p-5 space-y-4">
+                <p className="text-xs text-gray-500 text-center">L{viewSignature.level} — {viewSignature.approver}</p>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-1">Signature URL</p>
+                  <input
+                    type="text"
+                    readOnly
+                    value={viewSignature.url}
+                    onFocus={(e) => e.currentTarget.select()}
+                    className="w-full text-[11px] font-mono px-2 py-2 border border-gray-200 rounded bg-gray-50 text-gray-700"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { navigator.clipboard.writeText(viewSignature.url); }}
+                    className="px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm transition-colors"
+                  >
+                    Copy URL
+                  </button>
+                  <a
+                    href={viewSignature.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium text-sm transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" /> Open in JotForm
+                  </a>
+                </div>
               </div>
             </motion.div>
           </motion.div>
