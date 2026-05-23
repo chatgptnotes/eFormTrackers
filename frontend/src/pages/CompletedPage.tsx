@@ -214,6 +214,28 @@ export default function CompletedPage({ data }: Props) {
   const fetchAndShowSignature = useCallback(async (submissionId: string, level: number, taskId: string) => {
     setSigLoading(taskId);
     try {
+      // DB-first: signatures live in submission.answers as URLs of the form
+      // ".../<submissionId>_signature_<fieldId>.png". jf_signatures table is
+      // only populated by in-app approvals — JotForm-side signatures only
+      // exist in the form answers.
+      const sub = data.allSubmissions.find((s) => s.id === submissionId);
+      const sigUrls: string[] = sub?.answers
+        ? Object.values(sub.answers).filter(
+            (v): v is string =>
+              typeof v === 'string' &&
+              v.toLowerCase().includes('signature') &&
+              /\.(png|jpe?g)$/i.test(v)
+          )
+        : [];
+      if (sigUrls.length > 0) {
+        const matched = sigUrls.find((u) => u.match(new RegExp(`signature_${level}\\.`))) || sigUrls[0];
+        const approver = sub?.approvalHistory?.find((h) => h.level === level)?.approverName
+          || sub?.pendingApproverName
+          || 'Approver';
+        setViewSignature({ url: matched, approver, level });
+        return;
+      }
+      // Fallback: legacy /api/signatures (jf_signatures table — rare).
       const sigData = await apiFetch<{ signature_url?: string; approver_name?: string } | null>(
         `/api/signatures?submission_id=${submissionId}&level=${level}`
       );
@@ -222,7 +244,7 @@ export default function CompletedPage({ data }: Props) {
       }
     } catch { /* ignore */ }
     finally { setSigLoading(undefined); }
-  }, []);
+  }, [data.allSubmissions]);
 
   // Pre-fetch DISABLED — was firing /api/workflow-tasks per filtered submission
   // (often 50+ at once), flooding the network with serial JotForm calls.

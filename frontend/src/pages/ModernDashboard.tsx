@@ -276,11 +276,38 @@ export default function ModernDashboard({ data }: Props) {
   const fetchAndShowSignature = useCallback(async (submissionId: string, level: number, taskId: string) => {
     setSigLoading(taskId);
     try {
-      const data = await apiFetch<{ signature_url?: string; approver_name?: string } | null>(`/api/signatures?submission_id=${submissionId}&level=${level}`);
-      if (data?.signature_url) { setViewSignature({ url: data.signature_url, approver: data.approver_name || 'Unknown', level }); }
+      // DB-first: signatures live in submission.answers as URLs of the form
+      // ".../<submissionId>_signature_<fieldId>.png". jf_signatures table is
+      // only populated by in-app approvals — JotForm-side signatures only
+      // exist in the form answers.
+      const sub = data.allSubmissions.find((s) => s.id === submissionId);
+      const sigUrls: string[] = sub?.answers
+        ? Object.values(sub.answers).filter(
+            (v): v is string =>
+              typeof v === 'string' &&
+              v.toLowerCase().includes('signature') &&
+              /\.(png|jpe?g)$/i.test(v)
+          )
+        : [];
+      if (sigUrls.length > 0) {
+        // Prefer URL whose field-id suffix matches level (best-effort), else first.
+        const matched = sigUrls.find((u) => u.match(new RegExp(`signature_${level}\\.`))) || sigUrls[0];
+        const approver = sub?.approvalHistory?.find((h) => h.level === level)?.approverName
+          || sub?.pendingApproverName
+          || 'Approver';
+        setViewSignature({ url: matched, approver, level });
+        return;
+      }
+      // Fallback: legacy /api/signatures (jf_signatures table — rare).
+      const apiData = await apiFetch<{ signature_url?: string; approver_name?: string } | null>(
+        `/api/signatures?submission_id=${submissionId}&level=${level}`
+      );
+      if (apiData?.signature_url) {
+        setViewSignature({ url: apiData.signature_url, approver: apiData.approver_name || 'Unknown', level });
+      }
     } catch (err) { console.warn('Failed to fetch signature:', err); }
     finally { setSigLoading(undefined); }
-  }, []);
+  }, [data.allSubmissions]);
 
   const openSidebarWithTasks = async (sub: Submission) => {
     setWorkflowSidebarSubmission(sub);
