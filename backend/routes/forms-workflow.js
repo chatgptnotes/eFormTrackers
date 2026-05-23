@@ -17,6 +17,31 @@ router.use(requireAuth);
 
 const JOTFORM_INBOX = `${env.JOTFORM_HOST}/inbox`;
 
+// ── GET /api/team-form-ids ──
+// Returns the form IDs that belong to the Testing team (env.JOTFORM_TEAM_ID).
+// Always uses the default key + teamID — independent of x-jotform-key-type
+// header — so Production callers can subtract these from their enterprise
+// list to get a pure Production-only view (excluding shared Testing forms).
+const teamFormIdsCache = { ids: null, at: 0 };
+const TEAM_FORM_IDS_TTL = 5 * 60 * 1000;
+
+router.get('/team-form-ids', async (req, res, next) => {
+  try {
+    if (!env.JOTFORM_TEAM_ID) return res.json({ ids: [] });
+    if (teamFormIdsCache.ids && Date.now() - teamFormIdsCache.at < TEAM_FORM_IDS_TTL) {
+      res.setHeader('Cache-Control', 'private, max-age=60');
+      return res.json({ ids: teamFormIdsCache.ids, cached: true });
+    }
+    // Force keyType='default' so teamID is appended and we get team-scoped forms.
+    const data = await jotformFetch('user/forms', { params: { limit: 1000 }, keyType: 'default' });
+    const ids = (data.content || []).map(f => String(f.id)).filter(Boolean);
+    teamFormIdsCache.ids = ids;
+    teamFormIdsCache.at = Date.now();
+    res.setHeader('Cache-Control', 'private, max-age=60');
+    res.json({ ids });
+  } catch (err) { next(err); }
+});
+
 // ── GET /api/form-workflow?formId=xxx ──
 const workflowCache = {};
 const CACHE_TTL = 60 * 60 * 1000;

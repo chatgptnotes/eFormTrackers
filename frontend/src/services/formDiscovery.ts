@@ -47,13 +47,24 @@ export interface JFFormMeta {
 const FORMS_TTL   = 5  * 60 * 1000; // 5 min
 const QUESTIONS_TTL = 60 * 60 * 1000; // 1 hr (questions rarely change)
 
+// ─── Testing team form IDs (used to subtract from Production view) ─────────
+async function fetchTeamFormIds(): Promise<Set<string>> {
+  try {
+    const data = await apiFetch<{ ids?: string[] }>('/api/team-form-ids');
+    return new Set(data.ids || []);
+  } catch {
+    return new Set();
+  }
+}
+
 // ─── User forms list ──────────────────────────────────────────────────────────
 export async function fetchUserForms(): Promise<JFFormMeta[]> {
   // Cache key includes the JotForm key type — same /user/forms endpoint
   // resolves to different forms under default vs gdmo, so they must not
   // collide. Without this, the Production toggle returns Testing's cached
   // form list (and the sidebar shows Testing forms while you're on Production).
-  const key = `jotflow_forms_v4_${getJotformKeyType()}`;
+  const keyType = getJotformKeyType();
+  const key = `jotflow_forms_v4_${keyType}`;
   try {
     const cached = localStorage.getItem(key);
     if (cached) {
@@ -64,7 +75,7 @@ export async function fetchUserForms(): Promise<JFFormMeta[]> {
 
   try {
     const data = await apiFetch<{ content?: Array<{ id: string; title: string; status: string; count: string; updated_at: string }> }>('/api/jotform?path=user/forms&limit=200&orderby=updated_at&direction=DESC');
-    const forms: JFFormMeta[] = (data.content || [])
+    let forms: JFFormMeta[] = (data.content || [])
       .filter((f: { status: string }) => f.status === 'ENABLED')
       .map((f: { id: string; title: string; status: string; count: string; updated_at: string }) => ({
         id: f.id,
@@ -73,6 +84,14 @@ export async function fetchUserForms(): Promise<JFFormMeta[]> {
         count: parseInt(f.count) || 0,
         updatedAt: f.updated_at || '',
       }));
+    // Production view: subtract Testing-team form IDs so the dashboard shows a
+    // pure Production-only set (no overlap with Testing's 4 team forms).
+    if (keyType === 'gdmo') {
+      const testingIds = await fetchTeamFormIds();
+      if (testingIds.size > 0) {
+        forms = forms.filter(f => !testingIds.has(String(f.id)));
+      }
+    }
     localStorage.setItem(key, JSON.stringify({ forms, ts: Date.now() }));
     return forms;
   } catch {
