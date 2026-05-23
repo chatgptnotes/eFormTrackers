@@ -175,6 +175,12 @@ export default function CompletedPage({ data }: Props) {
       setExpandedTasks(workflowCache.get(sub.id) || []);
       return;
     }
+    // DB-first: use the workflow_tasks column already on the submission row.
+    if (sub.workflowTasks && sub.workflowTasks.length > 0) {
+      setExpandedTasks(sub.workflowTasks);
+      setWorkflowCache(prev => new Map(prev).set(sub.id, sub.workflowTasks!));
+      return;
+    }
     setWorkflowLoading(true);
     try {
       const url = `/api/workflow-tasks?submissionId=${sub.id}${sub.workflowInstanceId ? `&workflowInstanceId=${sub.workflowInstanceId}` : ''}`;
@@ -204,24 +210,9 @@ export default function CompletedPage({ data }: Props) {
     finally { setSigLoading(undefined); }
   }, []);
 
-  useEffect(() => {
-    const toFetch = filtered.filter(s => !workflowCache.has(s.id));
-    if (toFetch.length === 0) return;
-    toFetch.forEach(async (s) => {
-      try {
-        const url = `/api/workflow-tasks?submissionId=${s.id}${s.workflowInstanceId ? `&workflowInstanceId=${s.workflowInstanceId}` : ''}`;
-        const res = await fetch(url);
-        if (res.ok) {
-          const json = await res.json();
-          const tasks = json.tasks || [];
-          setWorkflowCache(prev => {
-            if (prev.has(s.id)) return prev;
-            return new Map(prev).set(s.id, tasks);
-          });
-        }
-      } catch { /* ignore */ }
-    });
-  }, [filtered]);
+  // Pre-fetch DISABLED — was firing /api/workflow-tasks per filtered submission
+  // (often 50+ at once), flooding the network with serial JotForm calls.
+  // Tasks now load on-demand when the user opens a workflow detail.
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {

@@ -46,6 +46,10 @@ export interface Submission {
   approvalUrl?: string;
   /** Workflow instance ID — used to group parent + child form submissions */
   workflowInstanceId?: string;
+  /** Workflow tasks from JotForm (populated server-side during sync). When
+   *  present, the dashboard's workflow-detail modal reads from this instead
+   *  of fetching /api/workflow-tasks per click. */
+  workflowTasks?: WorkflowTask[];
 }
 
 export interface ApprovalEntry {

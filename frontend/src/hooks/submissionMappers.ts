@@ -16,6 +16,7 @@ import {
   ApprovalEntry,
   ApprovalLevel,
   WorkflowActionType,
+  WorkflowTask,
 } from '../types';
 import { DetectedFields } from '../services/formDiscovery';
 import { WorkflowStep, WorkflowTaskInfo, getWorkflowTaskApprover, getActionType } from './workflowTaskCache';
@@ -129,6 +130,91 @@ export function enrichApproverInfo(args: {
       || genericName,
     email: parsed?.email || configApprover?.email || workflowApprover?.email || '',
   };
+}
+
+// ─── Last-resort person extractor ────────────────────────────────────────────
+// Scans every answer in a submission for any person identifier when the
+// authoritative sources (workflow API, approver config, evaluator email field,
+// step assignee) all fail. Used so the dashboard never shows a synthetic
+// "Approver" placeholder — if any name/email exists anywhere in the row, we
+// surface it.
+const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+const isGenericApproverName = (n: string | undefined | null): boolean => {
+  const v = (n || '').trim();
+  return !v || v === 'Approver' || /^Level \d+ Approver$/.test(v);
+};
+
+export function findAnyPersonInAnswers(
+  answers: Record<string, { answer?: unknown; type?: string; text?: string; name?: string }>,
+): { name: string; email: string } {
+  let name = '';
+  let email = '';
+
+  // Pass 1: typed fields (most reliable)
+  for (const f of Object.values(answers)) {
+    if (!f || typeof f !== 'object') continue;
+    const type = String(f.type || '');
+    const ans = f.answer;
+    if (!email && type === 'control_email' && typeof ans === 'string' && ans.trim()) {
+      email = ans.trim();
+    }
+    if (!name && type === 'control_fullname' && ans) {
+      if (typeof ans === 'object') {
+        const o = ans as Record<string, unknown>;
+        const parts = [o.first, o.middle, o.last].filter(Boolean).map(String);
+        if (parts.length) name = parts.join(' ');
+      } else if (typeof ans === 'string' && ans.trim()) {
+        name = ans.trim();
+      }
+    }
+  }
+
+  // Pass 2: label-based heuristic — any field whose label suggests a person
+  if (!name) {
+    for (const f of Object.values(answers)) {
+      if (!f || typeof f !== 'object') continue;
+      const label = String(f.text || f.name || '').toLowerCase();
+      const ans = f.answer;
+      if (typeof ans !== 'string' || !ans.trim()) continue;
+      if (
+        label.includes('name') || label.includes('requester') ||
+        label.includes('submitted by') || label.includes('applicant') ||
+        label.includes('employee') || label.includes('user') ||
+        label.includes('approver') || label.includes('assigned to') ||
+        label.includes('reviewer') || label.includes('owner') ||
+        label.includes('manager') || label.includes('contact')
+      ) { name = ans.trim(); break; }
+    }
+  }
+
+  // Pass 3: any string answer matching an email pattern
+  if (!email) {
+    for (const f of Object.values(answers)) {
+      if (!f || typeof f !== 'object') continue;
+      if (typeof f.answer === 'string') {
+        const m = f.answer.match(EMAIL_RE);
+        if (m) { email = m[0]; break; }
+      }
+    }
+  }
+
+  // Pass 4: signature URL — the upload path often contains the form owner's username
+  if (!name) {
+    for (const f of Object.values(answers)) {
+      if (!f || typeof f !== 'object') continue;
+      if (f.type === 'control_signature' && typeof f.answer === 'string') {
+        const m = f.answer.match(/\/uploads\/([^/]+)\//);
+        if (m && m[1]) { name = m[1].replace(/[._-]/g, ' '); break; }
+      }
+    }
+  }
+
+  // Pass 5: derive name from email local-part as a last resort
+  if (!name && email) {
+    name = email.split('@')[0].replace(/[._-]/g, ' ');
+  }
+
+  return { name, email };
 }
 
 // Pure submission forms — no approval status fields; always show "Open in JotForm"
@@ -339,11 +425,17 @@ export function mapGenericSubmission(
     needsSync,
     pendingApproverName: (() => {
       const pending = history.find(h => h.status === 'pending');
-      return pending?.approverName || undefined;
+      const fromHistory = pending?.approverName;
+      if (fromHistory && !isGenericApproverName(fromHistory)) return fromHistory;
+      // Fallback: scan all answer key/value pairs in the row for any person identifier
+      const scanned = findAnyPersonInAnswers(answers);
+      return scanned.name || fromHistory || undefined;
     })(),
     pendingApproverEmail: (() => {
       const pending = history.find(h => h.status === 'pending');
-      return pending?.approverEmail || undefined;
+      if (pending?.approverEmail) return pending.approverEmail;
+      const scanned = findAnyPersonInAnswers(answers);
+      return scanned.email || undefined;
     })(),
   };
 }
@@ -423,5 +515,9 @@ export function mapSupabaseRow(row: Record<string, unknown>): Submission {
     pendingApproverEmail,
     approvalUrl: String(row.approval_url || '') || undefined,
     workflowInstanceId: String(row.workflow_instance_id || '') || undefined,
+    // Workflow tasks come straight from the DB (jf_submissions.workflow_tasks
+    // column, populated by the backend webhook + admin-sync). When present,
+    // the dashboard avoids any /api/workflow-tasks call.
+    workflowTasks: Array.isArray(row.workflow_tasks) ? (row.workflow_tasks as WorkflowTask[]) : undefined,
   } as Submission;
 }

@@ -45,6 +45,14 @@ function getLastApprover(sub: Submission) {
   return [...(sub.approvalHistory || [])].reverse().find(h => h.status === 'approved');
 }
 
+// Treat synthetic placeholders ("Approver", "Level N Approver") as no real assignee.
+function displayApproverName(name: string | null | undefined, fallback = '—'): string {
+  const v = (name || '').trim();
+  if (!v) return fallback;
+  if (v === 'Approver' || /^Level \d+ Approver$/.test(v)) return fallback;
+  return v;
+}
+
 function getCalendarDays(year: number, month: number) {
   const firstDay = new Date(year, month, 1);
   const lastDay = new Date(year, month + 1, 0);
@@ -137,7 +145,12 @@ const SubmissionCard = memo(function SubmissionCard({ submission, idx, user, onV
         </div>
         <div className="flex items-center gap-2 py-2 border-t border-gray-200 bg-blue-50 px-3 rounded-lg">
           <Briefcase className="w-4 h-4 text-blue-700 flex-shrink-0" />
-          <div className="flex-1 min-w-0"><p className="text-xs text-gray-900 font-medium">Pending With</p><p className="text-sm font-bold text-black truncate">{submission.pendingApproverName || 'Approver'}</p>{submission.pendingApproverEmail && <p className="text-xs text-gray-500 truncate">{submission.pendingApproverEmail}</p>}</div>
+          <div className="flex-1 min-w-0"><p className="text-xs text-gray-900 font-medium">Pending With</p>{(() => {
+            const resolved = displayApproverName(submission.pendingApproverName, '');
+            return resolved
+              ? <p className="text-sm font-bold text-black truncate">{resolved}</p>
+              : <p className="text-sm font-medium text-gray-400 italic truncate">Not assigned</p>;
+          })()}{submission.pendingApproverEmail && <p className="text-xs text-gray-500 truncate">{submission.pendingApproverEmail}</p>}</div>
         </div>
         <div className="grid grid-cols-2 gap-2 py-2 border-t border-gray-200 text-xs">
           <div><p className="text-gray-900 font-medium">Department</p><p className="font-bold text-black">{submission.submittedBy.department || '—'}</p></div>
@@ -270,6 +283,14 @@ export default function ModernDashboard({ data }: Props) {
     setWorkflowSidebarSubmission(sub);
     setSplitSelected(sub);
     if (workflowCache.has(sub.id)) { setExpandedTasks(workflowCache.get(sub.id) || []); return; }
+    // DB-first: if the submission row already carries workflow_tasks (populated
+    // server-side during sync), use it. No network call.
+    if (sub.workflowTasks && sub.workflowTasks.length > 0) {
+      setExpandedTasks(sub.workflowTasks);
+      setWorkflowCache(prev => new Map(prev).set(sub.id, sub.workflowTasks!));
+      return;
+    }
+    // Fallback only when DB is missing the data — single on-demand fetch.
     setWorkflowLoading(true);
     try {
       const url = `/api/workflow-tasks?submissionId=${sub.id}${sub.workflowInstanceId ? `&workflowInstanceId=${sub.workflowInstanceId}` : ''}`;
@@ -283,23 +304,10 @@ export default function ModernDashboard({ data }: Props) {
     finally { setWorkflowLoading(false); }
   };
 
-  const preFetchWorkflows = useCallback(async (submissions: Submission[]) => {
-    const toFetch = submissions.filter(s => !workflowCache.has(s.id));
-    if (toFetch.length === 0) return;
-    await Promise.all(toFetch.map(async (s) => {
-      try {
-        const url = `/api/workflow-tasks?submissionId=${s.id}${s.workflowInstanceId ? `&workflowInstanceId=${s.workflowInstanceId}` : ''}`;
-        const res = await fetch(url);
-        if (res.ok) {
-          const json = await res.json();
-          const tasks = json.tasks || [];
-          setWorkflowCache(prev => { if (prev.has(s.id)) return prev; return new Map(prev).set(s.id, tasks); });
-        }
-      } catch { /* ignore */ }
-    }));
-  }, [workflowCache]);
-
-  useEffect(() => { if (paginatedSubmissions.length > 0) { preFetchWorkflows(paginatedSubmissions); } }, [paginatedSubmissions, preFetchWorkflows]);
+  // Pre-fetch DISABLED — fired /api/workflow-tasks per submission per page,
+  // flooding the network with ~25 calls every render. Workflow tasks now load
+  // on-demand when the user opens a submission's detail (openSidebarWithTasks).
+  // For data fully populated server-side, run Settings → "Sync All Submissions".
 
   useEffect(() => { setCurrentPage(1); }, [filterDepartment, filterDateFrom, filterDateTo, filterSubmittedBy]);
 
@@ -369,7 +377,7 @@ export default function ModernDashboard({ data }: Props) {
                     <td className="px-4 py-3"><div><p className="text-sm font-semibold text-gray-900 truncate max-w-[220px]">{sub.formTitle || 'Form Submission'}</p><p className="text-xs font-mono text-blue-600">{sub.id.slice(0, 8).toUpperCase()}</p></div></td>
                     <td className="px-4 py-3"><p className="text-sm font-medium text-gray-800">{sub.submittedBy.name}</p><p className="text-xs text-gray-400 truncate max-w-[160px]">{sub.submittedBy.email}</p></td>
                     <td className="px-4 py-3 text-sm text-gray-700">{sub.submittedBy.department || '—'}</td>
-                    <td className="px-4 py-3"><p className="text-sm text-gray-800 font-medium">{sub.pendingApproverName || '—'}</p>{sub.pendingApproverEmail && <p className="text-xs text-gray-400 truncate max-w-[180px]">{sub.pendingApproverEmail}</p>}</td>
+                    <td className="px-4 py-3"><p className="text-sm text-gray-800 font-medium">{displayApproverName(sub.pendingApproverName)}</p>{sub.pendingApproverEmail && <p className="text-xs text-gray-400 truncate max-w-[180px]">{sub.pendingApproverEmail}</p>}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{formatDate(sub.submissionDate)}</td>
                     <td className="px-4 py-3"><span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full text-white bg-gradient-to-r ${statusConfig[status].color}`}>{statusConfig[status].label}</span></td>
                   </motion.tr>
@@ -404,7 +412,7 @@ export default function ModernDashboard({ data }: Props) {
                   <td className="px-2 py-1 text-xs text-gray-400 font-mono">{idx + 1}</td>
                   <td className="px-2 py-1"><p className="text-xs font-semibold text-gray-900 truncate max-w-[180px]">{sub.formTitle || '—'}</p><p className="text-[10px] text-gray-400">{sub.submittedBy.department || '—'}</p></td>
                   <td className="px-2 py-1"><p className="text-xs text-gray-800 truncate max-w-[120px]">{sub.submittedBy.name}</p></td>
-                  <td className="px-2 py-1"><p className="text-xs text-gray-700 truncate max-w-[120px]">{sub.pendingApproverName || '—'}</p>{sub.pendingApproverEmail && <p className="text-[10px] text-gray-400 truncate max-w-[120px]">{sub.pendingApproverEmail}</p>}</td>
+                  <td className="px-2 py-1"><p className="text-xs text-gray-700 truncate max-w-[120px]">{displayApproverName(sub.pendingApproverName)}</p>{sub.pendingApproverEmail && <p className="text-[10px] text-gray-400 truncate max-w-[120px]">{sub.pendingApproverEmail}</p>}</td>
                   <td className="px-2 py-1 text-xs text-gray-500">{formatDate(sub.submissionDate)}</td>
                   <td className="px-2 py-1 text-xs text-blue-600 font-medium">{sub.daysAtCurrentLevel || 0}d</td>
                 </motion.tr>
@@ -434,7 +442,7 @@ export default function ModernDashboard({ data }: Props) {
                 <div className="flex items-center gap-3 text-xs text-gray-500 mt-1">
                   <span className="flex items-center gap-1"><User className="w-3 h-3" /> {sub.submittedBy.name}</span>
                   <span className="flex items-center gap-1"><Building2 className="w-3 h-3" /> {sub.submittedBy.department || '—'}</span>
-                  <span className="flex items-center gap-1 text-blue-600"><Briefcase className="w-3 h-3" /> {sub.pendingApproverName || '—'}{sub.pendingApproverEmail && <span className="text-gray-400">({sub.pendingApproverEmail})</span>}</span>
+                  <span className="flex items-center gap-1 text-blue-600"><Briefcase className="w-3 h-3" /> {displayApproverName(sub.pendingApproverName)}{sub.pendingApproverEmail && <span className="text-gray-400">({sub.pendingApproverEmail})</span>}</span>
                 </div>
                 <div className="flex items-center gap-1 mt-2">
                   {Array.from({ length: Math.min(steps, 5) }).map((_, i) => (<div key={i} className="w-5 h-1 rounded-full bg-blue-300" />))}
@@ -491,7 +499,7 @@ export default function ModernDashboard({ data }: Props) {
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">{sub.formTitle || 'Form Submission'}</p>
               <p className="text-xs font-mono text-blue-600 mb-2">{sub.id.slice(0, 8).toUpperCase()}</p>
               <div className="flex items-center gap-2 py-2 border-t border-gray-100 text-xs"><User className="w-3.5 h-3.5 text-gray-400" /><span className="font-medium text-gray-700">{sub.submittedBy.name}</span></div>
-              <div className="flex items-start gap-2 py-2 border-t border-gray-100 text-xs"><Briefcase className="w-3.5 h-3.5 text-blue-500 mt-0.5 shrink-0" /><div className="min-w-0"><p className="text-gray-700 truncate">{sub.pendingApproverName || '—'}</p>{sub.pendingApproverEmail && <p className="text-[10px] text-gray-400 truncate">{sub.pendingApproverEmail}</p>}</div></div>
+              <div className="flex items-start gap-2 py-2 border-t border-gray-100 text-xs"><Briefcase className="w-3.5 h-3.5 text-blue-500 mt-0.5 shrink-0" /><div className="min-w-0"><p className="text-gray-700 truncate">{displayApproverName(sub.pendingApproverName)}</p>{sub.pendingApproverEmail && <p className="text-[10px] text-gray-400 truncate">{sub.pendingApproverEmail}</p>}</div></div>
               <div className="flex items-center justify-between py-2 border-t border-gray-100 text-xs">
                 <span className="text-gray-400">{formatDate(sub.submissionDate)}</span>
                 <span className={`font-bold px-2 py-0.5 rounded-full text-white text-[10px] bg-gradient-to-r ${statusConfig[status].color}`}>{statusConfig[status].label}</span>
@@ -535,7 +543,7 @@ export default function ModernDashboard({ data }: Props) {
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div><p className="text-xs text-gray-400 uppercase mb-0.5">Submitted By</p><p className="font-semibold text-gray-800">{selected.submittedBy.name}</p><p className="text-xs text-gray-500">{selected.submittedBy.email}</p></div>
               <div><p className="text-xs text-gray-400 uppercase mb-0.5">Department</p><p className="font-semibold text-gray-800">{selected.submittedBy.department || '—'}</p></div>
-              <div><p className="text-xs text-gray-400 uppercase mb-0.5">Pending With</p><p className="font-semibold text-gray-800">{selected.pendingApproverName || '—'}</p>{selected.pendingApproverEmail && <p className="text-xs text-gray-500">{selected.pendingApproverEmail}</p>}</div>
+              <div><p className="text-xs text-gray-400 uppercase mb-0.5">Pending With</p><p className="font-semibold text-gray-800">{displayApproverName(selected.pendingApproverName)}</p>{selected.pendingApproverEmail && <p className="text-xs text-gray-500">{selected.pendingApproverEmail}</p>}</div>
               <div><p className="text-xs text-gray-400 uppercase mb-0.5">Priority</p><p className="font-semibold text-gray-800">{selected.priority?.toUpperCase() || '—'}</p></div>
               <div><p className="text-xs text-gray-400 uppercase mb-0.5">Submitted</p><p className="font-semibold text-gray-800">{formatDate(selected.submissionDate)}</p></div>
               <div><p className="text-xs text-gray-400 uppercase mb-0.5">Pending Days</p><p className="font-semibold text-blue-600">{selected.daysAtCurrentLevel || 0} days</p></div>
