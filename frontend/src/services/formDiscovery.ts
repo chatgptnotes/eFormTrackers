@@ -6,6 +6,7 @@
  * appears in JotFlow without code changes.
  */
 import { apiFetch } from '../lib/api';
+import { getJotformKeyType } from '../lib/jotformKey';
 
 export interface JFQuestion {
   qid: string;
@@ -48,7 +49,11 @@ const QUESTIONS_TTL = 60 * 60 * 1000; // 1 hr (questions rarely change)
 
 // ─── User forms list ──────────────────────────────────────────────────────────
 export async function fetchUserForms(): Promise<JFFormMeta[]> {
-  const key = 'jotflow_forms_v4';
+  // Cache key includes the JotForm key type — same /user/forms endpoint
+  // resolves to different forms under default vs gdmo, so they must not
+  // collide. Without this, the Production toggle returns Testing's cached
+  // form list (and the sidebar shows Testing forms while you're on Production).
+  const key = `jotflow_forms_v4_${getJotformKeyType()}`;
   try {
     const cached = localStorage.getItem(key);
     if (cached) {
@@ -77,7 +82,8 @@ export async function fetchUserForms(): Promise<JFFormMeta[]> {
 
 // ─── Form questions ───────────────────────────────────────────────────────────
 export async function fetchFormQuestions(formId: string): Promise<Record<string, JFQuestion>> {
-  const key = `jotflow_q4_${formId}`; // v3 — inject qid from dict key (Mar 12 2026)
+  // Per-keyType cache: a form ID can exist under both keys with different field sets.
+  const key = `jotflow_q4_${getJotformKeyType()}_${formId}`;
   try {
     const cached = localStorage.getItem(key);
     if (cached) {
