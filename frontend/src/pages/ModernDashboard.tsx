@@ -846,22 +846,19 @@ export default function ModernDashboard({ data }: Props) {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setViewSignature(null)}>
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-              onClick={e => e.stopPropagation()} className="bg-white rounded-2xl overflow-hidden w-full max-w-sm sm:max-w-md shadow-2xl">
+              onClick={e => e.stopPropagation()} className="bg-white rounded-2xl overflow-hidden w-full max-w-4xl shadow-2xl">
               <div className="p-4 border-b border-gray-200 flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-gray-900">Signature</h3>
                 <button onClick={() => setViewSignature(null)} className="p-1 rounded-lg hover:bg-gray-100 text-gray-600 hover:text-gray-900">✕</button>
               </div>
-              <div className="p-4 bg-gray-50 flex items-center justify-center" style={{ minHeight: '320px' }}>
-                {/* Plain <img>. JotForm blocks every alternative (<iframe>
-                    has X-Frame-Options: DENY, backend proxy has no
-                    /uploads/ scope on the API key, signed-URL generator
-                    needs admin to grant user-signurl permission). This is
-                    the most honest behavior: shows for browsers with JotForm
-                    cookies, broken icon otherwise. */}
+              <div className="p-6 bg-gray-50 flex items-center justify-center" style={{ minHeight: '640px' }}>
+                {/* Larger container per user request — image renders at native
+                    size if cookies flow. Broken icon means JotForm refused the
+                    request; no styling can fix that. */}
                 <img
                   src={viewSignature.url}
                   alt="Signature"
-                  className="max-w-full max-h-[320px] object-contain"
+                  className="max-w-full max-h-[600px] object-contain"
                 />
               </div>
               <div className="p-3 border-t border-gray-200 flex gap-2">

@@ -687,18 +687,18 @@ export default function CompletedPage({ data }: Props) {
             onClick={() => setViewSignature(null)}>
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
               onClick={e => e.stopPropagation()}
-              className="bg-white rounded-2xl overflow-hidden w-full max-w-sm sm:max-w-md shadow-2xl">
+              className="bg-white rounded-2xl overflow-hidden w-full max-w-4xl shadow-2xl">
               <div className="p-4 border-b border-gray-200 flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-gray-900">Signature</h3>
                 <button onClick={() => setViewSignature(null)} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
               </div>
-              <div className="p-4 text-center">
-                <p className="text-xs text-gray-500 mb-3">L{viewSignature.level} — {viewSignature.approver}</p>
-                {/* Plain <img>. JotForm blocks every alternative. */}
+              <div className="p-6 text-center" style={{ minHeight: '640px' }}>
+                <p className="text-xs text-gray-500 mb-4">L{viewSignature.level} — {viewSignature.approver}</p>
+                {/* Larger modal per user request. */}
                 <img
                   src={viewSignature.url}
                   alt="Signature"
-                  className="max-w-full mx-auto rounded-lg border border-gray-200"
+                  className="max-w-full max-h-[600px] mx-auto rounded-lg border border-gray-200"
                 />
                 <a
                   href={viewSignature.url}
