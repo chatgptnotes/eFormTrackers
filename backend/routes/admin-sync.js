@@ -50,7 +50,29 @@ async function fetchAllSubmissionsForForm(formId, keyType, log) {
   return all;
 }
 
-function mapRawToUpsertParams(raw, formId, formTitle, fields) {
+// Fetch the workflow-instance for a submission and return:
+//   { status: 'completed'|'rejected'|'pending'|null, taskList: [...] }
+// Returns null status when no workflowInstanceID is on the raw submission.
+async function fetchWorkflowInstance(raw, keyType, log) {
+  const instanceId = raw.workflowInstanceID || raw.workflow_instance_id;
+  if (!instanceId) return { status: null, taskList: [] };
+  try {
+    const data = await jotformFetch(`workflow/instance/${instanceId}`, { keyType });
+    const content = data?.content || {};
+    const wfStatus = String(content.status || '').toUpperCase();
+    const taskList = Array.isArray(content.taskList) ? content.taskList : [];
+    let status = null;
+    if (wfStatus === 'COMPLETED') status = 'completed';
+    else if (wfStatus === 'REJECTED' || wfStatus === 'CANCELLED') status = 'rejected';
+    else if (wfStatus === 'ACTIVE' || wfStatus === 'PENDING') status = 'pending';
+    return { status, taskList };
+  } catch (e) {
+    log.warn({ instanceId, err: e.message }, '[admin-sync] workflow instance fetch failed');
+    return { status: null, taskList: [] };
+  }
+}
+
+function mapRawToUpsertParams(raw, formId, formTitle, fields, wfStatusOverride, wfTaskList) {
   const answers = raw.answers || {};
   const get = (id) => id ? extractText(answers[id]?.answer) : '';
 
@@ -77,6 +99,14 @@ function mapRawToUpsertParams(raw, formId, formTitle, fields) {
     } else {
       currentLevel = lvl.id; status = 'pending'; break;
     }
+  }
+
+  // Authoritative override: the workflow-instance status is the source of truth.
+  // The level-field heuristic above is just a fallback for forms without a
+  // workflow instance attached.
+  if (wfStatusOverride) {
+    status = wfStatusOverride;
+    if (wfStatusOverride === 'completed') currentLevel = maxLevel;
   }
 
   const submittedBy = get(fields.nameFieldId);
@@ -115,7 +145,7 @@ function mapRawToUpsertParams(raw, formId, formTitle, fields) {
     levels.find(l => l.approver)?.approver || '', '',
     '', '',
     genericStatus,
-    JSON.stringify(allAnswers), JSON.stringify([]),
+    JSON.stringify(allAnswers), JSON.stringify(wfTaskList || []),
     JSON.stringify(levelHistory), String(raw.edit_link || ''),
     JSON.stringify({ ...raw, _mapped: { levels, email, amount } }),
     submissionDate.toISOString(), updatedDate?.toISOString() || null,
@@ -170,11 +200,18 @@ async function upsertChunk(rows, log) {
 // ── POST /api/admin/sync-all ──
 // Walks every form for the active keyType, paginates ALL submissions,
 // upserts to jf_submissions. Returns per-form summary.
+// Per-submission workflow-instance fetches use higher concurrency than the
+// outer form loop — they're cheap reads but there are many of them.
+const SUBMISSION_ENRICH_CONCURRENCY = 8;
+
 router.post('/admin/sync-all', requireAuth, requireRole('admin'), async (req, res, next) => {
   try {
     const keyType = readKeyType(req);
+    // Default: enrich each submission with its workflow-instance state (correct
+    // status + workflow_tasks). Disable with ?enrich=0 for a fast/dumb sync.
+    const enrichWorkflow = req.query.enrich !== '0';
     const startedAt = Date.now();
-    req.log.info({ keyType }, '[admin-sync] starting full sync');
+    req.log.info({ keyType, enrichWorkflow }, '[admin-sync] starting full sync');
 
     const formsData = await jotformFetch('user/forms', { params: { limit: 1000 }, keyType });
     const forms = (formsData.content || []).filter(f => f.id);
@@ -196,11 +233,22 @@ router.post('/admin/sync-all', requireAuth, requireRole('admin'), async (req, re
         return;
       }
 
+      // Enrich each submission with workflow-instance status + taskList.
+      // Stored as a parallel array aligned with rawSubs.
+      let wfData = rawSubs.map(() => ({ status: null, taskList: [] }));
+      if (enrichWorkflow) {
+        wfData = await pMapLimit(rawSubs, SUBMISSION_ENRICH_CONCURRENCY,
+          (raw) => fetchWorkflowInstance(raw, keyType, req.log)
+        );
+      }
+
       let formUpserted = 0;
       for (let i = 0; i < rawSubs.length; i += UPSERT_CHUNK) {
-        const chunk = rawSubs.slice(i, i + UPSERT_CHUNK).map(raw =>
-          mapRawToUpsertParams(raw, formId, formTitle, fields)
-        );
+        const sliceEnd = Math.min(i + UPSERT_CHUNK, rawSubs.length);
+        const chunk = [];
+        for (let j = i; j < sliceEnd; j++) {
+          chunk.push(mapRawToUpsertParams(rawSubs[j], formId, formTitle, fields, wfData[j].status, wfData[j].taskList));
+        }
         formUpserted += await upsertChunk(chunk, req.log);
       }
 
