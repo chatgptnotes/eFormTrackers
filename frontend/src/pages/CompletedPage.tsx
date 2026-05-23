@@ -694,30 +694,22 @@ export default function CompletedPage({ data }: Props) {
               </div>
               <div className="p-4 text-center">
                 <p className="text-xs text-gray-500 mb-3">L{viewSignature.level} — {viewSignature.approver}</p>
-                {/* JotForm /uploads/ files require a logged-in JotForm browser
-                    session — our API key can't auth them. <img> often fails
-                    silently; the onError fallback exposes the URL as a link. */}
+                {/* Image is served through our backend signature-proxy which
+                    uses the stored JotForm session cookie to fetch the file.
+                    onError fallback only shows if the proxy itself fails. */}
                 <img
-                  src={viewSignature.url}
+                  src={`/api/signature-proxy?url=${encodeURIComponent(viewSignature.url)}`}
                   alt="Signature"
                   className="max-w-full mx-auto rounded-lg border border-gray-200"
                   onError={(e) => {
                     e.currentTarget.style.display = 'none';
                     const fb = e.currentTarget.nextElementSibling as HTMLElement | null;
-                    if (fb) fb.style.display = 'flex';
+                    if (fb) fb.style.display = 'block';
                   }}
                 />
-                <div className="hidden flex-col items-center gap-3 text-center px-4 py-6 bg-amber-50 border border-amber-200 rounded-lg">
-                  <div className="text-amber-600 text-3xl">⚠️</div>
-                  <p className="text-sm font-medium text-gray-700">
-                    Signature requires JotForm login to view
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    JotForm protects signature files behind their own session
-                    auth. Click the button below to open in a new tab — sign in
-                    to JotForm if prompted, then the image will display.
-                  </p>
-                </div>
+                <p className="hidden text-xs text-amber-700 px-3 mt-2">
+                  Signature unavailable — backend JotForm session may need refresh.
+                </p>
                 <a
                   href={viewSignature.url}
                   target="_blank"

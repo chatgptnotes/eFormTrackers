@@ -43,6 +43,11 @@ module.exports = {
   MICROSOFT_TENANT_ID: process.env.MICROSOFT_TENANT_ID || '',
   MICROSOFT_CLIENT_SECRET: process.env.MICROSOFT_CLIENT_SECRET || '',
   MICROSOFT_REDIRECT_URI: process.env.MICROSOFT_REDIRECT_URI || '',
+  // Optional: a JotForm browser session cookie (e.g. 'jftoken=xyz...'),
+  // used by /api/signature-proxy to fetch /uploads/ files that JotForm
+  // protects behind session auth. Obtain from browser DevTools after
+  // logging into eforms.mediaoffice.ae as the GDMO admin.
+  JOTFORM_SESSION_COOKIE: process.env.JOTFORM_SESSION_COOKIE || '',
   ADMIN_EMAIL: (process.env.ADMIN_EMAIL || '').trim().toLowerCase(),
   ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || '',
   ADMIN_NAME: process.env.ADMIN_NAME || '',

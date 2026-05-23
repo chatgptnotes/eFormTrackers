@@ -851,33 +851,27 @@ export default function ModernDashboard({ data }: Props) {
                 <h3 className="text-sm font-semibold text-gray-900">Signature</h3>
                 <button onClick={() => setViewSignature(null)} className="p-1 rounded-lg hover:bg-gray-100 text-gray-600 hover:text-gray-900">✕</button>
               </div>
-              <div className="p-4 bg-gray-50 flex flex-col items-center justify-center gap-3" style={{ minHeight: '300px' }}>
-                {/* JotForm /uploads/ files require a logged-in JotForm browser
-                    session — our API key can't auth them. So the <img> tag
-                    often fails. If it loads, great; if not, the fallback link
-                    below opens the URL in a new tab where JotForm can prompt
-                    for auth. */}
+              <div className="p-4 bg-gray-50 flex flex-col items-center justify-center gap-2" style={{ minHeight: '300px' }}>
+                {/* Image is served through our backend signature-proxy which
+                    uses the stored JotForm session cookie to fetch the file.
+                    onError fallback only shows if the proxy itself fails
+                    (e.g. expired cookie). */}
                 <img
-                  src={viewSignature.url}
+                  src={`/api/signature-proxy?url=${encodeURIComponent(viewSignature.url)}`}
                   alt="Signature"
                   className="max-w-full max-h-[400px] object-contain"
                   onError={(e) => {
                     e.currentTarget.style.display = 'none';
                     const fb = e.currentTarget.nextElementSibling as HTMLElement | null;
-                    if (fb) fb.style.display = 'flex';
+                    if (fb) fb.style.display = 'block';
                   }}
                 />
-                <div className="hidden flex-col items-center gap-3 text-center px-4">
-                  <div className="text-amber-600 text-3xl">⚠️</div>
-                  <p className="text-sm font-medium text-gray-700">
-                    Signature requires JotForm login to view
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    JotForm protects signature files behind their own session
-                    auth. Click below to open in a new tab — sign in to JotForm
-                    if prompted, then the image will display.
-                  </p>
-                </div>
+                <p className="hidden text-xs text-amber-700 text-center px-3">
+                  Signature unavailable — backend JotForm session may need refresh.{' '}
+                  <a href={viewSignature.url} target="_blank" rel="noopener noreferrer" className="underline font-medium">
+                    Open in JotForm
+                  </a>
+                </p>
               </div>
               <div className="p-4 border-t border-gray-200 flex gap-2">
                 <a href={viewSignature.url} target="_blank" rel="noopener noreferrer"

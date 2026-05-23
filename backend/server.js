@@ -91,6 +91,7 @@ app.use('/api', require('./routes/data-org'));
 app.use('/api', require('./routes/uploads'));
 app.use('/api', require('./routes/users'));
 app.use('/api', require('./routes/admin-sync'));
+app.use('/api', require('./routes/signature-proxy'));
 
 // ── Health check ──
 app.get('/api/health', (req, res) => {
