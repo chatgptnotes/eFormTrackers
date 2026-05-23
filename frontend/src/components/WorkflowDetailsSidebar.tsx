@@ -105,6 +105,27 @@ export default function WorkflowDetailsSidebar({
 
             {/* Content */}
             <div className="p-6 space-y-6 bg-gradient-to-b from-slate-50 to-white">
+              {/* Pending With — surfaces current approver name + email at the
+                  top of the sidebar (most useful on Modern Dashboard where the
+                  user is looking at pending submissions). Hidden for completed/
+                  rejected rows (no one is currently pending) and for rows from
+                  data-collection forms with no approval workflow. */}
+              {submission && submission.currentApprovalLevel !== 'completed' &&
+               submission.currentApprovalLevel !== 'rejected' &&
+               (submission.pendingApproverName || submission.pendingApproverEmail) && (
+                <div className="border-2 border-amber-300 bg-amber-50 rounded-lg p-4">
+                  <p className="text-[10px] font-bold text-amber-700 uppercase tracking-widest mb-1">Pending With</p>
+                  <p className="text-base font-bold text-amber-900">
+                    {submission.pendingApproverName || '—'}
+                  </p>
+                  {submission.pendingApproverEmail && (
+                    <p className="text-xs text-amber-800/80 font-mono mt-0.5">
+                      {submission.pendingApproverEmail}
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* Card 1: Process Timeline - Clean JotForm Style */}
               <div className="space-y-4">
                 <h3 className="text-xs font-bold text-slate-700 uppercase tracking-widest">Process Timeline</h3>
@@ -114,7 +135,10 @@ export default function WorkflowDetailsSidebar({
                     <span className="text-xs text-slate-500">Loading workflow steps...</span>
                   </div>
                 ) : expandedTasks.length === 0 ? (
-                  <span className="text-xs text-slate-500 italic block">No workflow steps found</span>
+                  <div className="text-xs text-slate-500 italic">
+                    <p>This form has no approval workflow.</p>
+                    <p className="mt-1 text-slate-400">Submissions are collected directly without an approval chain — see Form Field Values below for the submitted data.</p>
+                  </div>
                 ) : (
                   <div className="space-y-3">
                     {expandedTasks.map((task, idx) => {
