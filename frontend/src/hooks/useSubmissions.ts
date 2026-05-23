@@ -177,7 +177,12 @@ export function useSubmissions() {
       const raw = localStorage.getItem('jotflow_active_form_ids');
       if (raw) activeFormIds = JSON.parse(raw);
     } catch { /* ignore */ }
-    if (activeFormIds.length === 0) return;
+    if (activeFormIds.length === 0) {
+      // First load with no cached form IDs — clear the spinner so the JotForm
+      // fetch (loadData) can take over and the skeleton doesn't lock the UI.
+      setLoading(false);
+      return;
+    }
 
     try {
       setLoading(prev => {
@@ -203,9 +208,14 @@ export function useSubmissions() {
     }
   }, [allSubmissions.length]);
 
-  // ─── On mount: load from DB ────────────────────────────────────────────────
+  // ─── On mount: paint from DB (fast), then refresh from JotForm ─────────────
+  // loadFromSupabase gives instant first paint when localStorage has form IDs.
+  // loadData populates jotflow_active_form_ids AND fetches fresh data from
+  // JotForm — without this call, a fresh session shows skeleton forever
+  // because activeFormIds is empty and loadFromSupabase short-circuits.
   useEffect(() => {
     loadFromSupabase();
+    loadData();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listen for JotForm API key toggle from Settings.
