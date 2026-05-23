@@ -144,7 +144,7 @@ export default function CompletedPage({ data }: Props) {
   const [expandedTasks, setExpandedTasks] = useState<WorkflowTask[]>([]);
   const [workflowLoading, setWorkflowLoading] = useState(false);
   const [workflowCache, setWorkflowCache] = useState<Map<string, WorkflowTask[]>>(new Map());
-  const [viewSignature, setViewSignature] = useState<{ url: string; approver: string; level: number } | null>(null);
+  const [viewSignature, setViewSignature] = useState<{ url: string; approver: string; level: number; allUrls: string[]; submissionId: string } | null>(null);
   const [sigLoading, setSigLoading] = useState<string | undefined>(undefined);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [splitSelected, setSplitSelected] = useState<Submission | null>(null);
@@ -215,12 +215,9 @@ export default function CompletedPage({ data }: Props) {
   const fetchAndShowSignature = useCallback(async (submissionId: string, level: number, taskId: string) => {
     setSigLoading(taskId);
     try {
-      // DB-first: signatures live in submission.answers as URLs of the form
-      // ".../<submissionId>_signature_<fieldId>.png". jf_signatures table is
-      // only populated by in-app approvals — JotForm-side signatures only
-      // exist in the form answers.
       const sub = data.allSubmissions.find((s) => s.id === submissionId);
-      const sigUrls: string[] = sub?.answers
+      if (!sub) { setSigLoading(undefined); return; }
+      const sigUrls: string[] = sub.answers
         ? Object.values(sub.answers).filter(
             (v): v is string =>
               typeof v === 'string' &&
@@ -228,20 +225,22 @@ export default function CompletedPage({ data }: Props) {
               /\.(png|jpe?g)$/i.test(v)
           )
         : [];
+      console.log(`[signature] submission ${submissionId} (level ${level}): found ${sigUrls.length} signature URL(s)`, sigUrls);
       if (sigUrls.length > 0) {
         const matched = sigUrls.find((u) => u.match(new RegExp(`signature_${level}\\.`))) || sigUrls[0];
-        const approver = sub?.approvalHistory?.find((h) => h.level === level)?.approverName
-          || sub?.pendingApproverName
+        const approver = sub.approvalHistory?.find((h) => h.level === level)?.approverName
+          || sub.pendingApproverName
           || 'Approver';
-        setViewSignature({ url: matched, approver, level });
+        setViewSignature({ url: matched, approver, level, allUrls: sigUrls, submissionId });
         return;
       }
-      // Fallback: legacy /api/signatures (jf_signatures table — rare).
       const sigData = await apiFetch<{ signature_url?: string; approver_name?: string } | null>(
         `/api/signatures?submission_id=${submissionId}&level=${level}`
       );
       if (sigData?.signature_url) {
-        setViewSignature({ url: sigData.signature_url, approver: sigData.approver_name || 'Unknown', level });
+        setViewSignature({ url: sigData.signature_url, approver: sigData.approver_name || 'Unknown', level, allUrls: [sigData.signature_url], submissionId });
+      } else {
+        setViewSignature({ url: '', approver: 'No signature data', level, allUrls: [], submissionId });
       }
     } catch { /* ignore */ }
     finally { setSigLoading(undefined); }
@@ -692,35 +691,52 @@ export default function CompletedPage({ data }: Props) {
                 <h3 className="text-sm font-semibold text-gray-900">Signature</h3>
                 <button onClick={() => setViewSignature(null)} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
               </div>
-              <div className="p-5 space-y-4">
-                <p className="text-xs text-gray-500 text-center">L{viewSignature.level} — {viewSignature.approver}</p>
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-1">Signature URL</p>
-                  <input
-                    type="text"
-                    readOnly
-                    value={viewSignature.url}
-                    onFocus={(e) => e.currentTarget.select()}
-                    className="w-full text-[11px] font-mono px-2 py-2 border border-gray-200 rounded bg-gray-50 text-gray-700"
-                  />
+              <div className="p-5 space-y-3">
+                <div className="text-center">
+                  <p className="text-xs text-gray-500">L{viewSignature.level} — {viewSignature.approver}</p>
+                  <p className="text-[10px] text-gray-400 font-mono mt-0.5">Submission {viewSignature.submissionId.slice(0, 12)}…</p>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => { navigator.clipboard.writeText(viewSignature.url); }}
-                    className="px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm transition-colors"
-                  >
-                    Copy URL
-                  </button>
-                  <a
-                    href={viewSignature.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium text-sm transition-colors"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" /> Open in JotForm
-                  </a>
-                </div>
+                {viewSignature.allUrls.length === 0 ? (
+                  <p className="text-xs text-amber-700 text-center py-4 bg-amber-50 border border-amber-200 rounded">
+                    No signature data stored for this submission.
+                  </p>
+                ) : (
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-1">
+                      {viewSignature.allUrls.length > 1
+                        ? `Found ${viewSignature.allUrls.length} signature URLs in this submission`
+                        : 'Signature URL'}
+                    </p>
+                    <div className="space-y-1.5">
+                      {viewSignature.allUrls.map((url, i) => (
+                        <div key={i} className="flex gap-1.5 items-stretch">
+                          <input
+                            type="text"
+                            readOnly
+                            value={url}
+                            onFocus={(e) => e.currentTarget.select()}
+                            className="flex-1 text-[11px] font-mono px-2 py-2 border border-gray-200 rounded bg-gray-50 text-gray-700"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => { navigator.clipboard.writeText(url); }}
+                            className="px-2 py-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 text-[10px] font-medium transition-colors whitespace-nowrap"
+                          >
+                            Copy
+                          </button>
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2 py-2 rounded bg-blue-100 hover:bg-blue-200 text-blue-700 text-[10px] font-medium transition-colors whitespace-nowrap flex items-center"
+                          >
+                            Open
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </motion.div>
           </motion.div>
