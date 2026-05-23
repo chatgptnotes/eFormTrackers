@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const env = require('../config/env');
-const { jotformFetch, buildJotformUrl } = require('../lib/jotform');
+const { jotformFetch, buildJotformUrl, resolveApiKey } = require('../lib/jotform');
 const { readKeyType } = require('../lib/key-type');
 const { pMapLimit } = require('../lib/concurrency');
 const { requireAuth, requireRole } = require('../middleware/auth');
@@ -99,7 +99,10 @@ router.get('/cleanup-submissions', requireAuth, requireRole('admin'), async (req
     await pMapLimit(toDelete, 8, async (sub) => {
       try {
         const url = buildJotformUrl(`submission/${sub.id}`, keyType);
-        const r = await fetch(url.toString(), { method: 'DELETE' });
+        const r = await fetch(url.toString(), {
+          method: 'DELETE',
+          headers: { 'APIKEY': resolveApiKey(keyType) },
+        });
         if (r.ok) deleted.push(sub.id);
         else failed.push({ id: sub.id, error: `HTTP ${r.status}` });
       } catch (e) {

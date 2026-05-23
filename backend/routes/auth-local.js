@@ -195,8 +195,8 @@ router.post('/verify-workspace-member', validate(verifyWorkspaceMemberBodySchema
 
     // Fetch & cache workspace members
     if (!memberCache || Date.now() - memberCache.fetchedAt > CACHE_TTL) {
-      const url = `${env.JOTFORM_BASE}/users?apiKey=${env.JOTFORM_API_KEY}&teamID=${env.JOTFORM_TEAM_ID}`;
-      const response = await fetch(url);
+      const url = `${env.JOTFORM_BASE}/users?teamID=${env.JOTFORM_TEAM_ID}`;
+      const response = await fetch(url, { headers: { 'APIKEY': env.JOTFORM_API_KEY } });
       if (!response.ok) throw new Error(`JotForm API ${response.status}`);
       const data = await response.json();
       const raw = Array.isArray(data?.content) ? data.content : [];

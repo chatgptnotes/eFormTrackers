@@ -140,7 +140,7 @@ router.post('/workflow-action', validate(workflowActionBodySchema), async (req, 
     const completeUrl = buildJotformUrl(`workflow/task/${taskId}/complete`, keyType);
     const completeRes = await fetch(completeUrl.toString(), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'APIKEY': resolveApiKey(keyType) },
       body: JSON.stringify(body),
     });
 
@@ -248,7 +248,10 @@ router.delete('/delete-submission', requireRole('admin'), validate(deleteSubmiss
 
     const keyType = readKeyType(req);
     const deleteUrl = buildJotformUrl(`submission/${submissionId}`, keyType);
-    const deleteRes = await fetch(deleteUrl.toString(), { method: 'DELETE' });
+    const deleteRes = await fetch(deleteUrl.toString(), {
+      method: 'DELETE',
+      headers: { 'APIKEY': resolveApiKey(keyType) },
+    });
 
     if (deleteRes.ok) {
       // Also remove from local DB
@@ -289,7 +292,7 @@ router.post('/jotform-update', validate(jotformUpdateQuerySchema, 'query'), asyn
     const url = buildJotformUrl(`submission/${submissionId}`, keyType);
     const response = await fetch(url.toString(), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'APIKEY': apiKey },
       body: params.toString(),
     });
     const data = await response.json();

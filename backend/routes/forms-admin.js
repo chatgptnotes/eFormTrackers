@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const env = require('../config/env');
-const { jotformFetch, buildJotformUrl } = require('../lib/jotform');
+const { jotformFetch, buildJotformUrl, resolveApiKey } = require('../lib/jotform');
 const { readKeyType } = require('../lib/key-type');
 const { validate } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
@@ -95,7 +95,7 @@ router.post('/ensure-fields', validate(formIdRequiredQuerySchema, 'query'), asyn
     const createUrl = buildJotformUrl(`form/${formId}/questions`, keyType);
     const createRes = await fetch(createUrl.toString(), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'APIKEY': resolveApiKey(keyType) },
       body: params.toString(),
     });
     if (!createRes.ok) {
@@ -164,7 +164,7 @@ router.post('/register-webhooks', async (req, res, next) => {
         const url = buildJotformUrl(`form/${formId}/webhooks`, keyType);
         const response = await fetch(url.toString(), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'APIKEY': resolveApiKey(keyType) },
           body: params.toString(),
         });
         results.push({ formId, status: response.ok ? 'ok' : 'error', detail: response.ok ? undefined : `HTTP ${response.status}` });

@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Submission, ApprovalLevel, FilterConfig, SortConfig, PaginationConfig, RefreshConfig } from '../types';
 import { getDashboardStats, getApprovalLevelStats, getDepartmentStats, getTrendData, getBottleneckData, getHeatmapData } from '../services/mockData';
 import { apiFetch } from '../lib/api';
+import { humanizeError } from '../lib/errors';
+import { io, Socket } from 'socket.io-client';
 import { JFFormMeta } from '../services/formDiscovery';
 import { WorkflowStep, clearWorkflowStepCache, clearWorkflowTaskCache } from './workflowTaskCache';
 import { clearApproverConfigCache } from './useApproverConfig';
@@ -43,6 +45,10 @@ function clearAllJotFlowCaches() {
   clearWorkflowTaskCache();
   clearApproverConfigCache();
 }
+
+// ─── Backend URL for Socket.IO connection ─────────────────────────────────────
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ||
+  (import.meta.env.DEV ? 'http://localhost:3001' : window.location.origin);
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 export function useSubmissions() {
@@ -142,7 +148,7 @@ export function useSubmissions() {
       }
     } catch (err: unknown) {
       if (!hasCachedData) {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(humanizeError(err, 'Failed to load submissions'));
         setAllSubmissions([]);
       }
     } finally {
@@ -172,24 +178,33 @@ export function useSubmissions() {
     if (activeFormIds.length === 0) return;
 
     try {
+      setLoading(prev => {
+        // Only show loading spinner on first load (when no data yet)
+        return allSubmissions.length === 0 ? true : prev;
+      });
       const data = await apiFetch<Record<string, unknown>[]>(
         `/api/submissions?form_ids=${activeFormIds.join(',')}&limit=20000&order=desc`
       );
-      if (!data || data.length === 0) return; // never wipe state with empty result
+      if (!data || data.length === 0) {
+        setLoading(false);
+        return;
+      }
 
       const mapped = data.map(row => mapSupabaseRow(row as Record<string, unknown>));
       setAllSubmissions(mapped);
       setRefreshConfig(prev => ({ ...prev, lastUpdated: new Date().toISOString() }));
     } catch (err) {
-      console.warn('[useSubmissions] Supabase refresh failed:', err);
+      console.warn('[useSubmissions] DB read failed:', err);
+      setError(humanizeError(err, 'Failed to load submissions'));
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  }, [allSubmissions.length]);
 
-  // On mount: paint from Supabase immediately (fast), then refresh from JotForm
+  // ─── On mount: load from DB ────────────────────────────────────────────────
   useEffect(() => {
     loadFromSupabase();
-    loadData();
-  }, [loadData, loadFromSupabase]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listen for JotForm API key toggle from Settings.
   // Instant swap UX: paint the new key's localStorage cache immediately
@@ -241,7 +256,28 @@ export function useSubmissions() {
     } catch {}
   }, []);
 
-  // Polling fallback — replaces Supabase realtime channel (30s)
+  // ─── Socket.IO: receive submissions:updated from backend poller ─────────────
+  const socketRef = useRef<Socket | null>(null);
+  useEffect(() => {
+    const socket = io(BACKEND_URL, {
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 5,
+      reconnectionDelay: 2000,
+    });
+    socketRef.current = socket;
+
+    socket.on('submissions:updated', () => {
+      loadFromSupabase();
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [loadFromSupabase]);
+
+  // Polling fallback — replaces Supabase realtime channel (30s).
+  // Runs alongside Socket.IO so a missed event still catches up.
   useEffect(() => {
     const interval = setInterval(loadFromSupabase, 30_000);
     return () => clearInterval(interval);
@@ -322,7 +358,6 @@ export function useSubmissions() {
       const currentLvl = sub.currentApprovalLevel;
 
       if (patch.newLevel !== undefined && typeof currentLvl === 'number') {
-        // Mark the current level as approved/rejected in history
         const histIdx = updatedHistory.findIndex(h => h.level === currentLvl);
         const isRejected = patch.newLevel === 'rejected';
         const entry = {
@@ -334,11 +369,9 @@ export function useSubmissions() {
         if (histIdx >= 0) updatedHistory[histIdx] = entry;
         else updatedHistory.push(entry);
 
-        // Add pending entry for next level (if approved and not completed)
         if (!isRejected && patch.newLevel !== 'completed' && typeof patch.newLevel === 'number') {
           const nextLvl = patch.newLevel as ApprovalLevel;
           const nextExists = updatedHistory.findIndex(h => h.level === nextLvl);
-          // Resolve next-level approver from workflow step config
           const formSteps = stepsByForm[sub.formId] || [];
           const nextStep = formSteps.find(s => s.level === nextLvl);
           const nextApprover = nextStep?.assigneeEmail || `Level ${nextLvl} Approver`;
@@ -351,7 +384,7 @@ export function useSubmissions() {
         currentApprovalLevel: patch.newLevel ?? sub.currentApprovalLevel,
         jotformStatus: patch.newJotformStatus ?? sub.jotformStatus,
         approvalHistory: updatedHistory,
-        daysAtCurrentLevel: 0, // reset — just actioned
+        daysAtCurrentLevel: 0,
       };
     }));
   }, [stepsByForm]);
@@ -362,10 +395,10 @@ export function useSubmissions() {
     try { localStorage.removeItem('jotflow_submissions_cache'); } catch { /* ignore */ }
     // Staggered retries: 3s, 6s, 12s — webhook usually fires within 5-10s.
     const timers = [3000, 6000, 12000].map(ms =>
-      setTimeout(() => loadData({ force: true }), ms)
+      setTimeout(() => loadFromSupabase({ force: true }), ms)
     );
     return () => timers.forEach(t => clearTimeout(t));
-  }, [loadData, startActionCooldown]);
+  }, [loadFromSupabase, startActionCooldown]);
 
   return {
     allSubmissions, filteredSubmissions, paginatedSubmissions,
@@ -376,7 +409,7 @@ export function useSubmissions() {
     sort, setSort,
     pagination, setPagination,
     refreshConfig, setRefreshConfig,
-    refresh: loadData,
+    refresh: loadFromSupabase,
     refreshFromSupabase: loadFromSupabase,
     optimisticUpdate,
     scheduleRefreshAfterAction,

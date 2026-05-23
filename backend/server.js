@@ -10,6 +10,8 @@ const sessionMiddleware = require('./config/session');
 const errorHandler = require('./middleware/errorHandler');
 const { globalLimiter } = require('./middleware/rateLimit');
 const { initRealtime } = require('./lib/realtime');
+const { authLimiter, webhookLimiter, apiLimiter } = require('./middleware/rateLimiter');
+const { startPoller } = require('./lib/poller');
 
 const app = express();
 const server = http.createServer(app);
@@ -68,6 +70,11 @@ app.use(sessionMiddleware);
 const path = require('path');
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// ── Rate limiting ──
+app.use('/api/auth', authLimiter);
+app.use('/api/webhook', webhookLimiter);
+app.use('/api', apiLimiter);
+
 // ── Routes ──
 app.use('/api/auth', require('./routes/auth-local'));
 app.use('/api/auth', require('./routes/auth-microsoft'));
@@ -107,4 +114,5 @@ app.use(errorHandler);
 // ── Start ──
 server.listen(env.PORT, () => {
   logger.info({ port: env.PORT, env: env.NODE_ENV }, '[JotFlow] Backend listening');
+  startPoller();
 });

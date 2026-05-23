@@ -4,6 +4,7 @@ import { CheckCircle2, XCircle, Clock, AlertTriangle, User, Building2, Calendar,
 import SubmissionModal from '../components/SubmissionModal';
 import { Submission } from '../types';
 import { apiFetch } from '../lib/api';
+import { humanizeError } from '../lib/errors';
 
 // ── Director context (hardcoded for demo) ───────────────────────────────────
 const DIRECTOR = {
@@ -97,7 +98,7 @@ export default function Dashboard({ data }: Props) {
       }).catch(err => console.warn('[JotFlow] Approval action failed:', err));
     } catch (err) {
       console.error('Approval error:', err);
-      alert(`Failed to submit decision: ${err instanceof Error ? err.message : String(err)}`);
+      alert(`Failed to submit decision: ${humanizeError(err)}`);
     } finally {
       setActionLoading(null);
     }

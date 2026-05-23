@@ -6,7 +6,8 @@ function resolveApiKey(keyType) {
 }
 
 /**
- * Fetch from JotForm API.
+ * Fetch from JotForm API. The API key is passed via the `APIKEY` request
+ * header (never in the URL) so the secret never appears in URL logs.
  *
  * Key/scope rules (empirically verified against eforms.mediaoffice.ae):
  *  - keyType 'default' (regular JotForm API key): use the path as-is and
@@ -20,6 +21,7 @@ function resolveApiKey(keyType) {
  *
  * Build a manual URL via `buildJotformUrl(path, keyType)` (exported below) for
  * call sites that need fetch() directly (POSTs with custom bodies, DELETE).
+ * Those call sites must set the `APIKEY` header themselves via `resolveApiKey`.
  *
  * @param {string} path  e.g. "user/forms", "submission/123", "form/{id}/questions"
  * @param {object} [opts]  { params, method, body, headers, keyType }
@@ -37,10 +39,16 @@ async function jotformFetch(path, opts = {}) {
     }
   }
 
-  const fetchOpts = { method: opts.method || 'GET' };
+  const apiKey = resolveApiKey(opts.keyType);
+  const fetchOpts = {
+    method: opts.method || 'GET',
+    headers: { 'APIKEY': apiKey, ...(opts.headers || {}) },
+  };
   if (opts.body) {
     fetchOpts.body = opts.body;
-    fetchOpts.headers = opts.headers || { 'Content-Type': 'application/json' };
+    if (!fetchOpts.headers['Content-Type']) {
+      fetchOpts.headers['Content-Type'] = 'application/json';
+    }
   }
 
   const response = await fetch(url.toString(), fetchOpts);
@@ -55,9 +63,12 @@ async function jotformFetch(path, opts = {}) {
 }
 
 /**
- * Build a JotForm URL with the same key/scope rules as jotformFetch — for
+ * Build a JotForm URL with the same path/scope rules as jotformFetch — for
  * call sites that need to fetch() directly (e.g. multipart POST, DELETE).
  * Returns a URL object so the caller can add more searchParams if needed.
+ *
+ * IMPORTANT: this no longer adds `apiKey` to the URL. Callers must send the
+ * key via the `APIKEY` request header (use `resolveApiKey(keyType)`).
  */
 function buildJotformUrl(path, keyType) {
   const isGdmo = keyType === 'gdmo';
@@ -65,12 +76,9 @@ function buildJotformUrl(path, keyType) {
     ? 'enterprise/' + path.slice('user/'.length)
     : path;
   const url = new URL(`${env.JOTFORM_BASE}/${effectivePath}`);
-  url.searchParams.set('apiKey', resolveApiKey(keyType));
   if (!isGdmo && env.JOTFORM_TEAM_ID) url.searchParams.set('teamID', env.JOTFORM_TEAM_ID);
   // DEBUG: visible in backend console — confirm keyType routing per request.
-  // Strip the apiKey from the logged URL so the secret stays out of logs.
-  const safeUrl = url.toString().replace(/apiKey=[^&]+/, 'apiKey=***');
-  console.log(`[jotform] keyType=${keyType || 'default(implicit)'}  path=${path}  ->  ${safeUrl}`);
+  console.log(`[jotform] keyType=${keyType || 'default(implicit)'}  path=${path}  ->  ${url.toString()}`);
   return url;
 }
 

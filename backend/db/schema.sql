@@ -195,3 +195,16 @@ CREATE TABLE IF NOT EXISTS activity_log (
 );
 CREATE INDEX IF NOT EXISTS idx_activity_log_user ON activity_log (user_email);
 CREATE INDEX IF NOT EXISTS idx_activity_log_entity ON activity_log (entity_type, entity_id);
+
+-- ============================================================
+-- 12. jf_forms (form metadata + creator, synced by poller)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS jf_forms (
+  form_id          TEXT PRIMARY KEY,
+  title            TEXT DEFAULT '',
+  creator_username TEXT DEFAULT '',
+  status           TEXT DEFAULT '',
+  created_at_jf    TIMESTAMPTZ,
+  updated_at_jf    TIMESTAMPTZ,
+  last_synced      TIMESTAMPTZ DEFAULT now()
+);

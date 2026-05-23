@@ -21,6 +21,7 @@ import { SignatureViewerModal } from '../components/dashboard/SignatureViewerMod
 import { getUserConfig, isSubmissionVisible } from '../config/currentUser';
 import { useAuth } from '../contexts/AuthContext';
 import { apiFetch } from '../lib/api';
+import { humanizeError } from '../lib/errors';
 import { exportToExcel } from '../services/exportService';
 
 interface Props {
@@ -406,7 +407,7 @@ export default function DirectorDashboard({ data }: Props) {
       await refreshExpandedTasks(submissionId);
       data.scheduleRefreshAfterAction();
     } catch (err) {
-      alert(`Approve failed: ${err instanceof Error ? err.message : String(err)}`);
+      alert(`Approve failed: ${humanizeError(err)}`);
     } finally {
       setTaskActionLoading(null);
     }
@@ -426,7 +427,7 @@ export default function DirectorDashboard({ data }: Props) {
       await refreshExpandedTasks(submissionId);
       data.scheduleRefreshAfterAction();
     } catch (err) {
-      alert(`Reject failed: ${err instanceof Error ? err.message : String(err)}`);
+      alert(`Reject failed: ${humanizeError(err)}`);
     } finally {
       setTaskActionLoading(null);
     }
@@ -443,7 +444,7 @@ export default function DirectorDashboard({ data }: Props) {
       await refreshExpandedTasks(submissionId);
       data.scheduleRefreshAfterAction();
     } catch (err) {
-      alert(`Complete failed: ${err instanceof Error ? err.message : String(err)}`);
+      alert(`Complete failed: ${humanizeError(err)}`);
     } finally {
       setTaskActionLoading(null);
     }
@@ -462,7 +463,7 @@ export default function DirectorDashboard({ data }: Props) {
         alert('Signature not found');
       }
     } catch (err) {
-      alert('Failed to fetch signature');
+      alert(humanizeError(err, 'Could not load the signature. Please try again.'));
     } finally {
       setSigLoading(null);
     }
@@ -786,7 +787,7 @@ export default function DirectorDashboard({ data }: Props) {
       // Staggered refresh — catches webhook delay (3s, 6s, 12s)
       data.scheduleRefreshAfterAction();
     } catch (err) {
-      alert(`Rejection failed: ${err instanceof Error ? err.message : String(err)}`);
+      alert(`Rejection failed: ${humanizeError(err)}`);
     } finally {
       setActionLoading(null);
     }
@@ -838,7 +839,7 @@ export default function DirectorDashboard({ data }: Props) {
       setSyncSubmission(null);
       data.scheduleRefreshAfterAction();
     } catch (err) {
-      alert(`Sync failed: ${err instanceof Error ? err.message : String(err)}`);
+      alert(`Sync failed: ${humanizeError(err)}`);
     } finally {
       setSyncLoading(false);
     }

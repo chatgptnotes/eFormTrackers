@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Users, Shield, Loader2, RefreshCw, AlertTriangle, UserPlus, Mail, Lock, X, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { apiFetch } from '../lib/api';
+import { ApiError, messageFromStatus, humanizeError } from '../lib/errors';
 
 interface TeamMember {
   id: string;
@@ -70,7 +71,7 @@ export default function TeamManagement() {
       setMembers(data.members || []);
     } catch (err) {
       console.error('Failed to load team members:', err);
-      setError(err instanceof Error ? err.message : String(err));
+      setError(humanizeError(err, 'Could not load team members. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -96,7 +97,7 @@ export default function TeamManagement() {
         throwOnError: false,
       });
       if (!data.user) {
-        throw new Error(data.error || 'Failed to create user');
+        throw new ApiError(messageFromStatus(0, data.error), 0, data.error);
       }
       setCreateSuccess(`User ${data.user.email} created as ${data.user.role}`);
       setNewEmail('');
@@ -107,7 +108,7 @@ export default function TeamManagement() {
       // Refresh member list
       loadMembers();
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : String(err));
+      setCreateError(humanizeError(err, 'Could not create the user. Please try again.'));
     } finally {
       setCreating(false);
     }

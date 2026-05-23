@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Zap, Mail, Lock, User, Building2, ArrowRight, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { humanizeError } from '../lib/errors';
 
 export default function Signup() {
   const { signUp } = useAuth();
@@ -16,7 +17,7 @@ export default function Signup() {
     setLoading(true);
     setError('');
     const { error: err } = await signUp(form.email, form.password, form.fullName, form.orgName, form.department);
-    if (err) setError(typeof err === 'string' ? err : (err as Error)?.message || 'Signup failed. Please try again.');
+    if (err) setError(humanizeError(err, 'Sign up failed. Please try again.'));
     else setSuccess(true);
     setLoading(false);
   };
