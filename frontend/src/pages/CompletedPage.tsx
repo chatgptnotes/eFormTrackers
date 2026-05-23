@@ -694,8 +694,6 @@ export default function CompletedPage({ data }: Props) {
               </div>
               <div className="p-4 text-center">
                 <p className="text-xs text-gray-500 mb-3">L{viewSignature.level} — {viewSignature.approver}</p>
-                {/* Plain JotForm URL — image loads if user's browser already has
-                    a JotForm session cookie for eforms.mediaoffice.ae. */}
                 <img
                   src={viewSignature.url}
                   alt="Signature"
@@ -706,9 +704,24 @@ export default function CompletedPage({ data }: Props) {
                     if (fb) fb.style.display = 'block';
                   }}
                 />
-                <p className="hidden text-xs text-gray-500 px-3 mt-2">
-                  Sign in to JotForm in another tab, then this signature will display.
-                </p>
+                <div className="hidden text-left mt-2">
+                  <p className="text-xs text-gray-600 text-center mb-2">Signature image not displayable here.</p>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Signature URL</p>
+                  <input
+                    type="text"
+                    readOnly
+                    value={viewSignature.url}
+                    onFocus={(e) => e.currentTarget.select()}
+                    className="w-full text-[11px] font-mono px-2 py-1.5 border border-gray-200 rounded bg-white text-gray-700"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => { navigator.clipboard.writeText(viewSignature.url); }}
+                    className="mt-2 w-full px-3 py-1.5 rounded bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium text-xs transition-colors"
+                  >
+                    Copy URL
+                  </button>
+                </div>
                 <a
                   href={viewSignature.url}
                   target="_blank"

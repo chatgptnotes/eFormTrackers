@@ -851,24 +851,36 @@ export default function ModernDashboard({ data }: Props) {
                 <h3 className="text-sm font-semibold text-gray-900">Signature</h3>
                 <button onClick={() => setViewSignature(null)} className="p-1 rounded-lg hover:bg-gray-100 text-gray-600 hover:text-gray-900">✕</button>
               </div>
-              <div className="p-4 bg-gray-50 flex flex-col items-center justify-center gap-2" style={{ minHeight: '300px' }}>
-                {/* Plain JotForm URL — image loads if the user's browser
-                    already has a JotForm session cookie for eforms.mediaoffice.ae.
-                    Otherwise onError fires and the Open-in-JotForm button below
-                    becomes the only path. */}
+              <div className="p-4 bg-gray-50 flex flex-col items-center justify-center gap-3" style={{ minHeight: '300px' }}>
+                {/* Plain JotForm URL — loads if user has JotForm cookie. */}
                 <img
                   src={viewSignature.url}
                   alt="Signature"
-                  className="max-w-full max-h-[400px] object-contain"
+                  className="max-w-full max-h-[300px] object-contain"
                   onError={(e) => {
                     e.currentTarget.style.display = 'none';
                     const fb = e.currentTarget.nextElementSibling as HTMLElement | null;
                     if (fb) fb.style.display = 'block';
                   }}
                 />
-                <p className="hidden text-xs text-gray-500 text-center px-3 pt-6">
-                  Sign in to JotForm in another tab, then this signature will display.
-                </p>
+                <div className="hidden w-full">
+                  <p className="text-sm text-gray-600 text-center mb-3">Signature image not displayable here.</p>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Signature URL</p>
+                  <input
+                    type="text"
+                    readOnly
+                    value={viewSignature.url}
+                    onFocus={(e) => e.currentTarget.select()}
+                    className="w-full text-[11px] font-mono px-2 py-1.5 border border-gray-200 rounded bg-white text-gray-700 truncate"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => { navigator.clipboard.writeText(viewSignature.url); }}
+                    className="mt-2 w-full px-3 py-1.5 rounded bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium text-xs transition-colors"
+                  >
+                    Copy URL
+                  </button>
+                </div>
               </div>
               <div className="p-4 border-t border-gray-200 flex gap-2">
                 <a href={viewSignature.url} target="_blank" rel="noopener noreferrer"
