@@ -692,40 +692,14 @@ export default function CompletedPage({ data }: Props) {
                 <h3 className="text-sm font-semibold text-gray-900">Signature</h3>
                 <button onClick={() => setViewSignature(null)} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
               </div>
-              <div className="p-6 text-center">
-                <p className="text-xs text-gray-500 mb-4">L{viewSignature.level} — {viewSignature.approver}</p>
-                {/* JotForm serves authenticated /uploads/ with X-Frame-Options:
-                    DENY, blocking <img> and <iframe>. Use window.open with
-                    popup features to display the signature in a top-level
-                    browsing context that satisfies JotForm's anti-leech. */}
-                <p className="text-sm text-gray-600 mb-4">
-                  Click below to open the signature in a popup window.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    window.open(
-                      viewSignature.url,
-                      'jotform-signature',
-                      'popup,width=700,height=520,top=200,left=400,toolbar=no,menubar=no,location=no'
-                    );
-                  }}
-                  className="px-5 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm transition-colors inline-flex items-center gap-2 shadow"
-                >
-                  <ExternalLink className="w-4 h-4" /> View Signature in Popup
-                </button>
-                <p className="text-[11px] text-gray-400 mt-4 max-w-xs mx-auto">
-                  Direct embedding is blocked by JotForm; the popup uses your existing JotForm browser session.
-                </p>
-                <div className="mt-4 flex gap-2 justify-center">
-                  <button
-                    type="button"
-                    onClick={() => { navigator.clipboard.writeText(viewSignature.url); }}
-                    className="px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-xs transition-colors"
-                  >
-                    Copy URL
-                  </button>
-                </div>
+              <div className="p-4 text-center">
+                <p className="text-xs text-gray-500 mb-3">L{viewSignature.level} — {viewSignature.approver}</p>
+                {/* Plain <img>. JotForm blocks every alternative. */}
+                <img
+                  src={viewSignature.url}
+                  alt="Signature"
+                  className="max-w-full mx-auto rounded-lg border border-gray-200"
+                />
                 <a
                   href={viewSignature.url}
                   target="_blank"
