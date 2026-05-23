@@ -851,27 +851,45 @@ export default function ModernDashboard({ data }: Props) {
                 <h3 className="text-sm font-semibold text-gray-900">Signature</h3>
                 <button onClick={() => setViewSignature(null)} className="p-1 rounded-lg hover:bg-gray-100 text-gray-600 hover:text-gray-900">✕</button>
               </div>
-              <div className="p-2 bg-gray-50 flex items-center justify-center" style={{ minHeight: '380px' }}>
-                {/* iframe instead of <img>: JotForm protects /uploads/ behind
-                    session cookies that are SameSite=None+Secure. Sub-resource
-                    <img> from a different origin does send those cookies, but
-                    JotForm's auth check often rejects the request anyway. An
-                    iframe loads the URL as a separate browsing context (same
-                    way the user's "Open in new tab" already works), so the
-                    cookies are sent and the PNG renders inside the modal.
-                    If the user has no JotForm cookies, the iframe shows
-                    JotForm's login page — they can sign in right there. */}
-                <iframe
-                  src={viewSignature.url}
-                  title="Signature"
-                  className="w-full h-[380px] border-0 rounded-lg bg-white"
-                  sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
-                />
+              <div className="p-6 bg-gray-50 flex flex-col items-center justify-center gap-4" style={{ minHeight: '300px' }}>
+                {/* JotForm serves authenticated /uploads/ with X-Frame-Options:
+                    DENY, so we cannot embed it as <img> or <iframe>. The only
+                    way to display the actual signature is a top-level browsing
+                    context (new tab/window). window.open with popup features
+                    opens a small focused window that feels like an in-app popup
+                    while satisfying JotForm's anti-leech requirement. */}
+                <p className="text-sm text-gray-600 text-center">
+                  Click below to open the signature in a popup window.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.open(
+                      viewSignature.url,
+                      'jotform-signature',
+                      'popup,width=700,height=520,top=200,left=400,toolbar=no,menubar=no,location=no'
+                    );
+                  }}
+                  className="px-5 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm transition-colors flex items-center gap-2 shadow"
+                >
+                  <ExternalLink className="w-4 h-4" /> View Signature in Popup
+                </button>
+                <p className="text-[11px] text-gray-400 text-center max-w-xs">
+                  Direct image embedding is blocked by JotForm. The popup uses your
+                  existing JotForm browser session.
+                </p>
               </div>
-              <div className="p-4 border-t border-gray-200 flex gap-2">
+              <div className="p-3 border-t border-gray-200 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => { navigator.clipboard.writeText(viewSignature.url); }}
+                  className="flex-1 px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-xs transition-colors"
+                >
+                  Copy URL
+                </button>
                 <a href={viewSignature.url} target="_blank" rel="noopener noreferrer"
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium text-sm transition-colors">
-                  <ExternalLink className="w-4 h-4" />Open in JotForm</a>
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium text-xs transition-colors">
+                  <ExternalLink className="w-4 h-4" />Open in Full Tab</a>
               </div>
             </motion.div>
           </motion.div>
