@@ -852,12 +852,12 @@ export default function ModernDashboard({ data }: Props) {
                 <button onClick={() => setViewSignature(null)} className="p-1 rounded-lg hover:bg-gray-100 text-gray-600 hover:text-gray-900">✕</button>
               </div>
               <div className="p-4 bg-gray-50 flex flex-col items-center justify-center gap-2" style={{ minHeight: '300px' }}>
-                {/* Image is served through our backend signature-proxy which
-                    uses the stored JotForm session cookie to fetch the file.
-                    onError fallback only shows if the proxy itself fails
-                    (e.g. expired cookie). */}
+                {/* Plain JotForm URL — image loads if the user's browser
+                    already has a JotForm session cookie for eforms.mediaoffice.ae.
+                    Otherwise onError fires and the Open-in-JotForm button below
+                    becomes the only path. */}
                 <img
-                  src={`/api/signature-proxy?url=${encodeURIComponent(viewSignature.url)}`}
+                  src={viewSignature.url}
                   alt="Signature"
                   className="max-w-full max-h-[400px] object-contain"
                   onError={(e) => {
@@ -866,11 +866,8 @@ export default function ModernDashboard({ data }: Props) {
                     if (fb) fb.style.display = 'block';
                   }}
                 />
-                <p className="hidden text-xs text-amber-700 text-center px-3">
-                  Signature unavailable — backend JotForm session may need refresh.{' '}
-                  <a href={viewSignature.url} target="_blank" rel="noopener noreferrer" className="underline font-medium">
-                    Open in JotForm
-                  </a>
+                <p className="hidden text-xs text-gray-500 text-center px-3 pt-6">
+                  Sign in to JotForm in another tab, then this signature will display.
                 </p>
               </div>
               <div className="p-4 border-t border-gray-200 flex gap-2">

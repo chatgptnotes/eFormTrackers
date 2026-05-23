@@ -694,11 +694,10 @@ export default function CompletedPage({ data }: Props) {
               </div>
               <div className="p-4 text-center">
                 <p className="text-xs text-gray-500 mb-3">L{viewSignature.level} — {viewSignature.approver}</p>
-                {/* Image is served through our backend signature-proxy which
-                    uses the stored JotForm session cookie to fetch the file.
-                    onError fallback only shows if the proxy itself fails. */}
+                {/* Plain JotForm URL — image loads if user's browser already has
+                    a JotForm session cookie for eforms.mediaoffice.ae. */}
                 <img
-                  src={`/api/signature-proxy?url=${encodeURIComponent(viewSignature.url)}`}
+                  src={viewSignature.url}
                   alt="Signature"
                   className="max-w-full mx-auto rounded-lg border border-gray-200"
                   onError={(e) => {
@@ -707,8 +706,8 @@ export default function CompletedPage({ data }: Props) {
                     if (fb) fb.style.display = 'block';
                   }}
                 />
-                <p className="hidden text-xs text-amber-700 px-3 mt-2">
-                  Signature unavailable — backend JotForm session may need refresh.
+                <p className="hidden text-xs text-gray-500 px-3 mt-2">
+                  Sign in to JotForm in another tab, then this signature will display.
                 </p>
                 <a
                   href={viewSignature.url}
