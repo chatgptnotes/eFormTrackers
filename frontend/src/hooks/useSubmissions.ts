@@ -172,27 +172,38 @@ export function useSubmissions() {
   const loadFromSupabase = useCallback(async (opts?: { force?: boolean }) => {
     if (!opts?.force && Date.now() < actionCooldownUntil.current) return;
 
-    let activeFormIds: string[] = [];
+    // 1. Ask backend which form IDs are in scope for the active key.
+    //    This is the ONLY backend call needed before the DB read — and it's
+    //    a metadata call (just the IDs/titles), not a JotForm proxy.
+    let scopeForms: JFFormMeta[] = [];
     try {
-      const raw = localStorage.getItem('jotflow_active_form_ids');
-      if (raw) activeFormIds = JSON.parse(raw);
-    } catch { /* ignore */ }
+      const scope = await apiFetch<{ forms?: Array<{ id: string; title: string; count: number; updatedAt: string }> }>(
+        '/api/active-form-ids'
+      );
+      scopeForms = (scope.forms || []).map(f => ({
+        id: f.id, title: f.title, status: 'ENABLED', count: f.count, updatedAt: f.updatedAt,
+      }));
+      setActiveForms(scopeForms);
+      // Persist scope so other code that reads jotflow_active_form_ids works.
+      try { localStorage.setItem('jotflow_active_form_ids', JSON.stringify(scopeForms.map(f => f.id))); } catch {}
+    } catch (e) {
+      console.warn('[useSubmissions] active-form-ids fetch failed:', e);
+    }
+
+    const activeFormIds = scopeForms.map(f => f.id);
     if (activeFormIds.length === 0) {
-      // First load with no cached form IDs — clear the spinner so the JotForm
-      // fetch (loadData) can take over and the skeleton doesn't lock the UI.
       setLoading(false);
       return;
     }
 
+    // 2. Read submissions for the in-scope forms from the DB.
     try {
-      setLoading(prev => {
-        // Only show loading spinner on first load (when no data yet)
-        return allSubmissions.length === 0 ? true : prev;
-      });
+      setLoading(prev => allSubmissions.length === 0 ? true : prev);
       const data = await apiFetch<Record<string, unknown>[]>(
         `/api/submissions?form_ids=${activeFormIds.join(',')}&limit=20000&order=desc`
       );
       if (!data || data.length === 0) {
+        setAllSubmissions([]);
         setLoading(false);
         return;
       }
@@ -208,14 +219,13 @@ export function useSubmissions() {
     }
   }, [allSubmissions.length]);
 
-  // ─── On mount: paint from DB (fast), then refresh from JotForm ─────────────
-  // loadFromSupabase gives instant first paint when localStorage has form IDs.
-  // loadData populates jotflow_active_form_ids AND fetches fresh data from
-  // JotForm — without this call, a fresh session shows skeleton forever
-  // because activeFormIds is empty and loadFromSupabase short-circuits.
+  // ─── On mount: read from DB ────────────────────────────────────────────────
+  // Frontend is DB-only — all JotForm API calls happen server-side (poller +
+  // /api/admin/sync-all). loadFromSupabase fetches the active scope's form IDs
+  // from /api/active-form-ids, then reads /api/submissions for those IDs.
+  // To refresh data from JotForm, use Settings → "Sync All Submissions".
   useEffect(() => {
-    loadFromSupabase();
-    loadData();
+    loadFromSupabase({ force: true });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listen for JotForm API key toggle from Settings.
@@ -225,35 +235,19 @@ export function useSubmissions() {
   // exists for the new key (first-time switch).
   useEffect(() => {
     const onKeyTypeChanged = () => {
-      const newKey = getJotformKeyType();
-      const cacheKey = `jotflow_submissions_cache_${newKey}`;
-      let cachePainted = false;
-      try {
-        const cached = localStorage.getItem(cacheKey);
-        if (cached) {
-          const { submissions, forms } = JSON.parse(cached);
-          // Instant re-render: swap visible data atomically, no spinner.
-          setAllSubmissions(submissions);
-          setActiveForms(forms);
-          cachePainted = true;
-        } else {
-          // First-time switch to this key — clear stale display so the
-          // user doesn't see the old key's data while the fresh fetch runs.
-          setAllSubmissions([]);
-          setActiveForms([]);
-        }
-      } catch (e) {
-        console.warn('[useSubmissions] key-toggle cache read failed:', e);
-      }
-      // Clear in-memory workflow caches (they were keyed by old keyType),
-      // then refresh. Silent if we painted from cache.
+      // Clear stale display + drop the cached active-form-ids list so
+      // loadFromSupabase fetches the new scope.
+      setAllSubmissions([]);
+      setActiveForms([]);
+      try { localStorage.removeItem('jotflow_active_form_ids'); } catch {}
       clearWorkflowStepCache();
       clearWorkflowTaskCache();
-      loadData({ silent: cachePainted });
+      // Re-read from DB with the new key's scope.
+      loadFromSupabase({ force: true });
     };
     window.addEventListener('jotform-key-type-changed', onKeyTypeChanged);
     return () => window.removeEventListener('jotform-key-type-changed', onKeyTypeChanged);
-  }, [loadData]);
+  }, [loadFromSupabase]);
 
   // Auto-register webhooks on mount (cached for 24h)
   useEffect(() => {

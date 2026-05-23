@@ -42,6 +42,50 @@ router.get('/team-form-ids', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── GET /api/active-form-ids ──
+// Returns the form metadata (id + title + count) in scope for the active key.
+// Testing: forms in the configured team (user/forms?teamID).
+// Production: enterprise/forms MINUS the Testing team forms (pure separation).
+// Frontend uses this to know which form_ids to query in jf_submissions —
+// removing the need for the frontend to call /api/jotform directly.
+const activeFormsCache = { default: null, gdmo: null };
+const ACTIVE_FORMS_TTL = 5 * 60 * 1000;
+
+router.get('/active-form-ids', async (req, res, next) => {
+  try {
+    const keyType = readKeyType(req);
+    const cached = activeFormsCache[keyType];
+    if (cached && Date.now() - cached.at < ACTIVE_FORMS_TTL) {
+      res.setHeader('Cache-Control', 'private, max-age=60');
+      return res.json({ keyType, forms: cached.forms, cached: true });
+    }
+    // Fetch the scope-appropriate forms list. jotformFetch handles the
+    // path rewrite (user/ → enterprise/ for gdmo) + teamID rule internally.
+    const data = await jotformFetch('user/forms', { params: { limit: 1000 }, keyType });
+    let forms = (data.content || [])
+      .filter(f => f.id && f.status === 'ENABLED')
+      .map(f => ({
+        id: String(f.id),
+        title: String(f.title || `Form ${f.id}`),
+        count: parseInt(f.count) || 0,
+        updatedAt: String(f.updated_at || ''),
+      }));
+    // Production scope excludes the Testing team forms.
+    if (keyType === 'gdmo' && env.JOTFORM_TEAM_ID) {
+      try {
+        const teamData = await jotformFetch('user/forms', { params: { limit: 1000 }, keyType: 'default' });
+        const teamIds = new Set((teamData.content || []).map(f => String(f.id)));
+        forms = forms.filter(f => !teamIds.has(f.id));
+      } catch (e) {
+        req.log.warn({ err: e.message }, '[active-form-ids] could not subtract team forms');
+      }
+    }
+    activeFormsCache[keyType] = { forms, at: Date.now() };
+    res.setHeader('Cache-Control', 'private, max-age=60');
+    res.json({ keyType, forms });
+  } catch (err) { next(err); }
+});
+
 // ── GET /api/form-workflow?formId=xxx ──
 const workflowCache = {};
 const CACHE_TTL = 60 * 60 * 1000;
