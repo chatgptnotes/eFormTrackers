@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   CheckCircle2, Search, User, Building2, Calendar, Clock, ChevronRight, X,
   LayoutGrid, List, AlignJustify, Columns, PanelRight, CalendarDays, ChevronLeft, ChevronDown,
+  ExternalLink,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
@@ -693,7 +694,38 @@ export default function CompletedPage({ data }: Props) {
               </div>
               <div className="p-4 text-center">
                 <p className="text-xs text-gray-500 mb-3">L{viewSignature.level} — {viewSignature.approver}</p>
-                <img src={viewSignature.url} alt="Signature" className="max-w-full mx-auto rounded-lg border border-gray-200" />
+                {/* JotForm /uploads/ files require a logged-in JotForm browser
+                    session — our API key can't auth them. <img> often fails
+                    silently; the onError fallback exposes the URL as a link. */}
+                <img
+                  src={viewSignature.url}
+                  alt="Signature"
+                  className="max-w-full mx-auto rounded-lg border border-gray-200"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    const fb = e.currentTarget.nextElementSibling as HTMLElement | null;
+                    if (fb) fb.style.display = 'flex';
+                  }}
+                />
+                <div className="hidden flex-col items-center gap-3 text-center px-4 py-6 bg-amber-50 border border-amber-200 rounded-lg">
+                  <div className="text-amber-600 text-3xl">⚠️</div>
+                  <p className="text-sm font-medium text-gray-700">
+                    Signature requires JotForm login to view
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    JotForm protects signature files behind their own session
+                    auth. Click the button below to open in a new tab — sign in
+                    to JotForm if prompted, then the image will display.
+                  </p>
+                </div>
+                <a
+                  href={viewSignature.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium text-sm transition-colors"
+                >
+                  <ExternalLink className="w-4 h-4" /> Open in JotForm
+                </a>
               </div>
             </motion.div>
           </motion.div>

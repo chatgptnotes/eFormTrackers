@@ -851,13 +851,38 @@ export default function ModernDashboard({ data }: Props) {
                 <h3 className="text-sm font-semibold text-gray-900">Signature</h3>
                 <button onClick={() => setViewSignature(null)} className="p-1 rounded-lg hover:bg-gray-100 text-gray-600 hover:text-gray-900">✕</button>
               </div>
-              <div className="p-4 bg-gray-50 flex items-center justify-center" style={{ minHeight: '300px' }}>
-                <img src={viewSignature.url} alt="Signature" className="max-w-full max-h-[400px] object-contain" />
+              <div className="p-4 bg-gray-50 flex flex-col items-center justify-center gap-3" style={{ minHeight: '300px' }}>
+                {/* JotForm /uploads/ files require a logged-in JotForm browser
+                    session — our API key can't auth them. So the <img> tag
+                    often fails. If it loads, great; if not, the fallback link
+                    below opens the URL in a new tab where JotForm can prompt
+                    for auth. */}
+                <img
+                  src={viewSignature.url}
+                  alt="Signature"
+                  className="max-w-full max-h-[400px] object-contain"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    const fb = e.currentTarget.nextElementSibling as HTMLElement | null;
+                    if (fb) fb.style.display = 'flex';
+                  }}
+                />
+                <div className="hidden flex-col items-center gap-3 text-center px-4">
+                  <div className="text-amber-600 text-3xl">⚠️</div>
+                  <p className="text-sm font-medium text-gray-700">
+                    Signature requires JotForm login to view
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    JotForm protects signature files behind their own session
+                    auth. Click below to open in a new tab — sign in to JotForm
+                    if prompted, then the image will display.
+                  </p>
+                </div>
               </div>
               <div className="p-4 border-t border-gray-200 flex gap-2">
                 <a href={viewSignature.url} target="_blank" rel="noopener noreferrer"
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium text-sm transition-colors">
-                  <ExternalLink className="w-4 h-4" />Open</a>
+                  <ExternalLink className="w-4 h-4" />Open in JotForm</a>
               </div>
             </motion.div>
           </motion.div>
