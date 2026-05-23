@@ -151,6 +151,8 @@ export default function CompletedPage({ data }: Props) {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [calYear, setCalYear] = useState(() => new Date().getFullYear());
   const [calMonth, setCalMonth] = useState(() => new Date().getMonth());
+  const ITEMS_PER_PAGE = 9;
+  const [currentPage, setCurrentPage] = useState(1);
 
   const completedSubmissions = useMemo(() => {
     return data.allSubmissions.filter(s =>
@@ -170,6 +172,15 @@ export default function CompletedPage({ data }: Props) {
       s.submittedBy.department?.toLowerCase().includes(q)
     );
   }, [completedSubmissions, search]);
+
+  // Pagination — 9 cards per page. Reset to page 1 whenever the filter
+  // criteria change so the user never lands on a now-empty page.
+  useEffect(() => { setCurrentPage(1); }, [search, activeWorkflowId]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+  const paginated = useMemo(
+    () => filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE),
+    [filtered, currentPage]
+  );
 
   const openSidebarWithTasks = useCallback(async (sub: Submission) => {
     setSidebarSubmission(sub);
@@ -259,7 +270,7 @@ export default function CompletedPage({ data }: Props) {
   const renderGrid = () => (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
       <AnimatePresence>
-        {filtered.map((sub, idx) => (
+        {paginated.map((sub, idx) => (
           <CompletedCard key={sub.id} submission={sub} idx={idx} onClick={openSidebarWithTasks} />
         ))}
       </AnimatePresence>
@@ -283,7 +294,7 @@ export default function CompletedPage({ data }: Props) {
           </thead>
           <tbody>
             <AnimatePresence>
-              {filtered.map((sub, idx) => {
+              {paginated.map((sub, idx) => {
                 const la = getLastApprover(sub);
                 return (
                   <motion.tr key={sub.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }} transition={{ delay: idx * 0.02 }}
@@ -321,7 +332,7 @@ export default function CompletedPage({ data }: Props) {
           </thead>
           <tbody>
             <AnimatePresence>
-              {filtered.map((sub, idx) => {
+              {paginated.map((sub, idx) => {
                 const la = getLastApprover(sub);
                 return (
                   <motion.tr key={sub.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ delay: idx * 0.01 }}
@@ -345,7 +356,7 @@ export default function CompletedPage({ data }: Props) {
   const renderTimeline = () => (
     <div className="relative pl-8 border-l-2 border-emerald-200 ml-4 space-y-0">
       <AnimatePresence>
-        {filtered.map((sub, idx) => {
+        {paginated.map((sub, idx) => {
           const la = getLastApprover(sub);
           const steps = (sub.approvalHistory || []).filter(h => h.status === 'approved').length;
           return (
@@ -414,7 +425,7 @@ export default function CompletedPage({ data }: Props) {
   const renderMasonry = () => (
     <div className="columns-1 md:columns-2 lg:columns-3 gap-5 space-y-5">
       <AnimatePresence>
-        {filtered.map((sub, idx) => {
+        {paginated.map((sub, idx) => {
           const la = getLastApprover(sub);
           return (
             <motion.div key={sub.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} transition={{ delay: idx * 0.03 }}
@@ -451,7 +462,7 @@ export default function CompletedPage({ data }: Props) {
         <div className="w-72 flex-shrink-0 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
           <div className="px-3 py-2 border-b border-gray-100 bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-wider">{filtered.length} submissions</div>
           <div className="flex-1 overflow-y-auto">
-            {filtered.map((sub, idx) => (
+            {paginated.map((sub, idx) => (
               <div key={sub.id}
                 onClick={() => openSidebarWithTasks(sub)}
                 className={`px-3 py-2.5 border-b border-gray-50 cursor-pointer transition-colors ${splitSelected?.id === sub.id ? 'bg-emerald-50 border-l-2 border-l-emerald-400' : 'hover:bg-gray-50'}`}
@@ -575,6 +586,60 @@ export default function CompletedPage({ data }: Props) {
 
         {/* Main Content Area */}
         {mainContent}
+
+        {/* Pagination — 9 cards per page */}
+        {filtered.length > ITEMS_PER_PAGE && (
+          <div className="flex items-center justify-between gap-3 pt-2 pb-6 flex-wrap">
+            <p className="text-sm text-gray-500">
+              Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1}
+              {' '}–{' '}
+              {Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)}
+              {' '}of{' '}
+              {filtered.length}
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                ← Prev
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(n => n === 1 || n === totalPages || Math.abs(n - currentPage) <= 1)
+                .reduce<(number | '…')[]>((acc, n, idx, arr) => {
+                  if (idx > 0 && n - (arr[idx - 1] as number) > 1) acc.push('…');
+                  acc.push(n);
+                  return acc;
+                }, [])
+                .map((n, i) => n === '…' ? (
+                  <span key={`gap-${i}`} className="px-2 text-gray-400 text-sm">…</span>
+                ) : (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setCurrentPage(n)}
+                    className={`min-w-[36px] px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+                      currentPage === n
+                        ? 'bg-emerald-500 text-white'
+                        : 'border border-gray-200 text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              <button
+                type="button"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Next →
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Right Sidebar */}
