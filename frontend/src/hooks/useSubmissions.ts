@@ -47,8 +47,10 @@ function clearAllJotFlowCaches() {
 }
 
 // ─── Backend URL for Socket.IO connection ─────────────────────────────────────
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ||
-  (import.meta.env.DEV ? 'http://localhost:3001' : window.location.origin);
+// In dev: empty string = same origin (Vite dev server) which proxies /socket.io
+// to the backend via the proxy entry in vite.config.ts (ws: true required).
+// In prod: same origin (the backend serves both the SPA and the socket).
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 export function useSubmissions() {

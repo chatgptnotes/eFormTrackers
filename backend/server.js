@@ -114,5 +114,8 @@ app.use(errorHandler);
 // ── Start ──
 server.listen(env.PORT, () => {
   logger.info({ port: env.PORT, env: env.NODE_ENV }, '[JotFlow] Backend listening');
-  startPoller();
+  // Poller disabled until jf_forms table migration is applied. Without it,
+  // every poll cycle floods the log with "relation jf_forms does not exist"
+  // and wastes JotForm API quota for no benefit. Re-enable after migrating.
+  if (process.env.ENABLE_POLLER === '1') startPoller();
 });
