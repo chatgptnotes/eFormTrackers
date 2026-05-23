@@ -1,7 +1,10 @@
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
 
-const required = ['DATABASE_URL', 'SESSION_SECRET', 'JOTFORM_API_KEY', 'JOTFORM_WEBHOOK_SECRET'];
+// Only the truly fatal-on-missing vars are required. JOTFORM_API_KEY,
+// JOTFORM_WEBHOOK_SECRET, and other JotForm vars are optional — code paths
+// that need them check for emptiness at call time and degrade gracefully.
+const required = ['DATABASE_URL', 'SESSION_SECRET'];
 for (const key of required) {
   if (!process.env[key]) {
     // Cannot use the pino logger here because logger.js requires this file.
@@ -27,12 +30,12 @@ if (nodeEnv === 'production' && allowedOrigin === '*') {
 module.exports = {
   DATABASE_URL: process.env.DATABASE_URL,
   SESSION_SECRET: process.env.SESSION_SECRET,
-  JOTFORM_API_KEY: process.env.JOTFORM_API_KEY,
+  JOTFORM_API_KEY: process.env.JOTFORM_API_KEY || '',
   JOTFORM_API_KEY_GDMO: process.env.JOTFORM_API_KEY_GDMO || '',
   JOTFORM_TEAM_ID: process.env.JOTFORM_TEAM_ID || '',
   JOTFORM_BASE: jotformBase,
   JOTFORM_HOST: process.env.JOTFORM_HOST || 'https://eforms.mediaoffice.ae',
-  JOTFORM_WEBHOOK_SECRET: process.env.JOTFORM_WEBHOOK_SECRET,
+  JOTFORM_WEBHOOK_SECRET: process.env.JOTFORM_WEBHOOK_SECRET || '',
   ALLOWED_ORIGIN: allowedOrigin,
   PORT: parseInt(process.env.PORT || '3001', 10),
   NODE_ENV: nodeEnv,
