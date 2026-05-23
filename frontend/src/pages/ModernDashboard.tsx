@@ -286,7 +286,8 @@ export default function ModernDashboard({ data }: Props) {
         setSigLoading(undefined);
         return;
       }
-      const sigUrls: string[] = sub.answers
+      // Form-field signatures (control_signature) live in answers.
+      const answerSigs: string[] = sub.answers
         ? Object.values(sub.answers).filter(
             (v): v is string =>
               typeof v === 'string' &&
@@ -294,7 +295,13 @@ export default function ModernDashboard({ data }: Props) {
               /\.(png|jpe?g)$/i.test(v)
           )
         : [];
-      console.log(`[signature] submission ${submissionId} (level ${level}): found ${sigUrls.length} signature URL(s) in answers`, sigUrls);
+      // Approval-step signatures (approver signed while approving) live in
+      // workflowTasks[].signatureUrl — captured server-side during sync.
+      const taskSigs: string[] = (sub.workflowTasks || [])
+        .map((t) => t.signatureUrl)
+        .filter((u): u is string => typeof u === 'string' && /\.(png|jpe?g)$/i.test(u));
+      const sigUrls = Array.from(new Set([...answerSigs, ...taskSigs]));
+      console.log(`[signature] submission ${submissionId} (level ${level}): ${answerSigs.length} form-field + ${taskSigs.length} approval-step signature(s)`, sigUrls);
       if (sigUrls.length > 0) {
         // Pass ALL URLs found so the modal can show them as a list (user picks).
         // matched = best guess for the clicked level (field-id suffix match).

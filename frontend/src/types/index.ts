@@ -145,6 +145,7 @@ export interface WorkflowTask {
   submittedByEmail: string;
   formData?: Record<string, { label: string; value: string }>;
   submissionDate?: string;  // ISO date from child form's created_at
+  signatureUrl?: string;    // approver's signature captured during this approval step
 }
 
 export type SortDirection = 'asc' | 'desc';

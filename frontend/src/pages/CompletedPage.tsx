@@ -217,7 +217,7 @@ export default function CompletedPage({ data }: Props) {
     try {
       const sub = data.allSubmissions.find((s) => s.id === submissionId);
       if (!sub) { setSigLoading(undefined); return; }
-      const sigUrls: string[] = sub.answers
+      const answerSigs: string[] = sub.answers
         ? Object.values(sub.answers).filter(
             (v): v is string =>
               typeof v === 'string' &&
@@ -225,7 +225,11 @@ export default function CompletedPage({ data }: Props) {
               /\.(png|jpe?g)$/i.test(v)
           )
         : [];
-      console.log(`[signature] submission ${submissionId} (level ${level}): found ${sigUrls.length} signature URL(s)`, sigUrls);
+      const taskSigs: string[] = (sub.workflowTasks || [])
+        .map((t) => t.signatureUrl)
+        .filter((u): u is string => typeof u === 'string' && /\.(png|jpe?g)$/i.test(u));
+      const sigUrls = Array.from(new Set([...answerSigs, ...taskSigs]));
+      console.log(`[signature] submission ${submissionId} (level ${level}): ${answerSigs.length} form-field + ${taskSigs.length} approval-step signature(s)`, sigUrls);
       if (sigUrls.length > 0) {
         const matched = sigUrls.find((u) => u.match(new RegExp(`signature_${level}\\.`))) || sigUrls[0];
         const approver = sub.approvalHistory?.find((h) => h.level === level)?.approverName

@@ -37,6 +37,10 @@ function extractTask(t, derivedLevel) {
       (status === 'COMPLETED' ? (assigneeUser.name || firstRecipient.name || '') : '') || ''),
     submittedByEmail: String(completedBy.email || result.submittedByEmail || result.completed_by_email ||
       (status === 'COMPLETED' ? (props.assigneeEmail || assigneeUser.email || firstRecipient.email || '') : '') || ''),
+    // Approval-step signature: when an approver signs while approving a task,
+    // JotForm stores the signature URL in properties.signature.value. This is
+    // separate from form-field (control_signature) signatures in answers.
+    signatureUrl: String(props.signature?.value || props.signature || ''),
   };
 }
 
