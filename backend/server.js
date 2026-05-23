@@ -42,7 +42,10 @@ app.use(helmet({
           styleSrc: ["'self'", "'unsafe-inline'"],
           imgSrc: ["'self'", "data:", "https:"],
           connectSrc: ["'self'", env.JOTFORM_HOST].filter(Boolean),
-          frameSrc: ["'none'"],
+          // JotForm host allowed in frame-src so the signature modal can
+          // iframe-load /uploads/ URLs (cookies sent in iframe browsing
+          // context same way as a top-level navigation).
+          frameSrc: ["'self'", env.JOTFORM_HOST].filter(Boolean),
           objectSrc: ["'none'"],
           baseUri: ["'self'"],
           formAction: ["'self'"],

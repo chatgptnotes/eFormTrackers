@@ -851,36 +851,22 @@ export default function ModernDashboard({ data }: Props) {
                 <h3 className="text-sm font-semibold text-gray-900">Signature</h3>
                 <button onClick={() => setViewSignature(null)} className="p-1 rounded-lg hover:bg-gray-100 text-gray-600 hover:text-gray-900">✕</button>
               </div>
-              <div className="p-4 bg-gray-50 flex flex-col items-center justify-center gap-3" style={{ minHeight: '300px' }}>
-                {/* Plain JotForm URL — loads if user has JotForm cookie. */}
-                <img
+              <div className="p-2 bg-gray-50 flex items-center justify-center" style={{ minHeight: '380px' }}>
+                {/* iframe instead of <img>: JotForm protects /uploads/ behind
+                    session cookies that are SameSite=None+Secure. Sub-resource
+                    <img> from a different origin does send those cookies, but
+                    JotForm's auth check often rejects the request anyway. An
+                    iframe loads the URL as a separate browsing context (same
+                    way the user's "Open in new tab" already works), so the
+                    cookies are sent and the PNG renders inside the modal.
+                    If the user has no JotForm cookies, the iframe shows
+                    JotForm's login page — they can sign in right there. */}
+                <iframe
                   src={viewSignature.url}
-                  alt="Signature"
-                  className="max-w-full max-h-[300px] object-contain"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                    const fb = e.currentTarget.nextElementSibling as HTMLElement | null;
-                    if (fb) fb.style.display = 'block';
-                  }}
+                  title="Signature"
+                  className="w-full h-[380px] border-0 rounded-lg bg-white"
+                  sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
                 />
-                <div className="hidden w-full">
-                  <p className="text-sm text-gray-600 text-center mb-3">Signature image not displayable here.</p>
-                  <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Signature URL</p>
-                  <input
-                    type="text"
-                    readOnly
-                    value={viewSignature.url}
-                    onFocus={(e) => e.currentTarget.select()}
-                    className="w-full text-[11px] font-mono px-2 py-1.5 border border-gray-200 rounded bg-white text-gray-700 truncate"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => { navigator.clipboard.writeText(viewSignature.url); }}
-                    className="mt-2 w-full px-3 py-1.5 rounded bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium text-xs transition-colors"
-                  >
-                    Copy URL
-                  </button>
-                </div>
               </div>
               <div className="p-4 border-t border-gray-200 flex gap-2">
                 <a href={viewSignature.url} target="_blank" rel="noopener noreferrer"
