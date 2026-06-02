@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Submission, ApprovalLevel, FilterConfig, SortConfig, PaginationConfig, RefreshConfig } from '../types';
-import { getDashboardStats, getApprovalLevelStats, getDepartmentStats, getTrendData, getBottleneckData, getHeatmapData } from '../services/mockData';
+import { getDashboardStats, getApprovalLevelStats, getDepartmentStats, getTrendData, getBottleneckData, getHeatmapData } from '../services/submissionStats';
 import { apiFetch } from '../lib/api';
 import { humanizeError } from '../lib/errors';
 import { io, Socket } from 'socket.io-client';
@@ -10,6 +10,7 @@ import { clearApproverConfigCache } from './useApproverConfig';
 import { mapSupabaseRow } from './submissionMappers';
 import { loadAndEnrichSubmissions, deltaSyncToSupabase } from './submissionLoader';
 import { getJotformKeyType } from '../lib/jotformKey';
+import { useToast } from '../components/ToastNotification';
 
 // ─── Workspace version — bump when switching teams to force full cache clear ──
 const WORKSPACE_VERSION = 'gdmo-bettroi-v4'; // bumped: new API key — force cache clear
@@ -83,6 +84,34 @@ export function useSubmissions() {
 
   // Workflow step cache (populated during loadData; used for optimistic updates)
   const [stepsByForm, setStepsByForm] = useState<Record<string, WorkflowStep[]>>({});
+
+  // ─── Live toast notifications ──────────────────────────────────────────────
+  // The submissions list is already server-filtered to rows this user can see,
+  // so any new arrival or status change is relevant to them. Diff each load
+  // against the previous set and surface a toast. prevSubsRef starts null so the
+  // first (initial) load primes the baseline without firing a burst of toasts.
+  const { addToast } = useToast();
+  const prevSubsRef = useRef<Map<string, string> | null>(null);
+  const notifyChanges = useCallback((next: Submission[]) => {
+    const prev = prevSubsRef.current;
+    const nextMap = new Map(next.map(s => [s.id, String(s.currentApprovalLevel)]));
+    if (prev) {
+      let shown = 0;
+      for (const s of next) {
+        if (shown >= 3) break; // toast component caps at 3 — don't flood on a big delta
+        if (!prev.has(s.id)) {
+          addToast({ type: 'submission', title: 'New submission', message: `${s.formTitle || 'Form'} — ${s.submittedBy.name}` });
+          shown++;
+        } else if (prev.get(s.id) !== String(s.currentApprovalLevel)) {
+          const lvl = s.currentApprovalLevel;
+          const statusMsg = lvl === 'completed' ? 'completed' : lvl === 'rejected' ? 'rejected' : `at level ${lvl}`;
+          addToast({ type: 'approval_needed', title: 'Status updated', message: `${s.formTitle || 'Form'} is now ${statusMsg}` });
+          shown++;
+        }
+      }
+    }
+    prevSubsRef.current = nextMap;
+  }, [addToast]);
 
   const loadData = useCallback(async (opts?: { force?: boolean; silent?: boolean }) => {
     const force = opts?.force ?? false;
@@ -171,6 +200,9 @@ export function useSubmissions() {
   // has access to a smaller form set.
   const loadFromSupabase = useCallback(async (opts?: { force?: boolean }) => {
     if (!opts?.force && Date.now() < actionCooldownUntil.current) return;
+    // Clear any stale error from a previous failed load so a recovered read
+    // doesn't keep showing the old error banner.
+    setError(null);
 
     // 1. Ask backend which form IDs are in scope for the active key.
     //    This is the ONLY backend call needed before the DB read — and it's
@@ -192,6 +224,10 @@ export function useSubmissions() {
 
     const activeFormIds = scopeForms.map(f => f.id);
     if (activeFormIds.length === 0) {
+      // No forms in scope for the active key — show an explicit empty state, never
+      // an indefinite skeleton or a silent blank.
+      setAllSubmissions([]);
+      setError('No workflows are available for the active key. Try switching the API source in Settings.');
       setLoading(false);
       return;
     }
@@ -204,12 +240,26 @@ export function useSubmissions() {
       );
       if (!data || data.length === 0) {
         setAllSubmissions([]);
+        notifyChanges([]); // keep the toast baseline in sync (fires nothing)
         setLoading(false);
         return;
       }
 
-      const mapped = data.map(row => mapSupabaseRow(row as Record<string, unknown>));
+      // Map defensively: a single malformed row must never crash the whole
+      // dashboard (it would otherwise bubble to the ErrorBoundary). Skip + warn.
+      const mapped: Submission[] = [];
+      let skipped = 0;
+      for (const row of data) {
+        try {
+          mapped.push(mapSupabaseRow(row as Record<string, unknown>));
+        } catch (rowErr) {
+          skipped++;
+          console.warn('[useSubmissions] skipped malformed row:', (row as Record<string, unknown>)?.jotform_submission_id, rowErr);
+        }
+      }
+      if (skipped > 0) console.warn(`[useSubmissions] skipped ${skipped} malformed row(s) of ${data.length}`);
       setAllSubmissions(mapped);
+      notifyChanges(mapped); // fire live toasts for new arrivals / status changes
       setRefreshConfig(prev => ({ ...prev, lastUpdated: new Date().toISOString() }));
     } catch (err) {
       console.warn('[useSubmissions] DB read failed:', err);
@@ -217,7 +267,7 @@ export function useSubmissions() {
     } finally {
       setLoading(false);
     }
-  }, [allSubmissions.length]);
+  }, [allSubmissions.length, notifyChanges]);
 
   // ─── On mount: read from DB ────────────────────────────────────────────────
   // Frontend is DB-only — all JotForm API calls happen server-side (poller +
@@ -235,13 +285,33 @@ export function useSubmissions() {
   // exists for the new key (first-time switch).
   useEffect(() => {
     const onKeyTypeChanged = () => {
-      // Clear stale display + drop the cached active-form-ids list so
-      // loadFromSupabase fetches the new scope.
+      // Block the table behind the loading state until the new key's data lands,
+      // so no stale approver names / cross-key rows flash.
+      setLoading(true);
+      setError(null);
+      // Clear stale display so the old key's rows never paint under the new key.
       setAllSubmissions([]);
       setActiveForms([]);
-      try { localStorage.removeItem('jotflow_active_form_ids'); } catch {}
+      // Hard-clear EVERY keyType-scoped cache namespace — both keys' submission
+      // caches, sync fingerprints, the active-form-ids scope, and form/question
+      // discovery caches — so the new key can't read another key's data.
+      try {
+        Object.keys(localStorage).forEach(k => {
+          if (
+            k === 'jotflow_active_form_ids' ||
+            k === 'jotflow_sync_fingerprints' ||
+            k.startsWith('jotflow_submissions_cache') ||
+            k.startsWith('jotflow_q') ||
+            k.startsWith('jotflow_forms')
+          ) {
+            localStorage.removeItem(k);
+          }
+        });
+      } catch {}
+      // In-memory caches keyed by the previous key's data.
       clearWorkflowStepCache();
       clearWorkflowTaskCache();
+      clearApproverConfigCache();
       // Re-read from DB with the new key's scope.
       loadFromSupabase({ force: true });
     };

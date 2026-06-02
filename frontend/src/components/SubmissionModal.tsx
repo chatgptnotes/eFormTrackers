@@ -104,11 +104,10 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
         : submission.approvalHistory.find(a => a.status === 'pending'))
     : null;
   const designatedApproverEmail = submission?.pendingApproverEmail || pendingEntry?.approverEmail || pendingEntry?.approverName || '';
-  // isDesignatedApprover: true if logged-in user's email matches the evaluator email
-  const isDesignatedApprover = !!user?.email && (
-    designatedApproverEmail.toLowerCase() === user.email.toLowerCase() ||
-    currentUser.isAdmin === true  // admins can always override (e.g. bk@bettroi.com)
-  );
+  // isDesignatedApprover: true only if logged-in user's email matches the
+  // evaluator email. No role override — matches the backend assignee-only gate.
+  const isDesignatedApprover = !!user?.email &&
+    designatedApproverEmail.toLowerCase() === user.email.toLowerCase();
 
   // Comment is optional — signature is required only for L3/L4 approvals
   const approveEnabled = isDesignatedApprover && (!signatureRequired || signature !== '');
@@ -198,6 +197,9 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
     let instanceCompleted = false;
     try {
       const wfAction = action === 'approve' ? 'approve' : 'reject';
+      // throwOnError:true so a 403 (non-assignee) / 4xx surfaces as an ApiError with
+      // the real status — humanizeError turns 403 into "You don't have permission…".
+      // Never report false success on a failed action.
       const data = await apiFetch<{ ok?: boolean; instanceCompleted?: boolean; error?: string }>('/api/workflow-action', {
         method: 'POST',
         body: JSON.stringify({
@@ -206,7 +208,6 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
           comment: comment.trim() || approverNote,
           signature: signature || undefined,
         }),
-        throwOnError: false,
       });
       if (data.ok) {
         result = { success: true, message: `${actionLabel} successfully via workflow engine` };
@@ -276,6 +277,12 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
 
       // Notify parent immediately for optimistic update + staggered refresh
       onUpdate(submission.id, newLevel, newJotformStatus);
+    }
+
+    // Auto-close after a successful action — brief delay so the user sees the
+    // confirmation banner, then we return them to the list.
+    if (result.success) {
+      window.setTimeout(() => onClose(), 1200);
     }
   };
 
@@ -373,10 +380,11 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
             <button
               onClick={onClose}
               disabled={isSubmitting}
+              aria-label="Close submission modal"
               className="ml-4 p-2 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               title={isSubmitting ? 'Please wait until submission completes' : 'Close'}
             >
-              <X className="w-5 h-5" />
+              <X className="w-5 h-5" aria-hidden="true" />
             </button>
           </div>
 

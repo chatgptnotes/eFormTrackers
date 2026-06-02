@@ -1,7 +1,7 @@
 const { Router } = require('express');
 const pool = require('../db/pool');
 const env = require('../config/env');
-const { jotformFetch } = require('../lib/jotform');
+const { jotformFetch, resolveApiKey } = require('../lib/jotform');
 const { readKeyType } = require('../lib/key-type');
 const { requireAuth } = require('../middleware/auth');
 
@@ -81,9 +81,9 @@ function normalizeMember(raw) {
 }
 
 router.get('/team-members', requireAuth, async (req, res) => {
-  if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
-
   const keyType = readKeyType(req);
+  if (!resolveApiKey(keyType)) return res.status(500).json({ error: `JotForm API key for "${keyType}" not set` });
+
   const errors = [];
 
   // Strategy 1: /team/{TEAM_ID}/members

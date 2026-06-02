@@ -148,6 +148,9 @@
 
   /* ─ Light mode: sidebar stays dark (JotForm-style dark navy sidebar) ─ */
   /* INTENTIONALLY NOT overriding aside background — sidebar stays dark navy */
+  /* Restore white text inside the dark sidebar even in light mode */
+  .light-mode aside .text-white { color: #ffffff !important; }
+  .light-mode aside svg          { color: inherit !important; }
 
   /* ─ Light mode: header ─ */
   .light-mode header.sticky {

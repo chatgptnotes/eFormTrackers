@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "JotFlow backend — Express + PostgreSQL replacement for Supabase",
   "main": "server.js",
+  "engines": {
+    "node": "18.x || 20.x || 22.x"
+  },
   "scripts": {
     "dev": "node server.js",
     "start": "node server.js",

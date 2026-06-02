@@ -9,15 +9,18 @@ const { formIdRequiredQuerySchema } = require('../schemas/forms');
 const router = Router();
 
 // Admin-only: these endpoints mutate JotForm form definitions (adding hidden
-// fields, registering webhooks). Limit to admins.
-router.use(requireAuth, requireRole('admin'));
+// fields, registering webhooks). The guard is applied PER-ROUTE (not via a
+// blanket router.use): this router is mounted at the shared /api prefix, and a
+// router-level middleware would run for every /api request passing through —
+// 403-ing non-admins on unrelated routes mounted after this one.
+const adminOnly = [requireAuth, requireRole('admin')];
 
 // ── POST /api/ensure-fields?formId=xxx ──
-router.post('/ensure-fields', validate(formIdRequiredQuerySchema, 'query'), async (req, res, next) => {
+router.post('/ensure-fields', ...adminOnly, validate(formIdRequiredQuerySchema, 'query'), async (req, res, next) => {
   try {
-    if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
-    const formId = req.query.formId;
     const keyType = readKeyType(req);
+    if (!resolveApiKey(keyType)) return res.status(500).json({ error: `JotForm API key for "${keyType}" not set` });
+    const formId = req.query.formId;
 
     const qData = await jotformFetch(`form/${formId}/questions`, { keyType });
     const questions = qData.content || {};
@@ -140,10 +143,10 @@ router.post('/ensure-fields', validate(formIdRequiredQuerySchema, 'query'), asyn
 });
 
 // ── POST /api/register-webhooks ──
-router.post('/register-webhooks', async (req, res, next) => {
+router.post('/register-webhooks', ...adminOnly, async (req, res, next) => {
   try {
-    if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
     const keyType = readKeyType(req);
+    if (!resolveApiKey(keyType)) return res.status(500).json({ error: `JotForm API key for "${keyType}" not set` });
 
     const formsData = await jotformFetch('user/forms', { params: { limit: '200', orderby: 'updated_at' }, keyType });
     const allForms = (formsData.content || []);
@@ -151,10 +154,12 @@ router.post('/register-webhooks', async (req, res, next) => {
 
     if (formIds.length === 0) return res.json({ webhookURL: '', total: 0, success: 0, errors: 0, results: [] });
 
-    const proto = req.headers['x-forwarded-proto'] || 'https';
-    const host = req.headers.host;
+    // H-5: Derive canonical URL from a trusted env var, never from the user-controlled Host header.
+    if (!env.PUBLIC_BASE_URL) {
+      return res.status(500).json({ error: 'PUBLIC_BASE_URL env var not set — cannot register webhooks safely' });
+    }
     const secretParam = env.JOTFORM_WEBHOOK_SECRET ? `?secret=${env.JOTFORM_WEBHOOK_SECRET}` : '';
-    const webhookURL = `${proto}://${host}/api/webhook${secretParam}`;
+    const webhookURL = `${env.PUBLIC_BASE_URL}/api/webhook${secretParam}`;
 
     const results = [];
     for (const formId of formIds) {

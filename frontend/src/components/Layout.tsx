@@ -1,4 +1,4 @@
-import { ReactNode, useState, useEffect } from 'react';
+import { ReactNode, useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -15,6 +15,12 @@ import { useApp } from '../contexts/AppContext';
 import { SIDEBAR_CATEGORIES } from '../services/mockData';
 import NotificationBell from './NotificationBell';
 import UserDropdown from './UserDropdown';
+
+const SHOW_SUBMIT_REQUEST_BUTTON = false;
+const SHOW_DASHBOARD_TAB = false;
+const ALL_ASSETS_REVEAL_KEY = 'flowaccel.revealAllAssets';
+const REVEAL_CLICK_THRESHOLD = 5;
+const REVEAL_CLICK_WINDOW_MS = 3000;
 
 interface Props {
   children: ReactNode;
@@ -46,6 +52,23 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [showAllAssetsTab, setShowAllAssetsTab] = useState(() => {
+    try { return localStorage.getItem(ALL_ASSETS_REVEAL_KEY) === '1'; } catch { return false; }
+  });
+  const logoClickTimes = useRef<number[]>([]);
+
+  const handleLogoClick = () => {
+    const now = Date.now();
+    logoClickTimes.current = [...logoClickTimes.current, now].filter(t => now - t <= REVEAL_CLICK_WINDOW_MS);
+    if (logoClickTimes.current.length >= REVEAL_CLICK_THRESHOLD) {
+      logoClickTimes.current = [];
+      setShowAllAssetsTab(prev => {
+        const next = !prev;
+        try { localStorage.setItem(ALL_ASSETS_REVEAL_KEY, next ? '1' : '0'); } catch { /* ignore */ }
+        return next;
+      });
+    }
+  };
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -63,7 +86,7 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
 
   const handleCategoryClick = (cat: SidebarCategory) => {
     setActiveSidebarCategory(cat.id === activeSidebarCategory?.id ? null : cat);
-    navigate('/app/director');
+    navigate('/app/modern');
     setSidebarOpen(false);
   };
 
@@ -91,11 +114,13 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
   ].filter(item => item.roles.includes(orgRole));
 
   const currentLabel = location.pathname === '/app/director'
-    ? "Dashboard"
+    ? "Modern Dashboard"
     : location.pathname === '/app/modern'
     ? "Modern Dashboard"
     : location.pathname === '/app/completed'
     ? "Completed Requests"
+    : location.pathname === '/app/pending-with'
+    ? "Pending With"
     : TOOL_NAV.find(i => i.path === location.pathname)?.label || 'Dashboard';
 
   return (
@@ -106,14 +131,14 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
           {/* Logo — FlowAccel branding */}
           <div className="p-5 border-b border-slate-800">
             <div className="flex items-center gap-3">
-              {/* FlowAccel logo mark */}
-              <div className="w-9 h-9 flex items-center justify-center flex-shrink-0">
-                <img src="https://eforms.mediaoffice.ae/enterprise/logo.png" alt="Logo" className="w-full h-full object-contain" />
+              {/* FlowAccel logo mark — click 5x within 3s to toggle All Assets visibility */}
+              <div onClick={handleLogoClick} className="w-9 h-9 flex items-center justify-center flex-shrink-0 cursor-pointer select-none">
+                <img src="https://eforms.mediaoffice.ae/enterprise/logo.png" alt="Eform Tracker logo" width={36} height={36} loading="eager" className="w-full h-full object-contain" draggable={false} />
               </div>
               <div>
                 <div className="flex items-baseline gap-1">
-                  <span className="font-bold text-base tracking-tight" style={{ color: '#ffffff' }}>Flow</span>
-                  <span className="font-bold text-base tracking-tight" style={{ color: '#1E88E5' }}>Accel</span>
+                  <span className="font-bold text-base tracking-tight" style={{ color: '#ffffff' }}>Eform</span>
+                  <span className="font-bold text-base tracking-tight" style={{ color: '#1E88E5' }}>Tracker</span>
                 </div>
                 <p className="text-[10px] text-gray-500 truncate max-w-[160px] leading-tight">{organization?.name || 'Workflow Dashboard'}</p>
               </div>
@@ -122,38 +147,42 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
 
           <nav className="flex-1 overflow-y-auto">
             {/* Submit New Request CTA */}
-            <div className="p-4 pb-2">
-              <Link
-                to="/app/submit-request"
-                onClick={() => { setActiveSidebarCategory(null); setSidebarOpen(false); }}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl mb-1 transition-all duration-200 ${
-                  location.pathname === '/app/submit-request'
-                    ? 'bg-gold/20 text-gold border border-gold/30'
-                    : 'bg-gold/10 text-gold border border-gold/20 hover:bg-gold/20'
-                }`}
-              >
-                <PlusCircle className="w-4.5 h-4.5" style={{ color: '#ffffff' }} />
-                <span className="text-sm font-semibold">Submit New Request</span>
-              </Link>
-            </div>
+            {SHOW_SUBMIT_REQUEST_BUTTON && (
+              <div className="p-4 pb-2">
+                <Link
+                  to="/app/submit-request"
+                  onClick={() => { setActiveSidebarCategory(null); setSidebarOpen(false); }}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl mb-1 transition-all duration-200 ${
+                    location.pathname === '/app/submit-request'
+                      ? 'bg-gold/20 text-gold border border-gold/30'
+                      : 'bg-gold/10 text-gold border border-gold/20 hover:bg-gold/20'
+                  }`}
+                >
+                  <PlusCircle className="w-4.5 h-4.5" style={{ color: '#ffffff' }} />
+                  <span className="text-sm font-semibold">Submit New Request</span>
+                </Link>
+              </div>
+            )}
 
             {/* Section 1: Department Categories */}
             <div className="px-4 pb-2">
               <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-2 px-2">Departments</p>
 
               {/* Dashboard link */}
-              <Link
-                to="/app/director"
-                onClick={() => { setActiveSidebarCategory(null); setSidebarOpen(false); }}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl mb-1 transition-all duration-200 ${
-                  location.pathname === '/app/director' && !activeSidebarCategory
-                    ? 'bg-gold/10 text-gold border border-gold/20'
-                    : 'text-white hover:bg-slate-800'
-                }`}
-              >
-                <ShieldCheck className="w-4.5 h-4.5" style={{ color: '#ffffff' }} />
-                <span className="text-sm font-medium" style={{ color: '#ffffff' }}>Dashboard</span>
-              </Link>
+              {SHOW_DASHBOARD_TAB && (
+                <Link
+                  to="/app/director"
+                  onClick={() => { setActiveSidebarCategory(null); setSidebarOpen(false); }}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl mb-1 transition-all duration-200 ${
+                    location.pathname === '/app/director' && !activeSidebarCategory
+                      ? 'bg-gold/10 text-gold border border-gold/20'
+                      : 'text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <ShieldCheck className="w-4.5 h-4.5" style={{ color: '#ffffff' }} />
+                  <span className="text-sm font-medium" style={{ color: '#ffffff' }}>Dashboard</span>
+                </Link>
+              )}
 
               {/* Modern Dashboard link */}
               <Link
@@ -165,8 +194,8 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
                     : 'text-white hover:bg-slate-800'
                 }`}
               >
-                <LayoutGrid className="w-4.5 h-4.5" style={{ color: '#ffffff' }} />
-                <span className="text-sm font-medium" style={{ color: '#ffffff' }}>Modern Dashboard</span>
+                <LayoutGrid className="w-4.5 h-4.5" />
+                <span className="text-sm font-medium">Modern Dashboard</span>
               </Link>
 
               {/* Completed Requests link */}
@@ -179,12 +208,26 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
                     : 'text-white hover:bg-slate-800'
                 }`}
               >
-                <CheckCircle2 className="w-4.5 h-4.5" style={{ color: '#ffffff' }} />
-                <span className="text-sm font-medium" style={{ color: '#ffffff' }}>Completed</span>
+                <CheckCircle2 className="w-4.5 h-4.5" />
+                <span className="text-sm font-medium">Completed</span>
+              </Link>
+
+              {/* Pending With link */}
+              <Link
+                to="/app/pending-with"
+                onClick={() => { setActiveSidebarCategory(null); setSidebarOpen(false); }}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl mb-1 transition-all duration-200 ${
+                  location.pathname === '/app/pending-with'
+                    ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                    : 'text-white hover:bg-slate-800'
+                }`}
+              >
+                <Clock className="w-4.5 h-4.5" />
+                <span className="text-sm font-medium">Pending With</span>
               </Link>
 
               {/* Category items */}
-              {SIDEBAR_CATEGORIES.filter(cat => cat.type === 'all' || (cat.filter?.departments && cat.filter.departments.some(d => activeDepartments.includes(d)))).map(cat => {
+              {SIDEBAR_CATEGORIES.filter(cat => (cat.type === 'all' ? showAllAssetsTab : cat.filter?.departments && cat.filter.departments.some(d => activeDepartments.includes(d)))).map(cat => {
                 const Icon = CATEGORY_ICONS[cat.id] || Folder;
                 const isActive = activeSidebarCategory?.id === cat.id;
                 const isExpanded = expandedCategories.has(cat.id);
@@ -203,17 +246,17 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
                           : 'text-white hover:bg-slate-800'
                       }`}
                     >
-                      <div style={{ color: '#ffffff' }}>
+                      <div>
                         {hasChildren ? (
                           isExpanded ? <FolderOpen className="w-4 h-4" /> : <Folder className="w-4 h-4" />
                         ) : (
                           <Icon className="w-4 h-4" />
                         )}
                       </div>
-                      <span className="text-sm font-medium flex-1 text-left" style={{ color: '#ffffff' }}>{cat.label}</span>
+                      <span className="text-sm font-medium flex-1 text-left">{cat.label}</span>
                       {hasChildren && (
                         <span onClick={(e) => toggleExpand(cat.id, e)}>
-                          {isExpanded ? <ChevronDown className="w-3.5 h-3.5" style={{ color: '#ffffff' }} /> : <ChevronRight className="w-3.5 h-3.5" style={{ color: '#ffffff' }} />}
+                          {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                         </span>
                       )}
                     </button>
@@ -234,7 +277,7 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
                               }`}
                             >
                               <div className={`w-1.5 h-1.5 rounded-full ${childActive ? 'bg-gold' : 'bg-gray-600'}`} />
-                              <span style={{ color: '#ffffff' }}>{child.label}</span>
+                              <span>{child.label}</span>
                             </button>
                           );
                         })}
@@ -255,17 +298,17 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
                 onClick={() => {
                   setActiveWorkflowId(null);
                   setActiveSidebarCategory(null);
-                  navigate('/app/director');
+                  navigate('/app/modern');
                   setSidebarOpen(false);
                 }}
                 className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl mb-0.5 transition-all duration-200 ${
-                  !activeWorkflowId && location.pathname === '/app/director'
+                  !activeWorkflowId && location.pathname === '/app/modern'
                     ? 'bg-gold/10 text-gold border border-gold/20'
                     : 'text-white hover:bg-slate-800'
                 }`}
               >
-                <Layers className="w-4 h-4" style={{ color: '#ffffff' }} />
-                <span className="text-sm font-medium flex-1 text-left" style={{ color: '#ffffff' }}>All Workflows</span>
+                <Layers className="w-4 h-4" />
+                <span className="text-sm font-medium flex-1 text-left">All Workflows</span>
               </button>
 
               {(activeForms || []).map(f => ({ id: f.id, label: f.title })).map(wf => {
@@ -280,7 +323,7 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
                     onClick={() => {
                       setActiveWorkflowId(isActive ? null : wf.id);
                       setActiveSidebarCategory(null);
-                      navigate('/app/director');
+                      navigate('/app/modern');
                       setSidebarOpen(false);
                     }}
                     className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl mb-0.5 transition-all duration-200 ${
@@ -289,8 +332,8 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
                         : 'text-white hover:bg-slate-800'
                     }`}
                   >
-                    <div style={{ color: '#ffffff' }}><Icon className="w-4 h-4" /></div>
-                    <span className="text-sm font-medium flex-1 text-left leading-tight" style={{ color: '#ffffff' }}>{wf.label}</span>
+                    <Icon className="w-4 h-4" />
+                    <span className="text-sm font-medium flex-1 text-left leading-tight">{wf.label}</span>
                   </button>
                 );
               })}
@@ -315,8 +358,8 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
                         : 'text-white hover:bg-slate-800'
                     }`}
                   >
-                    <div style={{ color: '#ffffff' }}><item.icon className="w-4 h-4" /></div>
-                    <span className="text-sm font-medium" style={{ color: '#ffffff' }}>{item.label}</span>
+                    <item.icon className="w-4 h-4" />
+                    <span className="text-sm font-medium">{item.label}</span>
                   </Link>
                 );
               })}
@@ -368,7 +411,7 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
         <header className="sticky top-0 z-30 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800">
           <div className="flex items-center justify-between px-6 py-4">
             <div className="flex items-center gap-4">
-              <button onClick={() => setSidebarOpen(!sidebarOpen)} className="lg:hidden text-gray-400 hover:text-white">
+              <button onClick={() => setSidebarOpen(!sidebarOpen)} className="lg:hidden text-gray-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded-lg p-1 cursor-pointer">
                 {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
               </button>
               <div>

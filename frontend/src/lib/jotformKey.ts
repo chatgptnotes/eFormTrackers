@@ -13,14 +13,17 @@ function readChoices(): Record<string, JotformKeyType> {
 }
 
 export function getJotformKeyType(): JotformKeyType {
+  // Default to 'gdmo' (Production): it's the only configured key. The Testing
+  // ('default') key is unset in this deployment, so only use it when the user
+  // has explicitly chosen it — otherwise fresh logins get a blank dashboard.
   const v = localStorage.getItem(ACTIVE_KEY);
-  return v === 'gdmo' ? 'gdmo' : 'default';
+  return v === 'default' ? 'default' : 'gdmo';
 }
 
 export function getJotformKeyTypeFor(email: string | null | undefined): JotformKeyType {
   if (!email) return getJotformKeyType();
   const choice = readChoices()[email.toLowerCase()];
-  return choice === 'gdmo' ? 'gdmo' : 'default';
+  return choice === 'default' ? 'default' : 'gdmo';
 }
 
 export function setJotformKeyType(value: JotformKeyType, email?: string | null) {

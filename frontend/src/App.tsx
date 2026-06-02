@@ -7,7 +7,7 @@ import { useSubmissions } from './hooks/useSubmissions';
 import ErrorBoundary from './components/ErrorBoundary';
 import { Loader2 } from 'lucide-react';
 import { ToastProvider } from './components/ToastNotification';
-import { getUserConfig, isSubmissionVisible } from './config/currentUser';
+import { isSubmissionVisible } from './config/currentUser';
 
 // Lazy-loaded pages — only downloaded when the user navigates to them
 const ModernDashboard = lazy(() => import('./pages/ModernDashboard'));
@@ -18,7 +18,6 @@ const Settings = lazy(() => import('./pages/Settings'));
 const LandingPage = lazy(() => import('./pages/LandingPage'));
 const Login = lazy(() => import('./pages/Login'));
 const Signup = lazy(() => import('./pages/Signup'));
-const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const Onboarding = lazy(() => import('./pages/Onboarding'));
 const TeamManagement = lazy(() => import('./pages/TeamManagement'));
 const OrgSettings = lazy(() => import('./pages/OrgSettings'));
@@ -30,6 +29,9 @@ const AdvancedAnalytics = lazy(() => import('./pages/AdvancedAnalytics'));
 const KanbanBoard = lazy(() => import('./pages/KanbanBoard'));
 const SubmitRequest = lazy(() => import('./pages/SubmitRequest'));
 const CompletedPage = lazy(() => import('./pages/CompletedPage'));
+const PendingWithPage = lazy(() => import('./pages/PendingWithPage'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 
 function PageLoader() {
   return (
@@ -41,34 +43,32 @@ function PageLoader() {
 
 function RoleGuard({ allowed, children }: { allowed: string[]; children: React.ReactNode }) {
   const { orgRole } = useAuth();
-  if (!allowed.includes(orgRole)) return <Navigate to="/app/director" replace />;
+  if (!allowed.includes(orgRole)) return <Navigate to="/app/modern" replace />;
   return <>{children}</>;
 }
 
 function ProtectedApp() {
   const data = useSubmissions();
-  const { user, orgRole } = useAuth();
-  const currentUser = getUserConfig(user?.email);
+  const { user } = useAuth();
 
   const visibleForms = useMemo(() => {
-    if (orgRole === 'super_admin' || currentUser.isAdmin) return data.activeForms;
     const visibleFormIds = new Set(
       data.allSubmissions
-        .filter(s => isSubmissionVisible(s, user?.email, currentUser, orgRole))
+        .filter(s => isSubmissionVisible(s, user?.email, user?.role))
         .map(s => s.formId)
     );
     return data.activeForms.filter(f => visibleFormIds.has(f.id));
-  }, [data.activeForms, data.allSubmissions, user?.email, currentUser, orgRole]);
+  }, [data.activeForms, data.allSubmissions, user?.email, user?.role]);
 
   return (
     <Layout refreshConfig={data.refreshConfig} setRefreshConfig={data.setRefreshConfig} onRefresh={data.refresh} activeForms={visibleForms} activeDepartments={[...new Set(data.allSubmissions.map(s => s.submittedBy.department).filter(Boolean))]}>
       <Suspense fallback={<PageLoader />}>
         <Routes>
-          <Route path="/" element={<DirectorDashboard data={data} />} />
-          <Route path="/modern" element={<RoleGuard allowed={['super_admin', 'admin', 'approver']}><ModernDashboard data={data} /></RoleGuard>} />
+          <Route path="/" element={<RoleGuard allowed={['super_admin', 'admin', 'approver', 'viewer', 'user']}><ModernDashboard data={data} /></RoleGuard>} />
+          <Route path="/modern" element={<RoleGuard allowed={['super_admin', 'admin', 'approver', 'viewer', 'user']}><ModernDashboard data={data} /></RoleGuard>} />
           <Route path="/tracker" element={<RoleGuard allowed={['super_admin', 'admin', 'approver']}><WorkflowTracker data={data} /></RoleGuard>} />
           <Route path="/bottlenecks" element={<RoleGuard allowed={['super_admin', 'admin']}><BottleneckAnalysis data={data} /></RoleGuard>} />
-          <Route path="/approval/:level" element={<RoleGuard allowed={['super_admin', 'admin', 'approver']}><ApprovalDetail data={data} /></RoleGuard>} />
+          <Route path="/approval/:level" element={<RoleGuard allowed={['super_admin', 'admin', 'approver', 'viewer', 'user']}><ApprovalDetail data={data} /></RoleGuard>} />
           <Route path="/settings" element={<RoleGuard allowed={['super_admin', 'admin', 'approver']}><Settings /></RoleGuard>} />
           <Route path="/team" element={<RoleGuard allowed={['super_admin', 'admin']}><TeamManagement /></RoleGuard>} />
           <Route path="/org-settings" element={<RoleGuard allowed={['super_admin']}><OrgSettings /></RoleGuard>} />
@@ -81,6 +81,7 @@ function ProtectedApp() {
           <Route path="/director" element={<DirectorDashboard data={data} />} />
           <Route path="/submit-request" element={<SubmitRequest activeForms={data.activeForms} />} />
           <Route path="/completed" element={<CompletedPage data={data} />} />
+          <Route path="/pending-with" element={<PendingWithPage data={data} />} />
         </Routes>
       </Suspense>
     </Layout>
@@ -119,7 +120,8 @@ export default function App() {
           <Route path="/" element={<Navigate to="/app" replace />} />
           <Route path="/login" element={user ? <Navigate to="/app" replace /> : <Login />} />
           <Route path="/signup" element={user ? <Navigate to="/app" replace /> : <Signup />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/forgot-password" element={user ? <Navigate to="/app" replace /> : <ForgotPassword />} />
+          <Route path="/reset" element={user ? <Navigate to="/app" replace /> : <ResetPassword />} />
           <Route path="/onboarding" element={<RequireAuth><Onboarding /></RequireAuth>} />
           <Route path="/app/*" element={<RequireAuth><ProtectedApp /></RequireAuth>} />
           <Route path="*" element={<Navigate to="/" replace />} />

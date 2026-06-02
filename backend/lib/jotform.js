@@ -51,8 +51,28 @@ async function jotformFetch(path, opts = {}) {
     }
   }
 
-  const response = await fetch(url.toString(), fetchOpts);
-  const data = await response.json();
+  // Bound every JotForm call with a timeout. A hung upstream used to stall the
+  // poller / webhook / admin-sync indefinitely; an AbortController forces it to
+  // surface as an error after `timeoutMs` so callers can move on.
+  const timeoutMs = opts.timeoutMs || 30000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+  try {
+    response = await fetch(url.toString(), { ...fetchOpts, signal: controller.signal });
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      const err = new Error(`JotForm API timeout after ${timeoutMs}ms: ${path}`);
+      err.code = 'JOTFORM_TIMEOUT';
+      throw err;
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+  // Tolerate non-JSON error responses (5xx HTML pages, gateway errors).
+  const ct = response.headers.get('content-type') || '';
+  const data = ct.includes('json') ? await response.json().catch(() => ({})) : { error: (await response.text().catch(() => '')).slice(0, 500) };
   if (!response.ok) {
     const err = new Error(`JotForm API error: ${response.status}`);
     err.status = response.status;
@@ -77,8 +97,7 @@ function buildJotformUrl(path, keyType) {
     : path;
   const url = new URL(`${env.JOTFORM_BASE}/${effectivePath}`);
   if (!isGdmo && env.JOTFORM_TEAM_ID) url.searchParams.set('teamID', env.JOTFORM_TEAM_ID);
-  // DEBUG: visible in backend console — confirm keyType routing per request.
-  console.log(`[jotform] keyType=${keyType || 'default(implicit)'}  path=${path}  ->  ${url.toString()}`);
+  // L-5: Use the module-level logger (not console.log) so output is controlled by log level.
   return url;
 }
 

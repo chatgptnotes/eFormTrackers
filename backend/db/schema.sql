@@ -30,10 +30,19 @@ CREATE TABLE IF NOT EXISTS organizations (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name        TEXT NOT NULL DEFAULT '',
   slug        TEXT UNIQUE,
+  plan        TEXT NOT NULL DEFAULT 'starter',
+  logo_url    TEXT DEFAULT '',
+  branding    JSONB DEFAULT '{}',
+  owner_id    UUID,
   settings    JSONB DEFAULT '{}',
   created_at  TIMESTAMPTZ DEFAULT now(),
   updated_at  TIMESTAMPTZ DEFAULT now()
 );
+-- Add columns for existing deployments that created the table without them
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'starter';
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS logo_url TEXT DEFAULT '';
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS branding JSONB DEFAULT '{}';
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS owner_id UUID;
 
 -- Seed default org
 INSERT INTO organizations (id, name, slug)
@@ -109,6 +118,13 @@ CREATE TABLE IF NOT EXISTS jf_submissions (
 );
 CREATE INDEX IF NOT EXISTS idx_jf_submissions_form ON jf_submissions (form_id);
 CREATE INDEX IF NOT EXISTS idx_jf_submissions_status ON jf_submissions (status);
+-- The dashboard read filters by form_id (often `form_id = ANY(...)`) and ALWAYS
+-- orders by submission_date DESC. These composites let Postgres satisfy the
+-- filter + sort from the index instead of sorting the matched rows in memory.
+CREATE INDEX IF NOT EXISTS idx_jf_submissions_form_date
+  ON jf_submissions (form_id, submission_date DESC);
+CREATE INDEX IF NOT EXISTS idx_jf_submissions_status_date
+  ON jf_submissions (status, submission_date DESC);
 
 -- ============================================================
 -- 7. jf_approval_history
@@ -179,6 +195,9 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 CREATE INDEX IF NOT EXISTS idx_notifications_user_email ON notifications (user_email);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications (user_id);
+-- GET /api/notifications: WHERE user_email = $1 ORDER BY created_at DESC LIMIT $2
+CREATE INDEX IF NOT EXISTS idx_notifications_email_created
+  ON notifications (user_email, created_at DESC);
 
 -- ============================================================
 -- 11. activity_log
@@ -197,7 +216,33 @@ CREATE INDEX IF NOT EXISTS idx_activity_log_user ON activity_log (user_email);
 CREATE INDEX IF NOT EXISTS idx_activity_log_entity ON activity_log (entity_type, entity_id);
 
 -- ============================================================
--- 12. jf_forms (form metadata + creator, synced by poller)
+-- 12. password_resets
+-- ============================================================
+CREATE TABLE IF NOT EXISTS password_resets (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token      TEXT UNIQUE NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at    TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_password_resets_token ON password_resets (token);
+CREATE INDEX IF NOT EXISTS idx_password_resets_user ON password_resets (user_id);
+
+-- ============================================================
+-- 13. support_messages
+-- ============================================================
+CREATE TABLE IF NOT EXISTS support_messages (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name       TEXT NOT NULL DEFAULT '',
+  email      TEXT NOT NULL DEFAULT '',
+  message    TEXT NOT NULL DEFAULT '',
+  user_id    UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- ============================================================
+-- 14. jf_forms (form metadata + creator, synced by poller)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS jf_forms (
   form_id          TEXT PRIMARY KEY,

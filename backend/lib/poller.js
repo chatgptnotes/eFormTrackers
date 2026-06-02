@@ -3,6 +3,34 @@ const env = require('../config/env');
 const { jotformFetch } = require('./jotform');
 const { detectLevelFields } = require('./detect-fields');
 const { emitToAll } = require('./realtime');
+const { pMapLimit } = require('./concurrency');
+const { extractTask, deriveWorkflowStatus } = require('./workflow-task');
+
+function parseEmailFromActionText(text) {
+  if (!text || typeof text !== 'string') return '';
+  const m = text.match(/By:\s*[^(]*\(([^)]+@[^)]+)\)/);
+  return m ? m[1].trim() : '';
+}
+
+// Max workflow-instance enrichments in flight per form. Matches admin-sync's
+// SUBMISSION_ENRICH_CONCURRENCY — was previously a sequential per-submission
+// await, which made each poll's latency O(pending submissions) of JotForm calls.
+const POLL_ENRICH_CONCURRENCY = 8;
+
+// Which JotForm key bucket the background poller authenticates with. It has no
+// HTTP request to read x-jotform-key-type from, so it must be configured. The
+// GDMO Enterprise key is the only one set in this deployment; without this every
+// poller call used the empty default key + user/* paths and fetched nothing.
+const POLLER_KEY_TYPE = env.POLLER_KEY_TYPE || 'gdmo';
+
+// Workflow states that need no (more) enrichment: not yet started (no instance)
+// or already finished. The submissions bulk API returns `workflowStatus` for
+// free, so we use it to fetch workflow/instance only for genuinely-active ones —
+// keeping each poll cheap instead of re-pulling every finished workflow.
+const FINISHED_WF = new Set(['NOT_STARTED', 'COMPLETED', 'COMPLETE', 'REJECTED', 'CANCELLED', 'DECLINED']);
+function workflowIsActive(status) {
+  return !FINISHED_WF.has(String(status || '').toUpperCase());
+}
 
 let isRunning = false;
 let pollTimer = null;
@@ -60,11 +88,16 @@ async function processSubmission(raw, formId, formTitle) {
 // ── Fetch workflow instance info for a pending submission ─────────────────────
 async function enrichWithWorkflow(submissionId, workflowInstanceId) {
   try {
-    const instData = await jotformFetch(`workflow/instance/${workflowInstanceId}`);
+    const instData = await jotformFetch(`workflow/instance/${workflowInstanceId}`, { keyType: POLLER_KEY_TYPE });
     const taskList = instData?.content?.taskList || [];
+    // Flatten to the shape every reader expects (top-level assigneeEmail etc.) —
+    // matches admin-sync. Raw JotForm tasks nest the assignee under
+    // properties.assigneeEmail, which breaks visibility (isSubmissionVisible /
+    // visibility.js both read workflow_tasks[].assigneeEmail at the top level).
+    const flatTasks = taskList.map((t, idx) => extractTask(t, idx + 1));
 
     const activeTask = taskList.find(t => String(t.status || '').toUpperCase() === 'ACTIVE');
-    if (!activeTask) return { pendingApproverName: '', pendingApproverEmail: '', approvalUrl: '', workflowTasks: taskList };
+    if (!activeTask) return { pendingApproverName: '', pendingApproverEmail: '', approvalUrl: '', workflowTasks: flatTasks };
 
     const props = activeTask.properties || {};
     const assigneeUser = props.assigneeUser || {};
@@ -76,8 +109,9 @@ async function enrichWithWorkflow(submissionId, workflowInstanceId) {
     const pendingApproverEmail = candidateEmail.includes('@') ? candidateEmail : '';
     const approvalUrl = buildApprovalUrl(activeTask);
 
-    return { pendingApproverName, pendingApproverEmail, approvalUrl, workflowTasks: taskList };
-  } catch {
+    return { pendingApproverName, pendingApproverEmail, approvalUrl, workflowTasks: flatTasks };
+  } catch (err) {
+    console.warn(`[poller] enrichWithWorkflow failed for ${submissionId} (instance ${workflowInstanceId}):`, err.message);
     return { pendingApproverName: '', pendingApproverEmail: '', approvalUrl: '', workflowTasks: [] };
   }
 }
@@ -90,7 +124,9 @@ async function getFallbackApprover(formId, level) {
       [formId, level]
     );
     if (rows[0]) return { name: rows[0].approver_name || '', email: rows[0].approver_email || '' };
-  } catch { /* ignore */ }
+  } catch (err) {
+    console.warn(`[poller] jf_approver_config lookup failed for form ${formId} level ${level}:`, err.message);
+  }
   return { name: '', email: '' };
 }
 
@@ -106,7 +142,7 @@ async function pollOnce() {
 
   try {
     // 1. Fetch all enabled forms
-    const formsData = await jotformFetch('user/forms', { params: { limit: '1000', status: 'ENABLED' } });
+    const formsData = await jotformFetch('user/forms', { params: { limit: '1000', status: 'ENABLED' }, keyType: POLLER_KEY_TYPE });
     const forms = (formsData.content || []).filter(f => f.id);
 
     if (forms.length === 0) {
@@ -142,7 +178,7 @@ async function pollOnce() {
       // Fetch questions for field detection
       let detectedFields = null;
       try {
-        const qData = await jotformFetch(`form/${formId}/questions`);
+        const qData = await jotformFetch(`form/${formId}/questions`, { keyType: POLLER_KEY_TYPE });
         detectedFields = detectLevelFields(qData.content || {});
       } catch (err) {
         console.warn(`[poller] Could not fetch questions for form ${formId}:`, err.message);
@@ -154,6 +190,7 @@ async function pollOnce() {
       try {
         const subData = await jotformFetch(`form/${formId}/submissions`, {
           params: { limit: '1000', offset: '0', orderby: 'created_at', direction: 'DESC', addWorkflowStatus: '1' },
+          keyType: POLLER_KEY_TYPE,
         });
         submissions = subData.content || [];
 
@@ -161,6 +198,7 @@ async function pollOnce() {
         if (submissions.length === 1000) {
           const subData2 = await jotformFetch(`form/${formId}/submissions`, {
             params: { limit: '1000', offset: '1000', orderby: 'created_at', direction: 'DESC', addWorkflowStatus: '1' },
+            keyType: POLLER_KEY_TYPE,
           });
           submissions = submissions.concat(subData2.content || []);
         }
@@ -169,7 +207,8 @@ async function pollOnce() {
         continue;
       }
 
-      // 4. Process and upsert each submission
+      // 4. Prepare each submission's mapped fields (synchronous, no I/O).
+      const prepared = [];
       for (const raw of submissions) {
         const submissionId = String(raw.id || '');
         if (!submissionId || !/^\d+$/.test(submissionId)) continue;
@@ -226,36 +265,79 @@ async function pollOnce() {
             if (val) allAnswers[qid] = val;
           }
 
-          // 5. Enrich with workflow instance data for ALL pending submissions
-          let pendingApproverName = '';
-          let pendingApproverEmail = '';
-          let workflowTasks = [];
-          let approvalUrl = '';
+          prepared.push({
+            raw, submissionId, levels, currentLevel, status, maxLevel,
+            submittedBy, email, title, description, department, priority, amount,
+            editLink, submissionDate, updatedDate, totalDays, allAnswers,
+            workflowInstanceId: raw.workflowInstanceID || raw.workflow_instance_id,
+            workflowStatus: raw.workflowStatus || '',
+            // Enrichment results — filled by the parallel pass below.
+            pendingApproverName: '', pendingApproverEmail: '', workflowTasks: [], approvalUrl: '',
+          });
+        } catch (err) {
+          console.warn(`[poller] Failed to prepare submission ${submissionId}:`, err.message);
+        }
+      }
 
-          const workflowInstanceId = raw.workflowInstanceID || raw.workflow_instance_id;
-          if (workflowInstanceId && status === 'pending') {
-            const enriched = await enrichWithWorkflow(submissionId, workflowInstanceId);
-            pendingApproverName = enriched.pendingApproverName;
-            pendingApproverEmail = enriched.pendingApproverEmail;
-            approvalUrl = enriched.approvalUrl;
-            workflowTasks = enriched.workflowTasks;
-          }
+      // 5. Enrich every pending submission's workflow data IN PARALLEL (bounded).
+      //    Previously this ran sequentially inside the loop — one blocking
+      //    JotForm round-trip per pending submission.
+      await pMapLimit(prepared, POLL_ENRICH_CONCURRENCY, async (p) => {
+        // Enrich genuinely-active workflows only (instance exists AND workflowStatus
+        // isn't finished/not-started). Rows we skip keep their existing enrichment —
+        // the upsert below preserves workflow_tasks/pending_approver when empty — so
+        // a finished workflow synced earlier isn't blanked every cycle.
+        if (p.workflowInstanceId && workflowIsActive(p.workflowStatus)) {
+          const enriched = await enrichWithWorkflow(p.submissionId, p.workflowInstanceId);
+          p.pendingApproverName = enriched.pendingApproverName;
+          p.pendingApproverEmail = enriched.pendingApproverEmail;
+          p.approvalUrl = enriched.approvalUrl;
+          p.workflowTasks = enriched.workflowTasks;
+        }
+        // Fallback: jf_approver_config if workflow gave us nothing.
+        if (!p.pendingApproverEmail && p.status === 'pending') {
+          const fallback = await getFallbackApprover(formId, p.currentLevel);
+          p.pendingApproverName = fallback.name;
+          p.pendingApproverEmail = fallback.email;
+        }
+      });
 
-          // Fallback: jf_approver_config if workflow gave us nothing
-          if (!pendingApproverEmail && status === 'pending') {
-            const fallback = await getFallbackApprover(formId, currentLevel);
-            pendingApproverName = fallback.name;
-            pendingApproverEmail = fallback.email;
-          }
+      // 5b. Authoritative status from the workflow engine (instance status +
+      //     task list), overriding the form-field heuristic. Finished workflows
+      //     skip enrichment above (workflowTasks empty), but workflowStatus from
+      //     the bulk API still resolves completion. Clear the pending approver on
+      //     terminal states so a finished row never lingers in someone's queue.
+      for (const p of prepared) {
+        const derived = deriveWorkflowStatus(p.workflowStatus, p.workflowTasks);
+        if (derived) {
+          p.status = derived;
+          if (derived === 'completed') p.currentLevel = p.maxLevel;
+          if (derived !== 'pending') { p.pendingApproverName = ''; p.pendingApproverEmail = ''; }
+        }
+      }
 
-          const levelHistory = levels.map(l => ({
-            level: l.id, status: l.status || 'pending',
-            approver: l.approver || pendingApproverName || '', date: l.date || '',
-          }));
+      // 6. Upsert each prepared submission.
+      for (const p of prepared) {
+        try {
+          const levelHistory = p.levels.map(l => {
+            const matchingTask = p.workflowTasks.find(t => t.level === l.id);
+            const approverEmail = parseEmailFromActionText(l.approver) ||
+              (matchingTask
+                ? (String(matchingTask.status || '').toUpperCase() === 'COMPLETED'
+                    ? (matchingTask.submittedByEmail || matchingTask.assigneeEmail)
+                    : matchingTask.assigneeEmail)
+                : (l.id === p.currentLevel ? p.pendingApproverEmail : ''));
+            return {
+              level: l.id, status: l.status || 'pending',
+              approver: l.approver || p.pendingApproverName || '',
+              approverEmail: approverEmail || '',
+              date: l.date || '',
+            };
+          });
 
-          const genericStatus = status === 'completed' ? 'Completed' :
-            status === 'rejected' ? 'Rejected' :
-            levels.some(l => l.status?.toLowerCase() === 'approved') ? 'In Progress' : 'Pending';
+          const genericStatus = p.status === 'completed' ? 'Completed' :
+            p.status === 'rejected' ? 'Rejected' :
+            p.levels.some(l => l.status?.toLowerCase() === 'approved') ? 'In Progress' : 'Pending';
 
           await pool.query(
             `INSERT INTO jf_submissions (
@@ -271,29 +353,34 @@ async function pollOnce() {
               form_id=$2, form_title=$3, title=$4, description=$5,
               submitted_by=$6, submitter_name=$7, submitter_email=$8, department=$9,
               submission_date=$10, current_level=$11, status=$12, priority=$13, amount=$14,
-              approver_name=$15, approver_email=$16, pending_approver_name=$17, pending_approver_email=$18,
-              jotform_status=$19, answers=$20, workflow_tasks=$21, level_history=$22, edit_link=$23,
+              approver_name = CASE WHEN $15 = '' THEN jf_submissions.approver_name ELSE $15 END,
+              approver_email = CASE WHEN $16 = '' THEN jf_submissions.approver_email ELSE $16 END,
+              pending_approver_name = CASE WHEN $12 IN ('completed','rejected') THEN NULL WHEN $17 = '' THEN jf_submissions.pending_approver_name ELSE $17 END,
+              pending_approver_email = CASE WHEN $12 IN ('completed','rejected') THEN NULL WHEN $18 = '' THEN jf_submissions.pending_approver_email ELSE $18 END,
+              jotform_status=$19, answers=$20,
+              workflow_tasks = CASE WHEN $21::jsonb = '[]'::jsonb THEN jf_submissions.workflow_tasks ELSE $21::jsonb END,
+              level_history=$22, edit_link=$23,
               raw_data=$24, created_at_jf=$25, updated_at_jf=$26, days_at_level=$27, total_days=$28,
               last_synced=now(), needs_sync=$29, approval_url=$30`,
             [
-              submissionId, formId, formTitle, title, description,
-              submittedBy, submittedBy, email, department,
-              submissionDate.toISOString(), Math.min(currentLevel, maxLevel), status, priority, amount,
-              pendingApproverName || levels.find(l => l.approver)?.approver || '',
-              pendingApproverEmail,
-              pendingApproverName, pendingApproverEmail,
+              p.submissionId, formId, formTitle, p.title, p.description,
+              p.submittedBy, p.submittedBy, p.email, p.department,
+              p.submissionDate.toISOString(), Math.min(p.currentLevel, p.maxLevel), p.status, p.priority, p.amount,
+              p.pendingApproverName || p.levels.find(l => l.approver)?.approver || '',
+              p.pendingApproverEmail,
+              p.pendingApproverName, p.pendingApproverEmail,
               genericStatus,
-              JSON.stringify(allAnswers), JSON.stringify(workflowTasks),
-              JSON.stringify(levelHistory), editLink,
-              JSON.stringify({ ...raw, _mapped: { levels, email, amount } }),
-              submissionDate.toISOString(), updatedDate?.toISOString() || null,
-              totalDays, totalDays,
-              false, approvalUrl || null,
+              JSON.stringify(p.allAnswers), JSON.stringify(p.workflowTasks),
+              JSON.stringify(levelHistory), p.editLink,
+              JSON.stringify({ ...p.raw, _mapped: { levels: p.levels, email: p.email, amount: p.amount } }),
+              p.submissionDate.toISOString(), p.updatedDate?.toISOString() || null,
+              p.totalDays, p.totalDays,
+              false, p.approvalUrl || null,
             ]
           );
           totalUpserted++;
         } catch (err) {
-          console.warn(`[poller] Failed to process submission ${submissionId}:`, err.message);
+          console.warn(`[poller] Failed to upsert submission ${p.submissionId}:`, err.message);
         }
       }
     }

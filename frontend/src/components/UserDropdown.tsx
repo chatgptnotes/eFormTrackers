@@ -8,6 +8,7 @@ const ROLE_LABELS: Record<string, string> = {
   admin: 'Admin',
   approver: 'Approver',
   viewer: 'Viewer',
+  user: 'User',
 };
 
 export default function UserDropdown() {

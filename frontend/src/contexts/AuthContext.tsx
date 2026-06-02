@@ -1,11 +1,11 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { apiFetch } from '../lib/api';
-import { humanizeError } from '../lib/errors';
+import { ApiError, humanizeError } from '../lib/errors';
 import { useIdleTimeout } from '../hooks/useIdleTimeout';
 
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
-export type OrgRole = 'super_admin' | 'admin' | 'approver' | 'viewer';
+export type OrgRole = 'super_admin' | 'admin' | 'approver' | 'viewer' | 'user';
 
 export interface AppUser {
   id: string;
@@ -149,6 +149,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data.user.orgId) fetchOrg(data.user.orgId);
       return { error: null };
     } catch (err) {
+      // Server-side workspace enforcement: POST /api/auth/login returns 403
+      // { error: 'not_workspace_member' } for non-members. Mirror the rejection
+      // UX that verifyWorkspace() sets so Login.tsx shows the friendly banner.
+      if (err instanceof ApiError && err.status === 403 && err.serverMessage === 'not_workspace_member') {
+        sessionStorage.setItem('auth_rejection', 'not_workspace_member');
+        sessionStorage.setItem('auth_rejection_email', email);
+        return { error: 'Your email is not a member of the JotForm workspace.' };
+      }
       return { error: humanizeError(err, 'Sign in failed. Please check your details and try again.') };
     }
   };

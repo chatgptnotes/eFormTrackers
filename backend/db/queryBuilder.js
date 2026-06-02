@@ -24,7 +24,8 @@ function buildUpdateQuery(updates, allowed, options = {}) {
 
   for (const [key, val] of Object.entries(updates || {})) {
     if (!allowedSet.has(key)) continue;
-    setClauses.push(`${key} = $${idx++}`);
+    // L-4: Quote identifiers to handle any reserved-word column names safely.
+    setClauses.push(`"${key}" = $${idx++}`);
     params.push(jsonSet.has(key) ? JSON.stringify(val) : val);
     fields.push(key);
   }

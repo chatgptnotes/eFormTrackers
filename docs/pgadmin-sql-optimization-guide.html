@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>JotFlow — PostgreSQL Optimization SQL for pgAdmin</title>
+<style>
+  @page {
+    size: A4;
+    margin: 18mm 16mm 22mm 16mm;
+    @bottom-center {
+      content: "Page " counter(page) " of " counter(pages);
+      font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+      font-size: 9pt;
+      color: #888;
+    }
+  }
+  @page :first { margin: 0; @bottom-center { content: none; } }
+
+  :root {
+    --teal: #0d9488;
+    --teal-dark: #0f766e;
+    --amber: #d97706;
+    --slate: #1e293b;
+    --slate-soft: #475569;
+    --ink: #0f172a;
+    --line: #cbd5e1;
+    --bg-soft: #f1f5f9;
+    --bg-warn: #fef3c7;
+    --bg-warn-bord: #f59e0b;
+    --bg-info: #ecfeff;
+    --bg-info-bord: #06b6d4;
+    --bg-danger: #fee2e2;
+    --bg-danger-bord: #ef4444;
+    --bg-ok: #dcfce7;
+    --bg-ok-bord: #22c55e;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, "Helvetica Neue", "Segoe UI", Arial, sans-serif;
+    font-size: 10.5pt; line-height: 1.55; color: var(--ink);
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+
+  h1, h2, h3, h4 { color: var(--slate); margin: 0 0 6pt; line-height: 1.25; }
+  h2 { font-size: 17pt; color: var(--teal-dark); border-bottom: 2pt solid var(--teal); padding-bottom: 4pt; margin-top: 0; }
+  h3 { font-size: 12pt; color: var(--slate); margin-top: 13pt; }
+  p { margin: 0 0 8pt; }
+  ul, ol { margin: 0 0 8pt 18pt; padding: 0; }
+  li { margin-bottom: 4pt; }
+  code { font-family: "SF Mono", "Menlo", "Consolas", monospace; font-size: 9.5pt; background: var(--bg-soft); padding: 1pt 4pt; border-radius: 3pt; color: var(--slate); }
+
+  /* Cover */
+  .cover { page-break-after: always; height: 297mm; padding: 24mm 22mm; background: linear-gradient(180deg, #ffffff 0%, #ecfeff 100%); position: relative; }
+  .cover .accent { position: absolute; top: 0; left: 0; width: 100%; height: 8mm; background: linear-gradient(90deg, var(--teal) 0%, var(--teal-dark) 60%, var(--amber) 100%); }
+  .cover .brand { margin-top: 12mm; font-size: 11pt; letter-spacing: 2pt; color: var(--teal-dark); text-transform: uppercase; font-weight: 600; }
+  .cover h1 { font-size: 28pt; color: var(--slate); margin-top: 38mm; line-height: 1.15; max-width: 150mm; }
+  .cover .subtitle { font-size: 13.5pt; color: var(--slate-soft); margin-top: 6mm; max-width: 155mm; }
+  .cover .meta { margin-top: 20mm; font-size: 10pt; color: var(--slate-soft); }
+  .cover .meta span { display: inline-block; margin-right: 12mm; }
+  .cover .meta strong { color: var(--slate); }
+  .cover .preview-box { margin-top: 16mm; border: 1pt solid var(--line); border-left: 4pt solid var(--teal); padding: 8mm 10mm; background: white; border-radius: 2pt; }
+  .cover .preview-box h4 { color: var(--teal-dark); font-size: 11pt; margin: 0 0 4mm; text-transform: uppercase; letter-spacing: 1pt; }
+  .cover .preview-box ol { margin: 0 0 0 16pt; }
+  .cover .preview-box li { font-size: 10.5pt; margin-bottom: 3pt; }
+  .cover .footer-bar { position: absolute; bottom: 0; left: 0; width: 100%; padding: 6mm 22mm; background: var(--slate); color: #e2e8f0; font-size: 9pt; display: flex; justify-content: space-between; }
+
+  /* Content */
+  section.step { page-break-before: always; }
+  section.step:first-of-type { page-break-before: auto; }
+  .step-number { display: inline-block; background: var(--teal); color: white; border-radius: 100%; width: 22pt; height: 22pt; line-height: 22pt; text-align: center; font-weight: 700; font-size: 12pt; margin-right: 6pt; vertical-align: 2pt; }
+
+  .callout { margin: 10pt 0; padding: 8pt 12pt; border-left: 4pt solid var(--bg-info-bord); background: var(--bg-info); border-radius: 0 3pt 3pt 0; font-size: 10pt; }
+  .callout.warn { border-left-color: var(--bg-warn-bord); background: var(--bg-warn); }
+  .callout.danger { border-left-color: var(--bg-danger-bord); background: var(--bg-danger); }
+  .callout.ok { border-left-color: var(--bg-ok-bord); background: var(--bg-ok); }
+  .callout .label { font-weight: 700; text-transform: uppercase; font-size: 9pt; letter-spacing: 1pt; margin-right: 6pt; }
+  .callout.warn .label { color: #92400e; }
+  .callout.danger .label { color: #991b1b; }
+  .callout.info .label { color: #155e75; }
+  .callout.ok .label { color: #166534; }
+
+  /* SQL code block */
+  pre.sql { margin: 8pt 0 4pt; padding: 9pt 12pt; background: #0f172a; color: #e2e8f0; border-radius: 4pt; font-family: "SF Mono", "Menlo", "Consolas", monospace; font-size: 9pt; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+  pre.sql .c { color: #64748b; }       /* comment */
+  pre.sql .k { color: #5eead4; }       /* keyword */
+  pre.sql .s { color: #fcd34d; }       /* string / identifier value */
+  .sql-cap { font-size: 8.5pt; color: var(--slate-soft); margin: 0 0 8pt; }
+
+  table.t { width: 100%; border-collapse: collapse; margin: 6pt 0; font-size: 9.5pt; }
+  table.t th, table.t td { border: 1pt solid var(--line); padding: 5pt 8pt; text-align: left; vertical-align: top; }
+  table.t th { background: var(--bg-soft); color: var(--slate); }
+  .pill { display: inline-block; font-size: 8pt; font-weight: 700; text-transform: uppercase; letter-spacing: .5pt; padding: 1pt 6pt; border-radius: 10pt; }
+  .pill.sql { background: var(--bg-info); color: #155e75; }
+  .pill.code { background: var(--bg-soft); color: var(--slate-soft); }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="accent"></div>
+  <div class="brand">JotFlow · Government of Dubai Media Office</div>
+  <h1>PostgreSQL Optimization — SQL to Run in pgAdmin</h1>
+  <div class="subtitle">Copy-paste runbook for the <code>flowaccel</code> database on the IIS / Windows server. Adds indexes for fast dashboard reads, refreshes planner statistics, and verifies the result.</div>
+  <div class="preview-box">
+    <h4>What you'll do</h4>
+    <ol>
+      <li>Connect to the <code>flowaccel</code> database and open the Query Tool</li>
+      <li>Create three performance indexes (without locking the table)</li>
+      <li>Refresh planner statistics with <code>ANALYZE</code></li>
+      <li>Verify the indexes are used with <code>EXPLAIN ANALYZE</code></li>
+      <li>Run the diagnostics &amp; routine-maintenance queries</li>
+    </ol>
+  </div>
+  <div class="footer-bar">
+    <span>Run on the live PostgreSQL server (pgAdmin Query Tool)</span>
+    <span>Internal — handle as production</span>
+  </div>
+</div>
+
+<!-- ───────────────────────── STEP 0 ───────────────────────── -->
+<section class="step">
+  <h2><span class="step-number">0</span>Before you start</h2>
+
+  <p>These statements run against the <strong>same PostgreSQL database your Node backend uses</strong> — the one in <code>DATABASE_URL</code> (database name <code>flowaccel</code>). Run them in pgAdmin's <strong>Query Tool</strong> on the IIS server.</p>
+
+  <ol>
+    <li>Open <strong>pgAdmin</strong> → expand <em>Servers</em> → your PostgreSQL server → <em>Databases</em> → <code>flowaccel</code>.</li>
+    <li>Right-click <code>flowaccel</code> → <strong>Query Tool</strong>.</li>
+    <li>Paste one block at a time and press <strong>F5</strong> (or the ▶ Execute button) to run it.</li>
+  </ol>
+
+  <div class="callout danger">
+    <span class="label">Production</span> This is the live GDMO database. Prefer a low-traffic window. Every statement below is <strong>safe and reversible</strong> — adding an index changes no data, and it can be dropped again (see Step 5). Nothing here deletes or modifies rows.
+  </div>
+
+  <div class="callout info">
+    <span class="label">Code vs SQL</span> Two of the four optimizations were already made <em>in the application code</em> and need no SQL: the dashboard read no longer ships the giant <code>raw_data</code> column, and the poller now enriches submissions in parallel. This document covers only the <span class="pill sql">SQL</span> part you run in pgAdmin.
+  </div>
+</section>
+
+<!-- ───────────────────────── STEP 1 ───────────────────────── -->
+<section class="step">
+  <h2><span class="step-number">1</span>Create the performance indexes</h2>
+
+  <p>The dashboard read filters by <code>form_id</code> and always sorts by <code>submission_date</code> newest-first. The notifications read filters by <code>user_email</code> and sorts by <code>created_at</code>. These three indexes let PostgreSQL satisfy each filter <em>and</em> its sort directly from the index instead of sorting matched rows in memory.</p>
+
+  <div class="callout warn">
+    <span class="label">Run one at a time</span> Each uses <code>CREATE INDEX CONCURRENTLY</code>, which builds the index <strong>without locking out the poller's writes</strong>. CONCURRENTLY cannot run inside a transaction, so run <strong>each statement on its own</strong> (select just that block, then F5) — do not run all three in a single execution. <code>IF NOT EXISTS</code> makes re-running safe.
+  </div>
+
+  <h3>1a · Submissions — filter by form, sorted by date</h3>
+  <pre class="sql"><span class="c">-- Matches: WHERE form_id = ANY(...) ORDER BY submission_date DESC</span>
+<span class="k">CREATE INDEX CONCURRENTLY IF NOT EXISTS</span> idx_jf_submissions_form_date
+  <span class="k">ON</span> jf_submissions (form_id, submission_date <span class="k">DESC</span>);</pre>
+
+  <h3>1b · Submissions — filter by status, sorted by date</h3>
+  <pre class="sql"><span class="c">-- Matches: WHERE status = '...' ORDER BY submission_date DESC</span>
+<span class="k">CREATE INDEX CONCURRENTLY IF NOT EXISTS</span> idx_jf_submissions_status_date
+  <span class="k">ON</span> jf_submissions (status, submission_date <span class="k">DESC</span>);</pre>
+
+  <h3>1c · Notifications — filter by user, sorted by date</h3>
+  <pre class="sql"><span class="c">-- Matches: WHERE user_email = '...' ORDER BY created_at DESC LIMIT n</span>
+<span class="k">CREATE INDEX CONCURRENTLY IF NOT EXISTS</span> idx_notifications_email_created
+  <span class="k">ON</span> notifications (user_email, created_at <span class="k">DESC</span>);</pre>
+
+  <div class="callout ok">
+    <span class="label">Note</span> These are identical to the indexes now in <code>backend/db/schema.sql</code>. If you instead run <code>npm run migrate</code> on the server, you don't need to run these by hand — but the migrate path uses a brief table lock, whereas the <code>CONCURRENTLY</code> form above does not.
+  </div>
+</section>
+
+<!-- ───────────────────────── STEP 2 ───────────────────────── -->
+<section class="step">
+  <h2><span class="step-number">2</span>Refresh planner statistics</h2>
+
+  <p>After creating indexes, tell PostgreSQL to recompute table statistics so the query planner knows the new indexes exist and chooses them. This is fast and read-only.</p>
+
+  <pre class="sql"><span class="k">ANALYZE</span> jf_submissions;
+<span class="k">ANALYZE</span> notifications;</pre>
+
+  <p class="sql-cap">Safe to run together. Takes seconds.</p>
+</section>
+
+<!-- ───────────────────────── STEP 3 ───────────────────────── -->
+<section class="step">
+  <h2><span class="step-number">3</span>Verify the indexes are actually used</h2>
+
+  <p>Run the real dashboard query through <code>EXPLAIN ANALYZE</code>. Replace the two form IDs with real ones from your data (grab them from the query in the box below).</p>
+
+  <h3>Get a couple of real form IDs first</h3>
+  <pre class="sql"><span class="k">SELECT DISTINCT</span> form_id <span class="k">FROM</span> jf_submissions <span class="k">LIMIT</span> 5;</pre>
+
+  <h3>Then run the plan</h3>
+  <pre class="sql"><span class="k">EXPLAIN ANALYZE</span>
+<span class="k">SELECT</span> * <span class="k">FROM</span> jf_submissions
+<span class="k">WHERE</span> form_id = <span class="k">ANY</span>(<span class="k">ARRAY</span>[<span class="s">'PASTE_FORM_ID_1'</span>, <span class="s">'PASTE_FORM_ID_2'</span>])
+<span class="k">ORDER BY</span> submission_date <span class="k">DESC</span>
+<span class="k">LIMIT</span> 200;</pre>
+
+  <h3>How to read the result</h3>
+  <table class="t">
+    <tr><th>What you see in the plan</th><th>Meaning</th></tr>
+    <tr><td><code>Index Scan using idx_jf_submissions_form_date</code> (or a <code>Bitmap</code> / <code>Merge</code> scan over it)</td><td><strong>Working.</strong> The index is being used.</td></tr>
+    <tr><td><code>Seq Scan on jf_submissions</code> + a large <code>Sort</code> node with high <code>actual time</code></td><td>Index not used yet — re-run Step 2 (<code>ANALYZE</code>). If it persists, the table may simply be small (see below).</td></tr>
+    <tr><td>Total runtime already &lt; a few ms with a <code>Seq Scan</code></td><td><strong>Fine.</strong> The table is small enough that scanning is faster than an index — PostgreSQL is choosing correctly. No action needed.</td></tr>
+  </table>
+
+  <div class="callout info">
+    <span class="label">Honest note</span> Indexes only pay off once a table is reasonably large (roughly 10k+ rows). On a small table the planner may ignore them, and that is the correct, fast choice. The bigger speed win for the dashboard was the application-code change that stopped sending the <code>raw_data</code> column.
+  </div>
+</section>
+
+<!-- ───────────────────────── STEP 4 ───────────────────────── -->
+<section class="step">
+  <h2><span class="step-number">4</span>Diagnostics — know your data</h2>
+
+  <h3>4a · Table size, index size, and row count</h3>
+  <pre class="sql"><span class="k">SELECT</span>
+  pg_size_pretty(pg_total_relation_size(<span class="s">'jf_submissions'</span>)) <span class="k">AS</span> total_size,
+  pg_size_pretty(pg_relation_size(<span class="s">'jf_submissions'</span>))       <span class="k">AS</span> table_size,
+  pg_size_pretty(pg_indexes_size(<span class="s">'jf_submissions'</span>))        <span class="k">AS</span> indexes_size,
+  (<span class="k">SELECT</span> count(*) <span class="k">FROM</span> jf_submissions)                    <span class="k">AS</span> row_count;</pre>
+  <p class="sql-cap">Tells you whether indexes are even worth it (see Step 3 note) and how big <code>raw_data</code> made the table.</p>
+
+  <h3>4b · List every index on the submissions table</h3>
+  <pre class="sql"><span class="k">SELECT</span> indexname, indexdef
+<span class="k">FROM</span> pg_indexes
+<span class="k">WHERE</span> tablename = <span class="s">'jf_submissions'</span>
+<span class="k">ORDER BY</span> indexname;</pre>
+
+  <h3>4c · Find UNUSED indexes (don't pay to maintain dead weight)</h3>
+  <pre class="sql"><span class="k">SELECT</span> relname <span class="k">AS</span> table_name,
+       indexrelname <span class="k">AS</span> index_name,
+       idx_scan <span class="k">AS</span> times_used,
+       pg_size_pretty(pg_relation_size(indexrelid)) <span class="k">AS</span> index_size
+<span class="k">FROM</span> pg_stat_user_indexes
+<span class="k">WHERE</span> relname <span class="k">IN</span> (<span class="s">'jf_submissions'</span>, <span class="s">'notifications'</span>, <span class="s">'jf_approval_history'</span>)
+<span class="k">ORDER BY</span> idx_scan <span class="k">ASC</span>;</pre>
+  <p class="sql-cap"><code>times_used = 0</code> after the app has run for a while means that index is never used and could be dropped. Check again a few days after deploying.</p>
+</section>
+
+<!-- ───────────────────────── STEP 5 ───────────────────────── -->
+<section class="step">
+  <h2><span class="step-number">5</span>Routine maintenance &amp; rollback</h2>
+
+  <h3>5a · Reclaim space &amp; refresh stats (occasional)</h3>
+  <p>PostgreSQL autovacuums automatically, but after a large sync you can run this manually. It does not lock the table for reads/writes.</p>
+  <pre class="sql"><span class="k">VACUUM</span> (<span class="k">ANALYZE</span>) jf_submissions;</pre>
+
+  <h3>5b · Rollback — remove an index if ever needed</h3>
+  <p>Adding an index is fully reversible. Drop concurrently so it never blocks writes:</p>
+  <pre class="sql"><span class="k">DROP INDEX CONCURRENTLY IF EXISTS</span> idx_jf_submissions_form_date;
+<span class="k">DROP INDEX CONCURRENTLY IF EXISTS</span> idx_jf_submissions_status_date;
+<span class="k">DROP INDEX CONCURRENTLY IF EXISTS</span> idx_notifications_email_created;</pre>
+
+  <h3>5c · Optional — see your slowest queries</h3>
+  <p>If the <code>pg_stat_statements</code> extension is enabled, this surfaces the heaviest queries so you know where to look next:</p>
+  <pre class="sql"><span class="k">SELECT</span> query, calls, mean_exec_time, total_exec_time
+<span class="k">FROM</span> pg_stat_statements
+<span class="k">ORDER BY</span> total_exec_time <span class="k">DESC</span>
+<span class="k">LIMIT</span> 10;</pre>
+  <p class="sql-cap">If it errors with "relation does not exist", the extension isn't installed — that's optional and can be skipped.</p>
+
+  <div class="callout ok">
+    <span class="label">Done</span> After Steps 1–3 the dashboard's submission and notification reads are index-backed. Combined with the code-side payload trim, the dashboard fetches the same rows with a much smaller response.
+  </div>
+</section>
+
+</body>
+</html>

@@ -23,9 +23,13 @@ import { WorkflowStep, WorkflowTaskInfo, getWorkflowTaskApprover, getActionType 
 import { ApproverConfig, getConfiguredApprover } from './useApproverConfig';
 
 // ─── Shared utilities ────────────────────────────────────────────────────────
-/** Parse JotForm "YYYY-MM-DD HH:MM:SS" (UTC) or ISO 8601 string into a Date */
+/** Parse JotForm "YYYY-MM-DD HH:MM:SS" (UTC) or ISO 8601 string into a Date.
+ *  Never returns an Invalid Date: a malformed/empty value falls back to now,
+ *  so downstream .getTime()/.toISOString() can't throw on bad row data. */
 function parseUTC(s: string): Date {
-  return new Date(s.includes('T') ? s : s.replace(' ', 'T') + 'Z');
+  if (typeof s !== 'string' || !s.trim()) return new Date();
+  const d = new Date(s.includes('T') ? s : s.replace(' ', 'T') + 'Z');
+  return isNaN(d.getTime()) ? new Date() : d;
 }
 
 /** Aging thresholds (days) for overallStatus classification */
@@ -447,7 +451,8 @@ export function mapSupabaseRow(row: Record<string, unknown>): Submission {
   // Fallback: use the pre-mapped fields from Supabase
   // level_history (top-level, written by webhook) takes priority over raw_data._mapped.levels (written by sync-to-supabase)
   const mapped = (raw._mapped as Record<string, unknown>) || {};
-  const levelHistory = (row.level_history as Array<Record<string, unknown>>) || (mapped.levels as Array<Record<string, unknown>>) || [];
+  const rawLevelHistory = (row.level_history ?? mapped.levels);
+  const levelHistory: Array<Record<string, unknown>> = Array.isArray(rawLevelHistory) ? rawLevelHistory : [];
   const history: ApprovalEntry[] = levelHistory.map(l => {
     // Normalize both shapes: webhook writes { id, approver }, sync writes { level, approverName }
     const levelNum = Number(l.id ?? l.level ?? 0);
@@ -463,15 +468,30 @@ export function mapSupabaseRow(row: Record<string, unknown>): Submission {
   });
 
   const totalDays = Number(row.total_days) || 0;
-  const status = String(row.status || 'pending');
+  const rawStatus = String(row.status || 'pending').toLowerCase();
+
+  // Authoritative completion from the synced workflow task list: if it shows the
+  // workflow finished (a COMPLETED end node, or every task COMPLETED with none
+  // ACTIVE/PENDING left), trust that over a stale status/current_level column.
+  // Fixes rows the dashboard wrongly showed as "Pending" after the workflow ended.
+  const wfTasks: WorkflowTask[] = Array.isArray(row.workflow_tasks) ? (row.workflow_tasks as WorkflowTask[]) : [];
+  const tasksReachedEnd = wfTasks.length > 0
+    && !wfTasks.some(t => ['ACTIVE', 'PENDING'].includes(String(t.status).toUpperCase()))
+    && (wfTasks.some(t => String((t as { type?: string }).type) === 'workflow_end_point' && String(t.status).toUpperCase() === 'COMPLETED')
+        || wfTasks.every(t => String(t.status).toUpperCase() === 'COMPLETED'));
+
   const currentLevel: ApprovalLevel | 'completed' | 'rejected' =
-    status === 'completed' ? 'completed' : status === 'rejected' ? 'rejected' : (Number(row.current_level) || 1) as ApprovalLevel;
+    rawStatus === 'rejected' ? 'rejected'
+    : (rawStatus === 'completed' || tasksReachedEnd) ? 'completed'
+    : (Number(row.current_level) || 1) as ApprovalLevel;
 
   const sbId = String(row.jotform_submission_id);
   const sbFormId = String(row.form_id || '');
 
-  const pendingApproverName = String(row.pending_approver_name || '') || undefined;
-  const pendingApproverEmail = String(row.pending_approver_email || '') || undefined;
+  // A finished/rejected workflow has no one pending — never carry a stale approver.
+  const isDone = currentLevel === 'completed' || currentLevel === 'rejected';
+  const pendingApproverName = isDone ? undefined : (String(row.pending_approver_name || '') || undefined);
+  const pendingApproverEmail = isDone ? undefined : (String(row.pending_approver_email || '') || undefined);
   const submitterEmail = String(row.submitter_email || (mapped.email as string) || '');
 
   // Enrich history with pending approver from Supabase if available
@@ -508,7 +528,7 @@ export function mapSupabaseRow(row: Record<string, unknown>): Submission {
     daysAtCurrentLevel: totalDays,
     totalDaysSinceSubmission: totalDays,
     overallStatus: agingStatus(totalDays),
-    jotformStatus: String(row.jotform_status || row.status || (currentLevel === 'completed' ? 'Completed' : currentLevel === 'rejected' ? 'Rejected' : 'Pending')),
+    jotformStatus: currentLevel === 'completed' ? 'Completed' : currentLevel === 'rejected' ? 'Rejected' : String(row.jotform_status || row.status || 'Pending'),
     priority: (String(row.priority || 'medium') as 'low' | 'medium' | 'high' | 'urgent'),
     answers: (row.answers as Record<string, string>) || { description: String(row.title || ''), amount: String(row.amount || (mapped.amount as string) || ''), department: String(row.department || ''), email: submitterEmail, requester: String(row.submitted_by || '') },
     pendingApproverName,
@@ -518,6 +538,6 @@ export function mapSupabaseRow(row: Record<string, unknown>): Submission {
     // Workflow tasks come straight from the DB (jf_submissions.workflow_tasks
     // column, populated by the backend webhook + admin-sync). When present,
     // the dashboard avoids any /api/workflow-tasks call.
-    workflowTasks: Array.isArray(row.workflow_tasks) ? (row.workflow_tasks as WorkflowTask[]) : undefined,
+    workflowTasks: wfTasks.length > 0 ? wfTasks : undefined,
   } as Submission;
 }

@@ -11,7 +11,7 @@ const STATUS_MESSAGES: Record<number, string> = {
   409: 'This conflicts with the current state — it may have already been updated. Refresh and try again.',
   413: 'The file or request is too large.',
   422: 'Some of the information provided was invalid. Please review and try again.',
-  429: 'Too many requests. Please wait a moment and try again.',
+  429: 'Too many requests — please slow down and try again in a moment.',
   500: 'Something went wrong on our end. Please try again in a moment.',
   502: 'The server is temporarily unreachable. Please try again shortly.',
   503: 'The service is temporarily unavailable. Please try again shortly.',

@@ -10,6 +10,7 @@ import WorkflowDetailsModal from '../components/WorkflowDetailsModal';
 import WorkflowDetailsSidebar from '../components/WorkflowDetailsSidebar';
 import { Skeleton, SkeletonStatCard, SkeletonSubmissionCard } from '../components/Skeleton';
 import { Submission, WorkflowTask } from '../types';
+import { getMyWorkflowRole, isAwaitingMyAction, getMyActionType } from '../config/currentUser';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import { exportToExcel } from '../services/exportService';
@@ -22,7 +23,7 @@ interface Props {
 const statusConfig = {
   pending: { color: 'from-cyan-400 to-sky-400', icon: Clock, label: 'Pending', text: 'text-white', bgLight: 'bg-cyan-400/20', iconColor: 'text-cyan-300' },
   approved: { color: 'from-blue-400 to-blue-600', icon: CheckCircle2, label: 'Approved', text: 'text-white', bgLight: 'bg-blue-500/20', iconColor: 'text-blue-300' },
-  rejected: { color: 'from-indigo-500 to-indigo-600', icon: AlertCircle, label: 'Rejected', text: 'text-white', bgLight: 'bg-indigo-500/20', iconColor: 'text-indigo-300' },
+  rejected: { color: 'from-red-500 to-rose-600', icon: AlertCircle, label: 'Rejected', text: 'text-white', bgLight: 'bg-red-500/20', iconColor: 'text-red-300' },
   completed: { color: 'from-cyan-300 to-blue-400', icon: Zap, label: 'Completed', text: 'text-white', bgLight: 'bg-cyan-400/20', iconColor: 'text-cyan-200' },
 };
 
@@ -105,8 +106,7 @@ const StatCard = memo(function StatCard({ label, value, trend, color, idx }: Sta
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: idx * 0.1 }}
-      whileHover={{ y: -6, transition: { duration: 0.2 } }}
-      className={`group relative overflow-hidden rounded-2xl p-6 border-2 transition-all duration-300 cursor-pointer shadow-md hover:shadow-lg ${borderColorMap[idx % 4]}`}
+      className={`group relative overflow-hidden rounded-2xl p-6 border-2 transition-all duration-300 cursor-pointer shadow-md hover:shadow-xl hover:border-opacity-80 ${borderColorMap[idx % 4]}`}
       style={{ background: '#ffffff' }}
     >
       <div className="relative z-10">
@@ -127,9 +127,9 @@ const SubmissionCard = memo(function SubmissionCard({ submission, idx, user, onV
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
-      transition={{ delay: idx * 0.05 }} whileHover={{ y: -8, transition: { duration: 0.3 } }}
+      transition={{ delay: idx * 0.05 }}
       onClick={() => onOpenModal(submission)}
-      className={`group relative overflow-hidden rounded-2xl p-6 border-2 transition-all duration-300 cursor-pointer shadow-md hover:shadow-lg ${status === 'pending' ? 'border-cyan-400 hover:border-cyan-500' : status === 'approved' ? 'border-blue-400 hover:border-blue-500' : status === 'rejected' ? 'border-indigo-500 hover:border-indigo-600' : 'border-cyan-300 hover:border-cyan-400'}`}
+      className={`group relative overflow-hidden rounded-2xl p-6 border-2 transition-all duration-300 cursor-pointer shadow-md hover:shadow-xl ${status === 'pending' ? 'border-cyan-400 hover:border-cyan-500' : status === 'approved' ? 'border-blue-400 hover:border-blue-500' : status === 'rejected' ? 'border-red-400 hover:border-red-500' : 'border-cyan-300 hover:border-cyan-400'}`}
       style={{ background: '#ffffff' }}
     >
       <div className="relative z-10 space-y-3">
@@ -139,6 +139,10 @@ const SubmissionCard = memo(function SubmissionCard({ submission, idx, user, onV
             <div className="flex-1"><p className="text-sm font-black text-black font-mono">ID: {submission.id.slice(0, 8).toUpperCase()}</p></div>
             <span className={`inline-block text-xs font-bold px-2.5 py-1 rounded-lg text-white bg-gradient-to-r ${sc.color}`}>{sc.label}</span>
           </div>
+          {(() => {
+            const myRole = getMyWorkflowRole(submission, user?.email);
+            return myRole ? <span className="inline-block mt-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">You: {myRole}</span> : null;
+          })()}
         </div>
         <div className="flex items-center gap-2 py-2 border-t border-gray-200">
           <User className="w-4 h-4 text-gray-700" />
@@ -162,15 +166,23 @@ const SubmissionCard = memo(function SubmissionCard({ submission, idx, user, onV
           <div><p className="text-gray-900 font-medium">Pending For</p><p className={`font-bold text-sm ${submission.daysAtCurrentLevel > 14 ? 'text-red-600' : submission.daysAtCurrentLevel > 7 ? 'text-orange-600' : 'text-gray-900'}`}>{submission.daysAtCurrentLevel || 0} days</p></div>
         </div>
         <div className="pt-2 border-t border-gray-200 space-y-2">
-          {user?.email === submission.pendingApproverEmail && submission.currentApprovalLevel !== 'completed' && submission.currentApprovalLevel !== 'rejected' ? (
-            <motion.button whileHover={{ scale: 1.02 }} onClick={() => onViewDetails(submission)} className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-gradient-to-r ${sc.color} text-white font-semibold text-sm transition-all hover:shadow-lg border border-transparent`}><CheckCircle2 className="w-4 h-4" /><span>Review & Approve</span></motion.button>
-          ) : submission.actionType === 'form' && submission.formUrl ? (
-            <a href={submission.formUrl} target="_blank" rel="noopener noreferrer" className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-gradient-to-r ${sc.color} text-white font-semibold text-sm transition-all hover:shadow-lg border border-transparent`}><FileText className="w-4 h-4" /><span>Fill Form</span><ExternalLink className="w-3 h-3" /></a>
-          ) : submission.approvalUrl ? (
-            <a href={submission.approvalUrl} target="_blank" rel="noopener noreferrer" className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-gradient-to-r ${sc.color} text-white font-semibold text-sm transition-all hover:shadow-lg border border-transparent`}><ExternalLink className="w-4 h-4" /><span>View Task</span></a>
-          ) : (
-            <motion.button whileHover={{ x: 4 }} onClick={(e) => { e.stopPropagation(); onOpenModal(submission); }} className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-gradient-to-r ${sc.color} text-white font-semibold text-sm transition-all hover:shadow-lg border border-transparent group/btn`}><span>View Details</span><span className="group-hover/btn:translate-x-1 transition-transform">→</span></motion.button>
-          )}
+          {(() => {
+            // CTA reflects MY actual active task type — not a blanket "Review &
+            // Approve". Approval opens the signature modal; Task/Form open the
+            // workflow sidebar where the correct external link lives.
+            const btnClass = `w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-gradient-to-r ${sc.color} text-white font-semibold text-sm transition-all hover:shadow-lg border border-transparent`;
+            const myAction = getMyActionType(submission, user?.email);
+            if (myAction === 'approval') {
+              return <motion.button whileHover={{ scale: 1.02 }} onClick={() => onViewDetails(submission)} className={btnClass}><CheckCircle2 className="w-4 h-4" /><span>Review &amp; Approve</span></motion.button>;
+            }
+            if (myAction === 'form') {
+              return <motion.button whileHover={{ scale: 1.02 }} onClick={(e) => { e.stopPropagation(); onOpenModal(submission); }} className={btnClass}><FileText className="w-4 h-4" /><span>Fill Form</span></motion.button>;
+            }
+            if (myAction === 'task') {
+              return <motion.button whileHover={{ scale: 1.02 }} onClick={(e) => { e.stopPropagation(); onOpenModal(submission); }} className={btnClass}><ExternalLink className="w-4 h-4" /><span>Open Task</span></motion.button>;
+            }
+            return <motion.button whileHover={{ x: 4 }} onClick={(e) => { e.stopPropagation(); onOpenModal(submission); }} className={`${btnClass} group/btn`}><span>View Details</span><span className="group-hover/btn:translate-x-1 transition-transform">→</span></motion.button>;
+          })()}
         </div>
       </div>
     </motion.div>
@@ -178,9 +190,18 @@ const SubmissionCard = memo(function SubmissionCard({ submission, idx, user, onV
 });
 
 export default function ModernDashboard({ data }: Props) {
-  const { allSubmissions, loading } = data;
+  const { allSubmissions: rawSubmissions, loading, error } = data;
   const { user } = useAuth();
   const { activeWorkflowId } = useApp();
+
+  // Personal action queue (no role bypass, same for every user): ONLY submissions
+  // awaiting MY action right now — the current pending approver or an ACTIVE task
+  // (incl. parallel-approval steps). Completed/rejected workflows do NOT appear
+  // here; they live on the dedicated Completed page. Drives stat cards + views.
+  const allSubmissions = useMemo(
+    () => rawSubmissions.filter(s => isAwaitingMyAction(s, user?.email)),
+    [rawSubmissions, user?.email],
+  );
 
   const [isPending, startTransition] = useTransition();
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
@@ -234,7 +255,6 @@ export default function ModernDashboard({ data }: Props) {
     let filtered = allSubmissions
       .filter(sub => !activeWorkflowId || sub.formId === activeWorkflowId)
       .filter(sub => !sub.formTitle.includes('Workflow Form'))
-      .filter(sub => sub.currentApprovalLevel !== 'completed')
       .filter(sub => {
         const matchesSearch = sub.id.toLowerCase().includes(deferredSearchQuery.toLowerCase()) ||
           sub.submittedBy.name.toLowerCase().includes(deferredSearchQuery.toLowerCase()) ||
@@ -272,6 +292,60 @@ export default function ModernDashboard({ data }: Props) {
   }, []);
 
   const handleViewDetails = useCallback((submission: Submission) => { setSelectedSubmission(submission); }, []);
+
+  // Right-sidebar Approve/Reject route through the same approve-&-sign modal the
+  // cards use. Open Task / Fill Form resolves the access-token URL server-side.
+  const openSidebarApproveModal = useCallback(() => {
+    if (workflowSidebarSubmission) setSelectedSubmission(workflowSidebarSubmission);
+  }, [workflowSidebarSubmission]);
+
+  const openTaskLink = useCallback(async (task: WorkflowTask) => {
+    // Synchronous open keeps the click as a "user gesture" so popup blockers
+    // don't suppress the new tab. CRITICAL: do NOT pass 'noopener'/'noreferrer'
+    // here — they force window.open to return null, leaving the placeholder
+    // tab stuck at about:blank. We sever pop.opener AFTER navigation instead.
+    const pop = window.open('about:blank', '_blank');
+    const sub = workflowSidebarSubmission;
+    let url = '';
+    let reason = '';
+    if (sub) {
+      try {
+        const json = await apiFetch<{ approvalUrl?: string | null; reason?: string; error?: string }>(
+          `/api/email-url?formId=${sub.formId}&submissionId=${sub.id}`,
+          { throwOnError: false },
+        );
+        if (json?.approvalUrl) url = json.approvalUrl;
+        else reason = json?.reason || json?.error || 'no url returned';
+      } catch (e) {
+        reason = (e as Error)?.message || String(e);
+      }
+    }
+    if (!url && task.accessLink) url = task.accessLink;
+
+    if (!url) {
+      if (pop && !pop.closed) pop.close();
+      // eslint-disable-next-line no-console
+      console.warn('[openTaskLink] no URL resolved:', { reason, taskId: task.taskId, type: task.type });
+      alert(`Couldn't open the JotForm task: ${reason || 'this step has no accessible link'}`);
+      return;
+    }
+
+    if (pop && !pop.closed) {
+      try {
+        pop.location.href = url;
+        // Sever opener now that we've redirected — same security as noopener
+        // would have given us up front, but compatible with the sync-open trick.
+        try { pop.opener = null; } catch { /* cross-origin once navigated */ }
+      } catch {
+        pop.close();
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    } else {
+      // Popup was blocked at the OS level. Open a fresh one anyway — most browsers
+      // still honor user-initiated calls if the first one was suppressed.
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  }, [workflowSidebarSubmission]);
 
   const fetchAndShowSignature = useCallback(async (submissionId: string, level: number, taskId: string) => {
     setSigLoading(taskId);
@@ -586,6 +660,10 @@ export default function ModernDashboard({ data }: Props) {
             <div className="flex items-center gap-2 mb-4">
               <span className={`inline-block text-xs font-bold px-2.5 py-1 rounded-lg text-white bg-gradient-to-r ${statusConfig[getSubmissionStatus(selected)].color}`}>{statusConfig[getSubmissionStatus(selected)].label}</span>
               <p className="text-xs text-gray-400 font-mono">{selected.id.slice(0, 8).toUpperCase()}</p>
+              {(() => {
+                const myRole = getMyWorkflowRole(selected, user?.email);
+                return myRole ? <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">You: {myRole}</span> : null;
+              })()}
             </div>
             <h2 className="text-lg font-bold text-gray-900 mb-4">{selected.formTitle || 'Form Submission'}</h2>
             <div className="grid grid-cols-2 gap-4 text-sm">
@@ -649,6 +727,18 @@ export default function ModernDashboard({ data }: Props) {
     );
   }
 
+  // Explicit error state — only when there's nothing to show. If we already have
+  // rows (a transient refresh error), keep showing them rather than blanking.
+  if (error && allSubmissions.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 px-4 text-center">
+        <AlertCircle className="w-10 h-10 text-indigo-400 mb-3" />
+        <p className="text-gray-700 font-semibold">Couldn't load submissions</p>
+        <p className="text-gray-500 text-sm mt-1 max-w-md">{error}</p>
+      </div>
+    );
+  }
+
   const pendingCount = allSubmissions.filter(s => getSubmissionStatus(s) === 'pending').length;
   const approvedCount = allSubmissions.filter(s => getSubmissionStatus(s) === 'approved').length;
   const completedCount = allSubmissions.filter(s => getSubmissionStatus(s) === 'completed').length;
@@ -682,7 +772,7 @@ export default function ModernDashboard({ data }: Props) {
             <div className="flex gap-2 flex-wrap">
               {['all', 'pending', 'approved', 'rejected'].map(status => {
                 const filterColors: Record<string, string> = {
-                  all: 'from-blue-500 to-blue-600', pending: 'from-cyan-400 to-sky-400', approved: 'from-blue-400 to-blue-600', rejected: 'from-indigo-500 to-indigo-600', completed: 'from-cyan-300 to-blue-400',
+                  all: 'from-blue-500 to-blue-600', pending: 'from-cyan-400 to-sky-400', approved: 'from-blue-400 to-blue-600', rejected: 'from-red-500 to-rose-600', completed: 'from-cyan-300 to-blue-400',
                 };
                 return (
                   <motion.button key={status} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => handleStatusFilter(status)}
@@ -857,6 +947,7 @@ export default function ModernDashboard({ data }: Props) {
         isOpen={!!workflowSidebarSubmission} submission={workflowSidebarSubmission} expandedTasks={expandedTasks}
         expandLoading={workflowLoading ? workflowSidebarSubmission?.id : undefined} user={user} showOverlay={false} isAbsolute={true}
         onClose={() => setWorkflowSidebarSubmission(null)} onFetchSignature={fetchAndShowSignature} sigLoading={sigLoading}
+        onTaskApprove={openSidebarApproveModal} onSetTaskRejecting={openSidebarApproveModal} onOpenTaskLink={openTaskLink}
       />
 
       <AnimatePresence>

@@ -19,6 +19,7 @@ const ROLE_OPTIONS = [
   { value: 'admin', label: 'Admin', desc: 'Manage team, approve/reject, all tools' },
   { value: 'approver', label: 'Approver', desc: 'Approve/reject assigned submissions' },
   { value: 'viewer', label: 'Viewer', desc: 'View only assigned forms, no actions' },
+  { value: 'user', label: 'User', desc: 'Sees only assigned forms; can act on assigned tasks' },
 ];
 
 function getRoleBadge(role: string, accountType: string): { label: string; className: string } {
@@ -45,7 +46,7 @@ function getAccountTypeBadge(accountType: string): { label: string; className: s
 }
 
 export default function TeamManagement() {
-  const { user } = useAuth();
+  const { user, orgRole } = useAuth();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +62,7 @@ export default function TeamManagement() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [createSuccess, setCreateSuccess] = useState<string | null>(null);
 
-  const canCreateUser = user?.email === 'bk@bettroi.com';
+  const canCreateUser = orgRole === 'super_admin' || orgRole === 'admin';
 
   const loadMembers = async () => {
     setLoading(true);

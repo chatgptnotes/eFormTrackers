@@ -24,6 +24,10 @@ export default function Login() {
       setError('Could not retrieve your email from Microsoft. Please use email and password.');
     } else if (oauthError === 'microsoft_not_configured') {
       setError('Microsoft sign-in is not configured. Please use email and password.');
+    } else if (oauthError === 'not_workspace_member') {
+      setError('Access denied. Your Microsoft account is not a member of the GDMO - Bettroi JotForm workspace. Contact admin@bettroi.com to request access.');
+    } else if (oauthError === 'workspace_check_failed') {
+      setError('Could not verify your JotForm workspace membership. Please try again or contact admin@bettroi.com.');
     }
     if (oauthError) {
       window.history.replaceState({}, '', window.location.pathname);
@@ -65,17 +69,17 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 flex items-center justify-center p-4 overflow-hidden relative">
-      <div className="absolute top-20 -left-20 w-72 h-72 bg-blue-200/20 rounded-full blur-3xl animate-pulse" />
-      <div className="absolute bottom-20 -right-20 w-72 h-72 bg-purple-200/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-sky-100 flex items-center justify-center p-4 overflow-hidden relative">
+      <div className="absolute top-20 -left-20 w-72 h-72 bg-blue-200/20 rounded-full blur-3xl motion-safe:animate-pulse" />
+      <div className="absolute bottom-20 -right-20 w-72 h-72 bg-sky-200/20 rounded-full blur-3xl motion-safe:animate-pulse" style={{ animationDelay: '1s' }} />
 
       <div className="w-full max-w-md relative z-10">
         <div className="text-center mb-10">
           <Link to="/" className="inline-flex items-center justify-center gap-2 mb-8">
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 bg-gradient-to-br from-blue-400 to-purple-500 p-2 shadow-xl">
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 bg-gradient-to-br from-blue-600 to-sky-500 p-2 shadow-xl">
               <img src="https://eforms.mediaoffice.ae/enterprise/logo.png" alt="FlowAccel Logo" className="w-full h-full object-contain" />
             </div>
-            <span className="text-3xl font-black bg-gradient-to-r from-blue-600 via-purple-600 to-blue-500 bg-clip-text text-transparent">FlowAccel</span>
+            <span className="text-3xl font-black text-slate-900">Eform <span className="text-blue-600">Tracker</span></span>
           </Link>
           <h1 className="text-4xl md:text-5xl font-black text-slate-900 mb-2">Welcome back</h1>
           <p className="text-slate-600 text-base font-semibold">Sign in to continue</p>
@@ -92,7 +96,7 @@ export default function Login() {
           <button
             onClick={handleMicrosoft}
             disabled={msLoading || loading}
-            className="w-full flex items-center justify-center gap-3 px-4 py-3.5 rounded-2xl bg-white border-2 border-slate-300 text-slate-900 hover:border-blue-500 hover:bg-blue-50 hover:shadow-lg transition-all font-bold text-base disabled:opacity-50 disabled:cursor-not-allowed mb-6"
+            className="w-full flex items-center justify-center gap-3 px-4 py-3.5 rounded-2xl bg-white border-2 border-slate-300 text-slate-900 hover:border-blue-500 hover:bg-blue-50 hover:shadow-lg transition-all font-bold text-base disabled:opacity-50 disabled:cursor-not-allowed mb-6 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
           >
             {msLoading ? (
               <Loader2 className="w-5 h-5 animate-spin" />
@@ -129,7 +133,10 @@ export default function Login() {
               </div>
             </div>
             <div>
-              <label className="block text-sm font-bold text-slate-800 mb-2.5 tracking-wide">Password</label>
+              <div className="flex items-center justify-between mb-2.5">
+                <label className="block text-sm font-bold text-slate-800 tracking-wide">Password</label>
+                <Link to="/forgot-password" className="text-xs text-blue-600 hover:text-blue-700 font-semibold transition-colors">Forgot password?</Link>
+              </div>
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-500" />
                 <input
@@ -152,7 +159,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading || msLoading}
-              className="w-full py-3.5 mt-2 flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-bold rounded-2xl hover:shadow-lg hover:shadow-blue-500/40 hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:hover:translate-y-0 text-base"
+              className="w-full py-3.5 mt-2 flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold rounded-2xl hover:shadow-lg hover:shadow-blue-500/40 transition-all duration-300 disabled:opacity-50 text-base focus:outline-none focus:ring-2 focus:ring-blue-500/50 cursor-pointer"
             >
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Sign In <ArrowRight className="w-5 h-5" /></>}
             </button>

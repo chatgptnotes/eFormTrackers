@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FlowAccel — Microsoft Sign-In Setup Guide</title>
+<style>
+  @page {
+    size: A4;
+    margin: 18mm 16mm 22mm 16mm;
+    @bottom-center {
+      content: "Page " counter(page) " of " counter(pages);
+      font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+      font-size: 9pt;
+      color: #888;
+    }
+  }
+  @page :first { margin: 0; @bottom-center { content: none; } }
+
+  :root {
+    --teal: #0d9488;
+    --teal-dark: #0f766e;
+    --amber: #d97706;
+    --slate: #1e293b;
+    --slate-soft: #475569;
+    --ink: #0f172a;
+    --line: #cbd5e1;
+    --bg-soft: #f1f5f9;
+    --bg-warn: #fef3c7;
+    --bg-warn-bord: #f59e0b;
+    --bg-info: #ecfeff;
+    --bg-info-bord: #06b6d4;
+    --bg-danger: #fee2e2;
+    --bg-danger-bord: #ef4444;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, "Helvetica Neue", "Segoe UI", Arial, sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.55;
+    color: var(--ink);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  h1, h2, h3, h4 { color: var(--slate); margin: 0 0 6pt; line-height: 1.25; }
+  h2 { font-size: 18pt; color: var(--teal-dark); border-bottom: 2pt solid var(--teal); padding-bottom: 4pt; margin-top: 0; }
+  h3 { font-size: 12.5pt; color: var(--slate); margin-top: 14pt; }
+  p { margin: 0 0 8pt; }
+  ul, ol { margin: 0 0 8pt 18pt; padding: 0; }
+  li { margin-bottom: 4pt; }
+  code, .uri { font-family: "SF Mono", "Menlo", "Consolas", monospace; font-size: 9.5pt; background: var(--bg-soft); padding: 1pt 4pt; border-radius: 3pt; color: var(--slate); word-break: break-all; }
+
+  /* Cover page */
+  .cover {
+    page-break-after: always;
+    height: 297mm;
+    padding: 24mm 22mm;
+    background: linear-gradient(180deg, #ffffff 0%, #ecfeff 100%);
+    position: relative;
+  }
+  .cover .accent {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 8mm;
+    background: linear-gradient(90deg, var(--teal) 0%, var(--teal-dark) 60%, var(--amber) 100%);
+  }
+  .cover .brand { margin-top: 12mm; font-size: 11pt; letter-spacing: 2pt; color: var(--teal-dark); text-transform: uppercase; font-weight: 600; }
+  .cover h1 { font-size: 30pt; color: var(--slate); margin-top: 40mm; line-height: 1.15; max-width: 150mm; }
+  .cover .subtitle { font-size: 14pt; color: var(--slate-soft); margin-top: 6mm; max-width: 150mm; }
+  .cover .meta { margin-top: 22mm; font-size: 10pt; color: var(--slate-soft); }
+  .cover .meta span { display: inline-block; margin-right: 12mm; }
+  .cover .meta strong { color: var(--slate); }
+  .cover .preview-box {
+    margin-top: 18mm;
+    border: 1pt solid var(--line);
+    border-left: 4pt solid var(--teal);
+    padding: 8mm 10mm;
+    background: white;
+    border-radius: 2pt;
+  }
+  .cover .preview-box h4 { color: var(--teal-dark); font-size: 11pt; margin: 0 0 4mm; text-transform: uppercase; letter-spacing: 1pt; }
+  .cover .preview-box ol { margin: 0 0 0 16pt; }
+  .cover .preview-box li { font-size: 10.5pt; margin-bottom: 3pt; }
+  .cover .footer-bar {
+    position: absolute;
+    bottom: 0; left: 0;
+    width: 100%;
+    padding: 6mm 22mm;
+    background: var(--slate);
+    color: #e2e8f0;
+    font-size: 9pt;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  /* Content pages */
+  section.step { page-break-before: always; }
+  section.step:first-of-type { page-break-before: auto; }
+
+  .step-number {
+    display: inline-block;
+    background: var(--teal);
+    color: white;
+    border-radius: 100%;
+    width: 22pt;
+    height: 22pt;
+    line-height: 22pt;
+    text-align: center;
+    font-weight: 700;
+    font-size: 12pt;
+    margin-right: 6pt;
+    vertical-align: 2pt;
+  }
+
+  .callout {
+    margin: 10pt 0;
+    padding: 8pt 12pt;
+    border-left: 4pt solid var(--bg-info-bord);
+    background: var(--bg-info);
+    border-radius: 0 3pt 3pt 0;
+    font-size: 10pt;
+  }
+  .callout.warn { border-left-color: var(--bg-warn-bord); background: var(--bg-warn); }
+  .callout.danger { border-left-color: var(--bg-danger-bord); background: var(--bg-danger); }
+  .callout .label { font-weight: 700; text-transform: uppercase; font-size: 9pt; letter-spacing: 1pt; margin-right: 6pt; }
+  .callout.warn .label { color: #92400e; }
+  .callout.danger .label { color: #991b1b; }
+  .callout.info .label { color: #155e75; }
+
+  .uri-block {
+    margin: 8pt 0;
+    padding: 8pt 12pt;
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: 4pt;
+    font-family: "SF Mono", "Menlo", "Consolas", monospace;
+    font-size: 9.5pt;
+    word-break: break-all;
+  }
+  .uri-block.multi { white-space: pre-wrap; }
+  .uri-block .lbl { color: #94a3b8; font-size: 8.5pt; text-transform: uppercase; letter-spacing: 1pt; display: block; margin-bottom: 2pt; }
+
+  .field-row {
+    display: flex;
+    align-items: baseline;
+    margin: 6mm 0;
+  }
+  .field-row .field-label {
+    width: 62mm;
+    font-weight: 600;
+    color: var(--slate);
+    font-size: 10.5pt;
+  }
+  .field-row .field-blank {
+    flex: 1;
+    border-bottom: 1pt dotted #94a3b8;
+    min-height: 18pt;
+    padding: 2pt 4pt;
+  }
+  .field-row .field-blank.tall { min-height: 28pt; }
+
+  .deliverables-box {
+    border: 1pt solid var(--line);
+    border-radius: 3pt;
+    padding: 8mm 10mm;
+    background: #fafbfc;
+    margin-top: 8pt;
+  }
+  .deliverables-box .field-row { margin: 5mm 0; }
+
+  table.exact-labels {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 6pt 0;
+    font-size: 9.5pt;
+  }
+  table.exact-labels th, table.exact-labels td {
+    border: 1pt solid var(--line);
+    padding: 5pt 8pt;
+    text-align: left;
+    vertical-align: top;
+  }
+  table.exact-labels th {
+    background: var(--bg-soft);
+    color: var(--slate);
+    font-weight: 600;
+  }
+
+  .small { font-size: 9.5pt; color: var(--slate-soft); }
+  hr { border: none; border-top: 1pt solid var(--line); margin: 12pt 0; }
+
+  .nav-trail {
+    display: inline-block;
+    background: var(--bg-soft);
+    padding: 3pt 8pt;
+    border-radius: 3pt;
+    font-family: "SF Mono", "Menlo", monospace;
+    font-size: 9.5pt;
+    color: var(--slate);
+    margin: 4pt 0;
+  }
+
+  .flow-stage {
+    display: flex;
+    align-items: stretch;
+    margin: 5pt 0;
+    border: 1pt solid var(--line);
+    border-radius: 4pt;
+    background: white;
+    overflow: hidden;
+  }
+  .flow-stage .flow-num {
+    background: var(--teal);
+    color: white;
+    font-weight: 700;
+    font-size: 13pt;
+    width: 36pt;
+    text-align: center;
+    padding: 9pt 0;
+    flex-shrink: 0;
+  }
+  .flow-stage .flow-body {
+    padding: 9pt 12pt;
+    flex: 1;
+    font-size: 10pt;
+    line-height: 1.45;
+  }
+  .flow-arrow {
+    text-align: center;
+    font-size: 13pt;
+    color: var(--teal);
+    margin: 1pt 0;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .flow-stage.success { border-color: #bbf7d0; background: #f0fdf4; }
+  .flow-stage.success .flow-num { background: #16a34a; }
+  .flow-stage.fail { border-color: #fecaca; background: #fef2f2; }
+  .flow-stage.fail .flow-num { background: #dc2626; }
+</style>
+</head>
+<body>
+
+<!-- ============ COVER ============ -->
+<div class="cover">
+  <div class="accent"></div>
+  <div class="brand">Bettroi · FlowAccel</div>
+  <h1>Microsoft Sign-In Setup Guide</h1>
+  <div class="subtitle">Register an Azure Active Directory application so your users can sign in to FlowAccel with their Microsoft account.</div>
+
+  <div class="meta">
+    <span><strong>Audience:</strong> IT / Azure administrator</span>
+    <span><strong>Time:</strong> ~15 minutes</span>
+    <span><strong>Version:</strong> 1.0</span>
+  </div>
+
+  <div class="preview-box">
+    <h4>What you'll send back to us</h4>
+    <ol>
+      <li>Application (client) ID</li>
+      <li>Directory (tenant) ID</li>
+      <li>Client Secret <em>value</em></li>
+      <li>The redirect URI(s) you configured</li>
+    </ol>
+  </div>
+
+  <div class="footer-bar">
+    <span>Bettroi Pvt. Ltd. — FlowAccel deployment kit</span>
+    <span>admin@bettroi.com</span>
+  </div>
+</div>
+
+<!-- ============ HOW SIGN-IN WORKS END-TO-END ============ -->
+<section class="step">
+  <h2>How sign-in works end-to-end</h2>
+
+  <p>FlowAccel uses <strong>two separate systems</strong> to let a user in. Understanding this helps you, the Azure administrator, know what your Azure app does — and what it <em>doesn't</em> do.</p>
+
+  <table class="exact-labels">
+    <thead><tr><th>Layer</th><th>System</th><th>Question it answers</th></tr></thead>
+    <tbody>
+      <tr><td>Identity</td><td><strong>Microsoft Entra ID</strong> — your Azure app (this guide)</td><td>Is this person really who their email says they are?</td></tr>
+      <tr><td>Authorization</td><td><strong>JotForm team</strong> — managed by Bettroi</td><td>Is this person allowed to use FlowAccel?</td></tr>
+    </tbody>
+  </table>
+
+  <h3>The 4 stages, in order</h3>
+
+  <div class="flow-stage">
+    <div class="flow-num">1</div>
+    <div class="flow-body">
+      <strong>User clicks "Sign in with Microsoft"</strong> on the FlowAccel login page. FlowAccel's backend hits <code>/api/auth/microsoft</code>, which redirects the user to <code>login.microsoftonline.com</code>.
+    </div>
+  </div>
+  <div class="flow-arrow">↓</div>
+
+  <div class="flow-stage">
+    <div class="flow-num">2</div>
+    <div class="flow-body">
+      <strong>Microsoft authenticates the user</strong> against credentials in your Azure tenant — password, MFA, conditional access policies, etc. This is the part <em>your Azure app</em> governs. Microsoft then redirects the browser back to <code>https://&lt;your-domain&gt;/api/auth/microsoft/callback</code> with a short-lived authorization code.
+    </div>
+  </div>
+  <div class="flow-arrow">↓</div>
+
+  <div class="flow-stage">
+    <div class="flow-num">3</div>
+    <div class="flow-body">
+      <strong>FlowAccel exchanges the code for an ID token</strong> (server-side, using your Client Secret), extracts the user's email from the token, then calls the JotForm Workspace API to check whether that email is a member of the JotForm team Bettroi has designated for your deployment.
+    </div>
+  </div>
+  <div class="flow-arrow">↓</div>
+
+  <div class="flow-stage success">
+    <div class="flow-num">4a</div>
+    <div class="flow-body">
+      <strong>If the user IS a workspace member:</strong> FlowAccel creates (or updates) a row in its own user database, sets a session cookie, and redirects the user to the FlowAccel dashboard. They're in.
+    </div>
+  </div>
+
+  <div class="flow-stage fail">
+    <div class="flow-num">4b</div>
+    <div class="flow-body">
+      <strong>If the user is NOT a workspace member:</strong> FlowAccel immediately signs them out and returns to the login page with a "not a workspace member" banner. Their Microsoft sign-in was perfectly valid — they just aren't authorized to use FlowAccel.
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <span class="label">Two things the Azure admin should know</span>
+    <strong>1. Being in Azure AD is not enough.</strong> A user can have a perfectly valid account in your Microsoft tenant and still be rejected at Stage 4b if Bettroi hasn't added their email to the JotForm workspace. To onboard a new user, the Azure admin adds them to Entra ID <em>and</em> asks Bettroi to add them to the FlowAccel workspace.
+    <br><br>
+    <strong>2. There is a 30-minute idle timeout.</strong> After ~30 minutes of no activity, FlowAccel signs the user out automatically. The next page load sends them through this entire flow again. This is a session-hygiene policy enforced by FlowAccel, not by your Azure tenant — there is no Azure setting to disable it.
+  </div>
+</section>
+
+<!-- ============ BEFORE YOU START ============ -->
+<section class="step">
+  <h2>Before you start</h2>
+
+  <h3>What you need</h3>
+  <ul>
+    <li>An <strong>Azure account</strong> with permission to create application registrations in your organization's Azure Active Directory (Microsoft Entra ID) tenant. Creating an app registration is <strong>free</strong> — no paid Azure subscription is required for this step.</li>
+    <li>The <strong>deployment domain</strong> where your FlowAccel instance will run (for example, <span class="uri">https://flowaccel.yourcompany.com</span>). If you don't have a final domain yet, you can register with localhost first and add the production URL later.</li>
+    <li>About <strong>15 minutes</strong> uninterrupted, and a secure way to send credentials back to Bettroi (see the final page).</li>
+  </ul>
+
+  <h3>What FlowAccel will do with the values</h3>
+  <p>FlowAccel's backend uses the official Microsoft authentication library (<code>@azure/msal-node</code>) in <em>confidential client</em> mode. Your Client ID and Client Secret stay on the FlowAccel server — they are never sent to the user's browser. When someone clicks <em>Sign in with Microsoft</em>, FlowAccel redirects to Microsoft, Microsoft authenticates the user, and Microsoft returns an authorization code to the redirect URI you'll configure in Step 2.</p>
+
+  <div class="callout info">
+    <span class="label">Heads up</span>
+    The values you'll send back unlock sign-in for everyone in your organization. Treat the Client Secret like a database password — use a password manager or encrypted channel to share it, never plain email.
+  </div>
+
+  <h3>The 4 values at a glance</h3>
+  <table class="exact-labels">
+    <thead><tr><th>Value</th><th>Where you find it</th><th>Looks like</th></tr></thead>
+    <tbody>
+      <tr><td>Application (client) ID</td><td>App Overview page</td><td><code>xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</code> <span class="small">(UUID — 36 chars)</span></td></tr>
+      <tr><td>Directory (tenant) ID</td><td>App Overview page</td><td><code>xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</code> <span class="small">(UUID — 36 chars)</span></td></tr>
+      <tr><td>Client Secret (Value)</td><td>Certificates &amp; secrets → Client secrets</td><td>40-character random string</td></tr>
+      <tr><td>Redirect URI(s)</td><td>Authentication → Web platform</td><td><code>https://your-domain/api/auth/microsoft/callback</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ STEP 1 ============ -->
+<section class="step">
+  <h2><span class="step-number">1</span>Open the Azure portal</h2>
+
+  <ol>
+    <li>In a web browser, go to <code>https://portal.azure.com</code>.</li>
+    <li>Sign in with an account that has permission to create app registrations (most commonly a <strong>Global Administrator</strong>, <strong>Application Administrator</strong>, or <strong>Cloud Application Administrator</strong> in your Microsoft Entra ID tenant).</li>
+    <li>In the top search bar, type <strong>App registrations</strong> and click the matching result under <em>Services</em>.</li>
+  </ol>
+
+  <div class="nav-trail">Home → App registrations</div>
+
+  <div class="callout info">
+    <span class="label">Note</span>
+    "Microsoft Entra ID" is the new name for "Azure Active Directory" (Azure AD). You will see both names used interchangeably across the portal — they are the same thing.
+  </div>
+
+  <p>You should now see a list of any app registrations that already exist in your tenant. If this is a fresh tenant, the list may be empty — that's fine.</p>
+</section>
+
+<!-- ============ STEP 2 ============ -->
+<section class="step">
+  <h2><span class="step-number">2</span>Register the FlowAccel application</h2>
+
+  <p>"Registering an application" tells Azure: <em>"There is an app called FlowAccel. Trust it to authenticate my users."</em> This is the step that creates your Client ID, Tenant ID, and (later) Client Secret. Take your time — you'll fill in 4 fields and click one button.</p>
+
+  <h3>Click-by-click</h3>
+  <ol>
+    <li>You should be on the <strong>App registrations</strong> page from Step 1. At the top of that page, click the button labelled <strong>+ New registration</strong>.</li>
+    <li>Azure opens a form titled <em>"Register an application"</em>. Fill it in like this:</li>
+  </ol>
+
+  <table class="exact-labels">
+    <thead><tr><th>Field</th><th>What to enter</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Name</strong></td>
+        <td><code>FlowAccel</code></td>
+        <td>This name appears on the Microsoft consent screen the first time a user signs in. Use something they'll recognize.</td>
+      </tr>
+      <tr>
+        <td><strong>Supported account types</strong></td>
+        <td>Select the radio button labelled<br><em>"Accounts in any organizational directory (Any Microsoft Entra ID tenant — Multitenant) and personal Microsoft accounts (e.g. Skype, Xbox)"</em><br>(it's the third or fourth option in the list).</td>
+        <td>FlowAccel needs to accept sign-ins from your organization and, optionally, from contractor accounts using personal Microsoft logins.</td>
+      </tr>
+      <tr>
+        <td><strong>Redirect URI</strong> — Platform dropdown</td>
+        <td>Click the dropdown and select <strong>Web</strong> (not "Single-page application", not "Public client").</td>
+        <td>FlowAccel's backend handles the OAuth code exchange server-side. It is technically a "Web" app in Microsoft's classification.</td>
+      </tr>
+      <tr>
+        <td><strong>Redirect URI</strong> — URL box (right of the dropdown)</td>
+        <td>Paste the full URL below, replacing <code>&lt;your-deployment-domain&gt;</code> with your actual FlowAccel server domain.</td>
+        <td>This is the address Microsoft will send users back to after they log in. It must match what FlowAccel sends — exactly.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="uri-block">
+    <span class="lbl">Production redirect URI (paste into the URL box)</span>
+    https://<strong style="color:#fbbf24">&lt;your-deployment-domain&gt;</strong>/api/auth/microsoft/callback
+  </div>
+
+  <div class="field-row">
+    <div class="field-label">Write your production domain here →</div>
+    <div class="field-blank"></div>
+  </div>
+
+  <ol start="3">
+    <li>Scroll to the bottom of the form and click the blue <strong>Register</strong> button.</li>
+    <li>Azure spins for a few seconds, then takes you to your new app's <strong>Overview</strong> page. <strong>Stay on this page — you need it for Step 3.</strong></li>
+  </ol>
+
+  <div class="callout info">
+    <span class="label">What is a Redirect URI?</span>
+    It's the web address Microsoft sends the user back to <em>after</em> they finish signing in. Microsoft attaches a temporary code to that URL. For FlowAccel, the only valid path is <code>/api/auth/microsoft/callback</code> on the same server that runs FlowAccel — that's where the backend listens for Microsoft's response.
+  </div>
+
+  <div class="callout warn">
+    <span class="label">Common mistake</span>
+    The redirect URI must end with <code>/api/auth/microsoft/callback</code> — including the leading slash, with no trailing slash, and matching <code>http</code> vs <code>https</code> exactly. Microsoft does a character-for-character string match. <code>https://app.example.com</code>, <code>https://app.example.com/</code>, and <code>https://app.example.com/api/auth/microsoft/callback/</code> are all <strong>different URIs</strong> as far as Azure is concerned.
+  </div>
+</section>
+
+<!-- ============ STEP 3 ============ -->
+<section class="step">
+  <h2><span class="step-number">3</span>Copy the Client ID and Tenant ID</h2>
+
+  <p>You should still be on the <strong>Overview</strong> page that opened automatically at the end of Step 2. If you navigated away, get back to it via <span class="nav-trail">Home → App registrations → FlowAccel</span> (it should appear at the top of your apps list).</p>
+
+  <h3>Where on the page to look</h3>
+  <p>Near the top of the Overview page is a section called <strong>Essentials</strong>. It looks like a small two-column table with these rows (the exact order can vary slightly):</p>
+
+  <div class="uri-block multi" style="background:#1e293b;"><span class="lbl">What you'll see in the Essentials section (approximate)</span>
+Display name            : FlowAccel
+<strong style="color:#fbbf24">Application (client) ID</strong> : xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx  ← <strong style="color:#fbbf24">value #1</strong>
+Object ID               : yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy  (ignore this one)
+<strong style="color:#fbbf24">Directory (tenant) ID</strong>   : zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz  ← <strong style="color:#fbbf24">value #2</strong>
+Supported account types : Multiple organizations</div>
+
+  <h3>How to copy each value</h3>
+  <ol>
+    <li>Move your mouse pointer over the UUID next to <strong>Application (client) ID</strong>.</li>
+    <li>A small <strong>copy icon</strong> (two overlapping squares) appears at the right end of the value.</li>
+    <li>Click that copy icon. The value is now on your clipboard. Azure may flash a tooltip "Copied to clipboard".</li>
+    <li>Switch to your password manager (or the <em>Deliverables checklist</em> on the last page of this PDF) and paste the value next to <strong>Application (client) ID</strong>.</li>
+    <li>Switch back to Azure and repeat the same three actions for <strong>Directory (tenant) ID</strong> — paste it next to <em>Directory (tenant) ID</em> on the deliverables page.</li>
+  </ol>
+
+  <table class="exact-labels">
+    <thead><tr><th>Azure label</th><th>What it is</th><th>FlowAccel env var</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Application (client) ID</strong></td><td>Identifies <em>this app</em> (FlowAccel) inside Microsoft</td><td><code>MICROSOFT_CLIENT_ID</code></td></tr>
+      <tr><td><strong>Directory (tenant) ID</strong></td><td>Identifies <em>your organization's directory</em> inside Microsoft</td><td><code>MICROSOFT_TENANT_ID</code></td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <span class="label">Do not copy by mistake</span>
+    The Overview page also shows an <strong>Object ID</strong>. It looks identical (another UUID) but it is <em>not</em> what FlowAccel needs. Only copy <strong>Application (client) ID</strong> and <strong>Directory (tenant) ID</strong>. If you accidentally send us the Object ID, sign-in will fail with <code>AADSTS700016</code>.
+  </div>
+
+  <div class="callout info">
+    <span class="label">Why two IDs</span>
+    The Client ID says <em>"the app is FlowAccel."</em> The Tenant ID says <em>"the app belongs to your organization's directory."</em> Both are needed because the same FlowAccel software can be registered in many different Azure tenants — the pair of IDs uniquely identifies your installation.
+  </div>
+
+  <h3>Optional: pin Overview for later</h3>
+  <p>You'll be coming back to this same Overview page in Steps 4, 5, and 6. To save clicks, hover over <em>FlowAccel</em> in the breadcrumb at the top of the page and click the small <strong>pin</strong> icon — it adds the Overview page to your Azure home dashboard.</p>
+</section>
+
+<!-- ============ STEP 4 ============ -->
+<section class="step">
+  <h2><span class="step-number">4</span>Add API permissions</h2>
+
+  <p>FlowAccel only needs to read the signed-in user's basic profile (name, email). We do <strong>not</strong> read mailbox contents, calendars, files, or anything else.</p>
+
+  <ol>
+    <li>In the left sidebar of your app, click <strong>API permissions</strong>.</li>
+    <li>You will already see one permission listed: <code>Microsoft Graph → User.Read</code> with type <em>Delegated</em>. That was added automatically. Good.</li>
+    <li>Click <strong>+ Add a permission</strong>.</li>
+    <li>Choose <strong>Microsoft Graph</strong>.</li>
+    <li>Choose <strong>Delegated permissions</strong> (<em>not</em> Application permissions).</li>
+    <li>In the search box, find and check each of the following:
+      <ul>
+        <li><code>openid</code> &nbsp;— under <em>OpenId permissions</em></li>
+        <li><code>profile</code> &nbsp;— under <em>OpenId permissions</em></li>
+        <li><code>email</code> &nbsp;— under <em>OpenId permissions</em></li>
+        <li><code>User.Read</code> &nbsp;— under <em>User</em> (already present, leave it)</li>
+      </ul>
+    </li>
+    <li>Click <strong>Add permissions</strong> at the bottom.</li>
+  </ol>
+
+  <h3>Grant admin consent</h3>
+  <p>Back on the API permissions list, click <strong>Grant admin consent for [Your Tenant Name]</strong>. The status column for every permission should change to a green check mark labelled <em>"Granted for [Tenant]"</em>.</p>
+
+  <div class="callout warn">
+    <span class="label">If the button is greyed out</span>
+    You don't have admin consent rights. Ask your Microsoft Entra ID administrator (often called the "Global Admin") to log in and click the button. Without this, users will see a consent prompt the first time they sign in — which works, but is a less smooth experience.
+  </div>
+</section>
+
+<!-- ============ STEP 5 ============ -->
+<section class="step">
+  <h2><span class="step-number">5</span>Create the Client Secret</h2>
+
+  <p>The Client Secret is a long random string that FlowAccel's backend will use to prove to Microsoft that it really is FlowAccel (and not someone pretending to be FlowAccel). Think of it as the password for the application itself.</p>
+
+  <h3>Click-by-click</h3>
+  <ol>
+    <li>You should still be on your <strong>FlowAccel</strong> app page in Azure. In the left sidebar (under "Manage"), click <strong>Certificates &amp; secrets</strong>.</li>
+    <li>The page that opens has three tabs near the top: <em>Certificates</em>, <strong>Client secrets</strong>, and <em>Federated credentials</em>. Click <strong>Client secrets</strong> (it may already be selected by default).</li>
+    <li>Below the tabs, click the button <strong>+ New client secret</strong>. A panel slides in from the right of the screen.</li>
+    <li>In the panel, fill the two fields:</li>
+  </ol>
+
+  <table class="exact-labels">
+    <thead><tr><th>Field</th><th>What to enter</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Description</strong></td>
+        <td>Type <code>FlowAccel production 2026</code> (or any label — it's only visible to your admins so you can identify this secret later).</td>
+      </tr>
+      <tr>
+        <td><strong>Expires</strong></td>
+        <td>Click the dropdown. You'll see options: 3 months, 6 months, 12 months, 18 months, <strong>24 months (recommended)</strong>, or "Custom". Choose <strong>24 months</strong> unless your security policy requires a shorter rotation.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <ol start="5">
+    <li>Click the blue <strong>Add</strong> button at the bottom of the panel.</li>
+    <li>The panel closes. Azure refreshes the page. <strong>Your new secret now appears as a row in the table on the page</strong>, briefly highlighted in green.</li>
+  </ol>
+
+  <h3>What the row looks like — and what to copy</h3>
+  <p>The row has these columns from left to right:</p>
+
+  <table class="exact-labels">
+    <thead><tr><th>Column</th><th>Looks like</th><th>What to do</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Description</strong></td>
+        <td><code>FlowAccel production 2026</code></td>
+        <td>Confirms it's the right row. Don't copy.</td>
+      </tr>
+      <tr>
+        <td><strong>Expires</strong></td>
+        <td>A future date, e.g. <code>5/23/2028</code></td>
+        <td>Write this date down in the Deliverables checklist.</td>
+      </tr>
+      <tr>
+        <td style="color:#dc2626;"><strong>Value</strong></td>
+        <td>A long random string of ~40 characters, with letters, numbers, and punctuation like <code>~ _ . -</code>. Example shape: <code>Q7r~8Bx1...uV9_</code></td>
+        <td style="color:#dc2626;"><strong>COPY THIS NOW.</strong> Hover over the value, a copy icon appears, click it, paste into the deliverables checklist or your password manager.</td>
+      </tr>
+      <tr>
+        <td><strong>Secret ID</strong></td>
+        <td>A UUID like <code>a1b2c3d4-...-...-...-...</code></td>
+        <td>Do NOT copy this. We do not need it. Sending this instead of the Value is the most common mistake.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout danger">
+    <span class="label">Critical — the Value disappears forever in seconds</span>
+    Once you leave the <em>Certificates &amp; secrets</em> page — by clicking anything in the sidebar, by refreshing the browser, even by accidentally hitting back — the <strong>Value</strong> column is permanently replaced with asterisks (<code>****</code>). Microsoft cannot show it again. The Secret ID stays visible, but the Value is gone forever.
+    <br><br>
+    <strong>If this happens:</strong> delete the secret (trash icon at the end of the row), then repeat this step from the top to create a brand new one.
+    <br><br>
+    <strong>Do this in order:</strong> (1) copy the Value, (2) paste into your password manager <em>and</em> the deliverables checklist, (3) <em>then</em> navigate away.
+  </div>
+
+  <h3>Record the expiry date</h3>
+  <p>Write down the date shown in the <em>Expires</em> column. Bettroi will set a calendar reminder 30 days before that date so we can prompt you to rotate the secret. <strong>If the secret expires and isn't rotated, sign-in fails for every user, immediately.</strong></p>
+</section>
+
+<!-- ============ STEP 6 ============ -->
+<section class="step">
+  <h2><span class="step-number">6</span>Add development redirect URIs</h2>
+
+  <p>If your internal developers will run FlowAccel locally for testing, add their localhost callback URLs now. Skip this step if your deployment is production-only.</p>
+
+  <ol>
+    <li>In the left sidebar of your app, click <strong>Authentication</strong>.</li>
+    <li>Under the <strong>Web</strong> platform section (the production redirect URI you added in Step 2 should already be there), click <strong>+ Add URI</strong>.</li>
+    <li>Paste each of the following on its own line:</li>
+  </ol>
+
+  <div class="uri-block">
+    <span class="lbl">Localhost — frontend dev server (Vite default)</span>
+    http://localhost:5173/api/auth/microsoft/callback
+  </div>
+
+  <div class="uri-block">
+    <span class="lbl">Localhost — backend dev server (Express default)</span>
+    http://localhost:3001/api/auth/microsoft/callback
+  </div>
+
+  <ol start="4">
+    <li>Scroll down and click <strong>Save</strong> at the top of the page. You'll see "Successfully updated application" if it worked.</li>
+  </ol>
+
+  <div class="callout info">
+    <span class="label">Tip</span>
+    You can add up to ~50 redirect URIs per app. If your team uses different ports, additional staging environments, or preview deployments, add them all now — it's cheaper than coming back later.
+  </div>
+</section>
+
+<!-- ============ STEP 7 ============ -->
+<section class="step">
+  <h2><span class="step-number">7</span>Optional — use a certificate instead of a secret</h2>
+
+  <p>If your security policy requires it, you can authenticate the app with an uploaded X.509 certificate instead of a client secret. Certificates are more secure (private key never leaves your server) and can be rotated programmatically.</p>
+
+  <p><strong>Skip this entire step if a client secret is acceptable.</strong> The Bettroi default setup uses a client secret — it is fully supported and what most clients use.</p>
+
+  <h3>If you do use a certificate</h3>
+  <ol>
+    <li>Generate a key pair on a secure machine — for example with OpenSSL:
+      <div class="uri-block"><span class="lbl">Generate a self-signed cert (2-year validity)</span>
+openssl req -x509 -newkey rsa:2048 -keyout flowaccel.key -out flowaccel.cer -days 730 -nodes</div>
+    </li>
+    <li>In Azure: <em>Certificates &amp; secrets → Certificates tab → Upload certificate</em> — upload the <code>.cer</code> public-key file.</li>
+    <li>Send Bettroi: the certificate's <strong>thumbprint</strong> (shown after upload) <em>and</em> the corresponding private key (<code>.key</code> or <code>.pfx</code>) over a secure channel.</li>
+    <li>Bettroi will install the private key on the FlowAccel server and reconfigure MSAL to use certificate auth. You will <strong>not</strong> need a client secret in this case.</li>
+  </ol>
+
+  <div class="callout warn">
+    <span class="label">Recommendation</span>
+    Unless your security team explicitly requires certificate auth, stick with the client secret. The threat model for a secret on a hardened server is acceptable for the vast majority of deployments.
+  </div>
+</section>
+
+<!-- ============ DELIVERABLES ============ -->
+<section class="step">
+  <h2>Deliverables checklist</h2>
+
+  <p>Fill in the values below, then send this page (or just the values) to Bettroi using one of the secure methods on the next page.</p>
+
+  <div class="deliverables-box">
+
+    <div class="field-row">
+      <div class="field-label">App display name</div>
+      <div class="field-blank"></div>
+    </div>
+
+    <div class="field-row">
+      <div class="field-label">Application (client) ID</div>
+      <div class="field-blank"></div>
+    </div>
+
+    <div class="field-row">
+      <div class="field-label">Directory (tenant) ID</div>
+      <div class="field-blank"></div>
+    </div>
+
+    <div class="field-row">
+      <div class="field-label">Client Secret — <em>Value</em></div>
+      <div class="field-blank tall"></div>
+    </div>
+
+    <div class="field-row">
+      <div class="field-label">Client Secret — expiry date</div>
+      <div class="field-blank"></div>
+    </div>
+
+    <div class="field-row">
+      <div class="field-label">Production redirect URI</div>
+      <div class="field-blank tall"></div>
+    </div>
+
+    <div class="field-row">
+      <div class="field-label">Localhost redirect URIs added?</div>
+      <div class="field-blank"></div>
+    </div>
+
+    <div class="field-row">
+      <div class="field-label">Account type chosen</div>
+      <div class="field-blank"></div>
+    </div>
+
+    <div class="field-row">
+      <div class="field-label">Admin consent granted? (Y/N)</div>
+      <div class="field-blank"></div>
+    </div>
+
+    <div class="field-row">
+      <div class="field-label">Completed by (name)</div>
+      <div class="field-blank"></div>
+    </div>
+
+    <div class="field-row">
+      <div class="field-label">Date</div>
+      <div class="field-blank"></div>
+    </div>
+
+  </div>
+
+  <div class="callout info" style="margin-top: 14pt;">
+    <span class="label">Reminder</span>
+    The Client Secret <em>Value</em> is only visible once in the Azure portal. If the field above is blank because you didn't copy it in time, return to <em>Certificates &amp; secrets</em> in your app and create a new secret — the old one cannot be recovered.
+  </div>
+</section>
+
+<!-- ============ SEND BACK ============ -->
+<section class="step">
+  <h2>How to send the values back</h2>
+
+  <p>The Client Secret is a credential. Please <strong>do not send it in plain text</strong> over regular email, chat, or SMS. Use one of the following channels:</p>
+
+  <h3>Recommended channels</h3>
+  <ul>
+    <li><strong>1Password / Bitwarden share link</strong> — create a one-time, expiring share for each value. Easiest if your team already uses a password manager.</li>
+    <li><strong>Bitwarden Send / 1Password Psst!</strong> — generates a self-destructing URL.</li>
+    <li><strong>Password-protected 7-Zip archive</strong> — zip the values into a <code>.7z</code> file with AES-256 encryption, email the archive, send the password through a different channel (e.g. SMS or phone call).</li>
+    <li><strong>Signal or other end-to-end encrypted messenger</strong> — send to the Bettroi contact below.</li>
+  </ul>
+
+  <h3>Where to send</h3>
+  <div class="uri-block">
+    <span class="lbl">Bettroi technical contact</span>
+    admin@bettroi.com
+  </div>
+
+  <p>Please include in your message:</p>
+  <ul>
+    <li>Your organization name</li>
+    <li>The intended FlowAccel deployment domain</li>
+    <li>Confirmation that admin consent was granted (Step 4)</li>
+    <li>The four values from the Deliverables checklist</li>
+  </ul>
+
+  <h3>What happens next</h3>
+  <ol>
+    <li>Bettroi installs the values on your FlowAccel server's environment configuration: <code>MICROSOFT_CLIENT_ID</code>, <code>MICROSOFT_TENANT_ID</code>, <code>MICROSOFT_CLIENT_SECRET</code>, <code>MICROSOFT_REDIRECT_URI</code>.</li>
+    <li>We run a test sign-in from a test account in your tenant. If it works, we let you know.</li>
+    <li>You announce to your users that Microsoft sign-in is live.</li>
+    <li>Bettroi sets a calendar reminder 30 days before your client secret expires so we can ask you to rotate it.</li>
+  </ol>
+</section>
+
+<!-- ============ TROUBLESHOOTING ============ -->
+<section class="step">
+  <h2>Troubleshooting</h2>
+
+  <p>If users see an error when they try to sign in, the error code is the fastest way to diagnose the problem. The error codes below are returned by Microsoft, not by FlowAccel.</p>
+
+  <h3>AADSTS50011 — Redirect URI mismatch</h3>
+  <p><strong>What it means:</strong> The redirect URI that FlowAccel sent does not exactly match any URI you registered in Step 2 or Step 6.</p>
+  <p><strong>Fix:</strong> Compare the URI shown in the error message character-by-character against the list in <em>Authentication → Web</em>. Common culprits:</p>
+  <ul>
+    <li>Trailing slash present in one place but not the other.</li>
+    <li><code>http</code> vs <code>https</code>.</li>
+    <li>Production domain registered, but user is testing on staging (or vice versa).</li>
+    <li>Port number missing on localhost.</li>
+  </ul>
+
+  <h3>invalid_client — Wrong or expired secret</h3>
+  <p><strong>What it means:</strong> The Client Secret FlowAccel is using doesn't match what Azure has, or the secret has expired.</p>
+  <p><strong>Fix:</strong> Check the expiry date in <em>Certificates &amp; secrets</em>. If expired, create a new secret (Step 5), send the new Value to Bettroi. If the date is still in the future, the most likely cause is that you sent us the <em>Secret ID</em> column by mistake instead of the <em>Value</em> column — re-send the Value.</p>
+
+  <h3>AADSTS65001 — Consent required</h3>
+  <p><strong>What it means:</strong> Admin consent (Step 4) was never granted, and the user trying to sign in doesn't have permission to consent on behalf of the organization.</p>
+  <p><strong>Fix:</strong> Have your Microsoft Entra ID administrator log into the Azure portal, navigate to your app, go to <em>API permissions</em>, and click <em>Grant admin consent for [Tenant]</em>. The button should now be active because at least one user has attempted to sign in.</p>
+
+  <h3>AADSTS700016 — Application not found in directory</h3>
+  <p><strong>What it means:</strong> The Client ID FlowAccel is using doesn't exist in the tenant FlowAccel is calling.</p>
+  <p><strong>Fix:</strong> Most often the Tenant ID was copied wrong — verify it from the Overview page of your app. If you registered the app as multi-tenant (recommended), the tenant in the URL doesn't strictly matter for matching, but the Client ID must be correct.</p>
+
+  <hr>
+
+  <p class="small">If you're still stuck after trying the fixes above, email <code>admin@bettroi.com</code> with the full error code, the timestamp of the failed sign-in, and a screenshot if possible. Microsoft's docs at <code>https://learn.microsoft.com/azure/active-directory/develop/reference-aadsts-error-codes</code> have a full list of error codes.</p>
+</section>
+
+</body>
+</html>

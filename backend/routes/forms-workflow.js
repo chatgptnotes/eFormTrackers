@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const env = require('../config/env');
-const { jotformFetch } = require('../lib/jotform');
+const { jotformFetch, resolveApiKey } = require('../lib/jotform');
 const { readKeyType } = require('../lib/key-type');
 const { validate } = require('../middleware/validate');
 const { requireAuth } = require('../middleware/auth');
@@ -113,7 +113,7 @@ router.get('/form-workflow', validate(formIdRequiredQuerySchema, 'query'), async
       return res.json({ formId, steps: cached.steps, cached: true });
     }
 
-    if (!env.JOTFORM_API_KEY) {
+    if (!resolveApiKey(keyType)) {
       return res.json({ formId, steps: [], source: 'no-api-key' });
     }
 
@@ -169,9 +169,9 @@ router.get('/form-workflow', validate(formIdRequiredQuerySchema, 'query'), async
 // ── GET /api/detect-approvers?formId=xxx ──
 router.get('/detect-approvers', validate(formIdOptionalQuerySchema, 'query'), async (req, res, next) => {
   try {
-    if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
-
     const keyType = readKeyType(req);
+    if (!resolveApiKey(keyType)) return res.status(500).json({ error: `JotForm API key for "${keyType}" not set` });
+
     const targetFormId = req.query.formId;
     let forms = [];
     if (targetFormId) {
@@ -308,7 +308,17 @@ router.get('/email-url', validate(formAndSubmissionQuerySchema, 'query'), async 
       });
     }
 
-    res.json({ approvalUrl: null, formId, submissionId, reason: 'no accessLink or token available' });
+    // JotForm doesn't expose the per-task access token via any API — the
+    // /share/{token} link is sent only in the assignment EMAIL. Without it we
+    // can't construct an /approval-form/... URL, but the assignee can still
+    // open the submission's JotForm inbox page and act on the task natively
+    // (it uses their JotForm session). This matches submission.taskUrl in the
+    // mapper and the DirectorDashboard "View Task" button.
+    res.json({
+      approvalUrl: `${env.JOTFORM_HOST}/inbox/${formId}/${submissionId}`,
+      formId, submissionId, source: 'inbox-fallback',
+      note: 'JotForm did not expose an access token for this task type; opening the submission in the JotForm inbox where the assignee can act on it.',
+    });
   } catch (err) {
     res.json({ approvalUrl: null, formId: req.query.formId, submissionId: req.query.submissionId, error: String(err) });
   }

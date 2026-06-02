@@ -3,22 +3,36 @@ const bcrypt = require('bcrypt');
 const pool = require('../db/pool');
 const env = require('../config/env');
 const { validate } = require('../middleware/validate');
-const { authLimiter } = require('../middleware/rateLimit');
+const { checkWorkspaceMember } = require('../lib/workspace');
 const {
   signupBodySchema,
   loginBodySchema,
   resetPasswordBodySchema,
+  confirmResetBodySchema,
   verifyWorkspaceMemberBodySchema,
 } = require('../schemas/auth');
 
 const router = Router();
 const SALT_ROUNDS = 12;
-const ORG_ID = '971589dd-afcb-4a12-8900-47626e4d59cc';
+const ORG_ID = env.ORG_ID;
 
 // ── POST /api/auth/signup ──
-router.post('/signup', authLimiter, validate(signupBodySchema), async (req, res, next) => {
+router.post('/signup', validate(signupBodySchema), async (req, res, next) => {
   try {
     const { email, password, fullName, department } = req.body;
+
+    // C-2: Enforce workspace membership before creating any account (same gate as login)
+    let membership;
+    try {
+      membership = await checkWorkspaceMember(email.toLowerCase());
+    } catch (err) {
+      if (err.code === 'NO_API_KEY') return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
+      req.log.error({ err }, 'signup workspace-membership check failed');
+      return res.status(502).json({ error: 'Failed to verify workspace membership' });
+    }
+    if (!membership.isMember) {
+      return res.status(403).json({ error: 'not_workspace_member' });
+    }
 
     // Check existing
     const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
@@ -63,7 +77,7 @@ router.post('/signup', authLimiter, validate(signupBodySchema), async (req, res,
 });
 
 // ── POST /api/auth/login ──
-router.post('/login', authLimiter, validate(loginBodySchema), async (req, res, next) => {
+router.post('/login', validate(loginBodySchema), async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
@@ -84,6 +98,22 @@ router.post('/login', authLimiter, validate(loginBodySchema), async (req, res, n
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
       return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Enforce JotForm workspace membership server-side. Fail closed: a
+    // membership-check failure must NOT let a non-verified user in.
+    let membership;
+    try {
+      membership = await checkWorkspaceMember(user.email);
+    } catch (err) {
+      if (err.code === 'NO_API_KEY') {
+        return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
+      }
+      req.log.error({ err }, 'login workspace-membership check failed');
+      return res.status(502).json({ error: 'Failed to verify workspace membership' });
+    }
+    if (!membership.isMember) {
+      return res.status(403).json({ error: 'not_workspace_member' });
     }
 
     // Set session
@@ -153,74 +183,92 @@ router.get('/session', async (req, res, next) => {
 });
 
 // ── POST /api/auth/reset-password ──
-// MVP: logs reset URL to console; add SMTP later
-router.post('/reset-password', authLimiter, validate(resetPasswordBodySchema), async (req, res, next) => {
+// Stores a one-time token in password_resets (1-hour expiry).
+// In production configure SMTP to deliver the link; for now the reset URL
+// is returned in the response (internal gov tool — IT can share with user).
+router.post('/reset-password', validate(resetPasswordBodySchema), async (req, res, next) => {
   try {
     const { email } = req.body;
-
     const { rows } = await pool.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
     // Always return success to avoid email enumeration
     if (rows.length === 0) {
       return res.json({ ok: true, message: 'If that email exists, a reset link has been sent.' });
     }
 
-    const { v4: uuidv4 } = require('uuid');
-    const token = uuidv4();
-    // TODO: store token in a password_resets table with expiry
-    req.log.info({ email, resetUrl: `/reset?token=${token}` }, '[reset-password] Reset link generated');
+    // L-1: Use crypto.randomBytes for a 256-bit token (stronger than UUID v4).
+    const { randomBytes } = require('crypto');
+    const token = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
-    res.json({ ok: true, message: 'If that email exists, a reset link has been sent.' });
+    // Invalidate any existing unused tokens for this user, then store the new one
+    await pool.query(
+      'DELETE FROM password_resets WHERE user_id = $1 AND used_at IS NULL',
+      [rows[0].id]
+    );
+    await pool.query(
+      'INSERT INTO password_resets (user_id, token, expires_at) VALUES ($1, $2, $3)',
+      [rows[0].id, token, expiresAt.toISOString()]
+    );
+
+    // C-1: Never return the token in the API response or logs — deliver only via SMTP.
+    req.log.info({ email }, '[reset-password] Reset token generated');
+    res.json({
+      ok: true,
+      message: 'If that email exists, a reset link has been sent.',
+    });
+  } catch (err) { next(err); }
+});
+
+// ── POST /api/auth/reset-password/confirm ──
+// Validates token, updates password_hash, marks token used.
+router.post('/reset-password/confirm', validate(confirmResetBodySchema), async (req, res, next) => {
+  try {
+    const { token, password } = req.body;
+
+    const { rows } = await pool.query(
+      `SELECT pr.id, pr.user_id, pr.expires_at, pr.used_at
+       FROM password_resets pr WHERE pr.token = $1`,
+      [token]
+    );
+
+    if (rows.length === 0) {
+      return res.status(400).json({ error: 'Invalid or expired reset token.' });
+    }
+
+    const reset = rows[0];
+    if (reset.used_at) {
+      return res.status(400).json({ error: 'This reset link has already been used.' });
+    }
+    if (new Date(reset.expires_at) < new Date()) {
+      return res.status(400).json({ error: 'This reset link has expired. Please request a new one.' });
+    }
+
+    const hash = await bcrypt.hash(password, SALT_ROUNDS);
+    await pool.query('UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2', [hash, reset.user_id]);
+    await pool.query('UPDATE password_resets SET used_at = now() WHERE id = $1', [reset.id]);
+
+    res.json({ ok: true, message: 'Password updated successfully. You can now sign in.' });
   } catch (err) { next(err); }
 });
 
 // ── POST /api/auth/verify-workspace-member ──
-// Checks if an email belongs to the JotForm workspace
-let memberCache = null;
-const CACHE_TTL = 5 * 60 * 1000;
-
-router.post('/verify-workspace-member', validate(verifyWorkspaceMemberBodySchema), async (req, res, next) => {
-  // Local-dev bypass: the JotForm Enterprise API host (eforms.mediaoffice.ae)
-  // is unreachable outside the GDMO network, which would block every login.
-  // Skip the workspace-membership gate when not running in production.
-  if (env.NODE_ENV !== 'production') {
-    const devEmail = String(req.body.email || '').trim().toLowerCase();
-    return res.json({ isMember: true, member: { email: devEmail }, totalMembers: 0, devBypass: true });
-  }
+// M-3: Requires auth — unauthenticated access allows arbitrary email enumeration.
+const { requireAuth } = require('../middleware/auth');
+router.post('/verify-workspace-member', requireAuth, validate(verifyWorkspaceMemberBodySchema), async (req, res, next) => {
   try {
-    if (!env.JOTFORM_API_KEY) {
+    const result = await checkWorkspaceMember(req.body.email);
+    const payload = {
+      isMember: result.isMember,
+      member: result.member,
+      totalMembers: result.totalMembers,
+    };
+    // Only surface devBypass in the dev short-circuit path (matches old behavior).
+    if (result.devBypass) payload.devBypass = true;
+    res.json(payload);
+  } catch (err) {
+    if (err.code === 'NO_API_KEY') {
       return res.status(500).json({ error: 'JOTFORM_API_KEY not set', isMember: false });
     }
-
-    const email = String(req.body.email || '').trim().toLowerCase();
-
-    // Fetch & cache workspace members
-    if (!memberCache || Date.now() - memberCache.fetchedAt > CACHE_TTL) {
-      const url = `${env.JOTFORM_BASE}/users?teamID=${env.JOTFORM_TEAM_ID}`;
-      const response = await fetch(url, { headers: { 'APIKEY': env.JOTFORM_API_KEY } });
-      if (!response.ok) throw new Error(`JotForm API ${response.status}`);
-      const data = await response.json();
-      const raw = Array.isArray(data?.content) ? data.content : [];
-
-      const emails = new Set();
-      const members = new Map();
-      for (const m of raw) {
-        const e = String(m.email || '').trim().toLowerCase();
-        const status = String(m.status || '').toUpperCase();
-        if (!e || status !== 'ACTIVE') continue;
-        emails.add(e);
-        members.set(e, {
-          name: String(m.name || m.username || ''),
-          email: e,
-          status,
-        });
-      }
-      memberCache = { emails, members, fetchedAt: Date.now() };
-    }
-
-    const isMember = memberCache.emails.has(email);
-    const member = isMember ? memberCache.members.get(email) : null;
-    res.json({ isMember, member, totalMembers: memberCache.emails.size });
-  } catch (err) {
     req.log.error({ err }, 'verify-workspace-member error');
     res.status(502).json({ error: 'Failed to verify workspace membership', isMember: false });
   }

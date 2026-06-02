@@ -1,19 +1,15 @@
 const http = require('http');
-const express = require('express');
-const helmet = require('helmet');
-const pinoHttp = require('pino-http');
 const { Server: SocketIO } = require('socket.io');
 const env = require('./config/env');
 const logger = require('./config/logger');
-const corsMiddleware = require('./middleware/cors');
-const sessionMiddleware = require('./config/session');
-const errorHandler = require('./middleware/errorHandler');
-const { globalLimiter } = require('./middleware/rateLimit');
 const { initRealtime } = require('./lib/realtime');
-const { authLimiter, webhookLimiter, apiLimiter } = require('./middleware/rateLimiter');
 const { startPoller } = require('./lib/poller');
+const { createApp } = require('./app');
+const { installProcessGuards } = require('./lib/process-guards');
 
-const app = express();
+installProcessGuards(logger);
+
+const app = createApp();
 const server = http.createServer(app);
 
 // ── Socket.IO ──
@@ -22,104 +18,37 @@ const io = new SocketIO(server, {
 });
 initRealtime(io);
 
-// ── Trust IIS reverse proxy (needed for secure cookies behind HTTPS proxy) ──
-// Also required so express-rate-limit's default req.ip key is the real client
-// IP, not the proxy's address. Set to `1` because we have exactly one proxy
-// (IIS ARR) in front of Node.
-app.set('trust proxy', 1);
-
-// ── Security headers (helmet) ──
-// In production the CSP is strict. In development Vite's HMR needs
-// inline scripts, ws:// for hot-reload, and eval (for some plugins),
-// so we use a lenient CSP locally. NEVER ship the dev variant to prod.
-const isProd = env.NODE_ENV === 'production';
-app.use(helmet({
-  contentSecurityPolicy: isProd
-    ? {
-        directives: {
-          defaultSrc: ["'self'"],
-          scriptSrc: ["'self'"],
-          styleSrc: ["'self'", "'unsafe-inline'"],
-          imgSrc: ["'self'", "data:", "https:"],
-          connectSrc: ["'self'", env.JOTFORM_HOST].filter(Boolean),
-          // JotForm host allowed in frame-src so the signature modal can
-          // iframe-load /uploads/ URLs (cookies sent in iframe browsing
-          // context same way as a top-level navigation).
-          frameSrc: ["'self'", env.JOTFORM_HOST].filter(Boolean),
-          objectSrc: ["'none'"],
-          baseUri: ["'self'"],
-          formAction: ["'self'"],
-        },
-      }
-    : false, // Dev: disable CSP entirely so Vite HMR (inline scripts + ws://) works
-  frameguard: { action: 'deny' },
-  referrerPolicy: { policy: 'no-referrer' },
-  hsts: isProd ? { maxAge: 31536000, includeSubDomains: true } : false,
-  // JotForm embeds (iframes from a different origin) break with COEP enabled.
-  crossOriginEmbedderPolicy: false,
-  crossOriginOpenerPolicy: false,
-}));
-
-// ── Global rate limiter (must run before routes) ──
-app.use(globalLimiter);
-
-app.use(corsMiddleware);
-app.use(pinoHttp({ logger }));
-app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: true }));
-app.use(sessionMiddleware);
-
-// ── Serve uploaded files ──
-const path = require('path');
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// ── Rate limiting ──
-app.use('/api/auth', authLimiter);
-app.use('/api/webhook', webhookLimiter);
-app.use('/api', apiLimiter);
-
-// ── Routes ──
-app.use('/api/auth', require('./routes/auth-local'));
-app.use('/api/auth', require('./routes/auth-microsoft'));
-app.use('/api', require('./routes/submissions-jotform'));
-app.use('/api', require('./routes/submissions-sync'));
-app.use('/api', require('./routes/submissions-actions'));
-app.use('/api', require('./routes/submissions-cleanup'));
-app.use('/api', require('./routes/forms-workflow'));
-app.use('/api', require('./routes/forms-admin'));
-app.use('/api', require('./routes/config'));
-app.use('/api', require('./routes/data-submissions'));
-app.use('/api', require('./routes/data-profiles'));
-app.use('/api', require('./routes/data-org'));
-app.use('/api', require('./routes/uploads'));
-app.use('/api', require('./routes/users'));
-app.use('/api', require('./routes/admin-sync'));
-app.use('/api', require('./routes/signature-proxy'));
-
-// ── Health check ──
-app.get('/api/health', (req, res) => {
-  res.json({ ok: true, uptime: process.uptime() });
-});
-
-// ── Serve built frontend (production) ──
-const distPath = path.join(__dirname, '..', 'dist');
-const fs = require('fs');
-app.use(express.static(distPath));
-app.get('*', (req, res, next) => {
-  if (req.path.startsWith('/api/')) return next();
-  const index = path.join(distPath, 'index.html');
-  if (fs.existsSync(index)) return res.sendFile(index);
-  next();
-});
-
-// ── Error handler ──
-app.use(errorHandler);
-
 // ── Start ──
 server.listen(env.PORT, () => {
   logger.info({ port: env.PORT, env: env.NODE_ENV }, '[JotFlow] Backend listening');
-  // Poller disabled until jf_forms table migration is applied. Without it,
-  // every poll cycle floods the log with "relation jf_forms does not exist"
-  // and wastes JotForm API quota for no benefit. Re-enable after migrating.
-  if (process.env.ENABLE_POLLER === '1') startPoller();
+  if (process.env.ENABLE_POLLER === '1') {
+    startPoller();
+  } else {
+    logger.warn('[JotFlow] Poller disabled (set ENABLE_POLLER=1 to enable). jf_forms table must exist.');
+  }
 });
+
+// ── Graceful shutdown ──
+// Without this, IIS/iisnode rolling restarts and container stops drop in-flight
+// requests on the floor and leave Postgres connections half-open. SIGTERM/SIGINT
+// close the HTTP server (refuse new conns, drain existing), then the PG pool.
+// A 30s safety timeout force-exits if drain hangs.
+function shutdown(signal) {
+  logger.info({ signal }, '[JotFlow] Shutting down');
+  const force = setTimeout(() => {
+    logger.error('[JotFlow] Forced exit (30s drain timeout)');
+    process.exit(1);
+  }, 30000);
+  force.unref();
+  server.close(async () => {
+    try {
+      const pool = require('./db/pool');
+      await pool.end();
+    } catch (err) {
+      logger.warn({ err: err.message }, '[JotFlow] pool.end() failed');
+    }
+    logger.info('[JotFlow] Drained cleanly');
+    process.exit(0);
+  });
+}
+['SIGTERM', 'SIGINT'].forEach(sig => process.on(sig, () => shutdown(sig)));

@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
-import { getUserConfig, isSubmissionVisible } from '../config/currentUser';
+import { isSubmissionVisible, getMyWorkflowRole } from '../config/currentUser';
 import { Submission, WorkflowTask, ApprovalEntry } from '../types';
 import WorkflowDetailsSidebar from '../components/WorkflowDetailsSidebar';
 import { apiFetch } from '../lib/api';
@@ -58,10 +58,12 @@ interface CardProps {
   submission: Submission;
   idx: number;
   onClick: (sub: Submission) => void;
+  userEmail?: string | null;
 }
 
-const CompletedCard = memo(function CompletedCard({ submission, idx, onClick }: CardProps) {
+const CompletedCard = memo(function CompletedCard({ submission, idx, onClick, userEmail }: CardProps) {
   const lastApprover = getLastApprover(submission);
+  const myRole = getMyWorkflowRole(submission, userEmail);
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.9 }}
@@ -81,6 +83,7 @@ const CompletedCard = memo(function CompletedCard({ submission, idx, onClick }: 
             <p className="text-sm font-black text-black font-mono">ID: {submission.id.slice(0, 8).toUpperCase()}</p>
             <span className="inline-block text-xs font-bold px-2.5 py-1 rounded-lg text-white bg-gradient-to-r from-emerald-400 to-green-500">Completed</span>
           </div>
+          {myRole ? <span className="inline-block mt-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">You: {myRole}</span> : null}
         </div>
         <div className="flex items-center gap-2 py-2 border-t border-gray-200">
           <User className="w-4 h-4 text-gray-700" />
@@ -135,9 +138,8 @@ function getCalendarDays(year: number, month: number) {
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export default function CompletedPage({ data }: Props) {
-  const { user, orgRole } = useAuth();
+  const { user } = useAuth();
   const { activeWorkflowId } = useApp();
-  const currentUser = getUserConfig(user?.email);
 
   const [search, setSearch] = useState('');
   const [sidebarSubmission, setSidebarSubmission] = useState<Submission | null>(null);
@@ -159,9 +161,9 @@ export default function CompletedPage({ data }: Props) {
     return data.allSubmissions.filter(s =>
       s.currentApprovalLevel === 'completed' &&
       (!activeWorkflowId || s.formId === activeWorkflowId) &&
-      isSubmissionVisible(s, user?.email, currentUser, orgRole)
+      isSubmissionVisible(s, user?.email, user?.role)
     );
-  }, [data.allSubmissions, activeWorkflowId, user?.email, currentUser, orgRole]);
+  }, [data.allSubmissions, activeWorkflowId, user?.email, user?.role]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -297,7 +299,7 @@ export default function CompletedPage({ data }: Props) {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
       <AnimatePresence>
         {paginated.map((sub, idx) => (
-          <CompletedCard key={sub.id} submission={sub} idx={idx} onClick={openSidebarWithTasks} />
+          <CompletedCard key={sub.id} submission={sub} idx={idx} onClick={openSidebarWithTasks} userEmail={user?.email} />
         ))}
       </AnimatePresence>
     </motion.div>
@@ -505,6 +507,10 @@ export default function CompletedPage({ data }: Props) {
             <div className="flex items-center gap-2 mb-4">
               <span className="inline-block text-xs font-bold px-2.5 py-1 rounded-lg text-white bg-gradient-to-r from-emerald-400 to-green-500">Completed</span>
               <p className="text-xs text-gray-400 font-mono">{selected.id.slice(0, 8).toUpperCase()}</p>
+              {(() => {
+                const myRole = getMyWorkflowRole(selected, user?.email);
+                return myRole ? <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">You: {myRole}</span> : null;
+              })()}
             </div>
             <h2 className="text-lg font-bold text-gray-900 mb-4">{selected.formTitle || 'Form Submission'}</h2>
             <div className="grid grid-cols-2 gap-4 text-sm">

@@ -52,4 +52,15 @@ module.exports = {
   ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || '',
   ADMIN_NAME: process.env.ADMIN_NAME || '',
   POLL_INTERVAL_MINUTES: parseInt(process.env.POLL_INTERVAL_MINUTES || '2', 10),
+  ORG_ID: process.env.ORG_ID || '',
+  // M-2: Production-safe rate-limit defaults. Override via env vars if needed.
+  // Auth: 15 attempts/15 min. Global: 500/15 min. API: 200/min.
+  RATE_LIMIT_GLOBAL_MAX: parseInt(process.env.RATE_LIMIT_GLOBAL_MAX || '500', 10),
+  RATE_LIMIT_API_MAX: parseInt(process.env.RATE_LIMIT_API_MAX || '200', 10),
+  RATE_LIMIT_AUTH_MAX: parseInt(process.env.RATE_LIMIT_AUTH_MAX || '15', 10),
+  RATE_LIMIT_WEBHOOK_MAX: parseInt(process.env.RATE_LIMIT_WEBHOOK_MAX || '120', 10),
+  RATE_LIMIT_MUTATION_MAX: parseInt(process.env.RATE_LIMIT_MUTATION_MAX || '100', 10),
+  // H-5: Canonical public URL used when registering JotForm webhooks.
+  // Must NOT be derived from the Host request header (user-controlled).
+  PUBLIC_BASE_URL: (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, ''),
 };

@@ -5,15 +5,26 @@ const { jotformFetch, resolveApiKey } = require('../lib/jotform');
 const { readKeyType } = require('../lib/key-type');
 const { detectLevelFields } = require('../lib/detect-fields');
 const { insertNotification } = require('../lib/notifications');
+const { extractTask, deriveWorkflowStatus } = require('../lib/workflow-task');
 const { requireAuth } = require('../middleware/auth');
+const { webhookLimiter } = require('../middleware/rateLimit');
 
 const router = Router();
 
 // ── Whitelisted query params for JotForm proxy ──
 const ALLOWED_PARAMS = new Set(['limit', 'offset', 'orderby', 'direction', 'filter', 'id', 'addWorkflowStatus']);
 
+// C-3: Strict allowlist — prevents authenticated users from proxying arbitrary JotForm endpoints
+// using the production GDMO API key. Only paths the frontend genuinely needs are permitted.
+const ALLOWED_PROXY_PATHS = new Set([
+  'user/forms',
+  'enterprise/forms',
+  'user/labels',
+  'enterprise/labels',
+]);
+
 // ── GET /api/jotform?path=user/forms ──
-// Proxies arbitrary JotForm reads using server-side API key — auth required.
+// Proxies JotForm reads using server-side API key — auth required.
 router.get('/jotform', requireAuth, async (req, res, next) => {
   try {
     const keyType = readKeyType(req);
@@ -21,6 +32,9 @@ router.get('/jotform', requireAuth, async (req, res, next) => {
       return res.status(500).json({ error: `JotForm API key for "${keyType}" not set` });
     }
     const apiPath = req.query.path || 'user/forms';
+    if (!ALLOWED_PROXY_PATHS.has(apiPath)) {
+      return res.status(400).json({ error: 'Proxy path not allowed' });
+    }
     const params = {};
     for (const [key, val] of Object.entries(req.query)) {
       if (key !== 'path' && ALLOWED_PARAMS.has(key) && typeof val === 'string') {
@@ -40,6 +54,13 @@ router.get('/jotform', requireAuth, async (req, res, next) => {
 const fieldCache = {};
 const FIELD_CACHE_TTL = 60 * 60 * 1000;
 
+// Parse email from JotFlow action text: "Action: Approved | By: Name (email@domain.com) | ..."
+function parseEmailFromActionText(text) {
+  if (!text || typeof text !== 'string') return '';
+  const m = text.match(/By:\s*[^(]*\(([^)]+@[^)]+)\)/);
+  return m ? m[1].trim() : '';
+}
+
 function extractText(answer) {
   if (!answer) return '';
   if (typeof answer === 'string') return answer;
@@ -55,26 +76,36 @@ function extractText(answer) {
   return '';
 }
 
-async function getFieldsForForm(formId) {
-  const cached = fieldCache[formId];
+async function getFieldsForForm(formId, keyType) {
+  // Key by keyType too — the same formId can resolve to different fields under
+  // the default vs gdmo key bucket (different tenants), so caches must not collide.
+  const cacheKey = `${keyType || 'default'}:${formId}`;
+  const cached = fieldCache[cacheKey];
   if (cached && Date.now() - cached.at < FIELD_CACHE_TTL) return cached.fields;
 
-  const data = await jotformFetch(`form/${formId}/questions`);
+  const data = await jotformFetch(`form/${formId}/questions`, { keyType });
   const fields = detectLevelFields(data.content || {});
-  fieldCache[formId] = { fields, at: Date.now() };
+  fieldCache[cacheKey] = { fields, at: Date.now() };
   return fields;
 }
 
-router.post('/webhook', async (req, res, next) => {
+router.post('/webhook', webhookLimiter, async (req, res, next) => {
   try {
-    // Validate webhook secret
-    if (env.JOTFORM_WEBHOOK_SECRET) {
-      if (req.query.secret !== env.JOTFORM_WEBHOOK_SECRET) {
-        return res.status(403).json({ error: 'Invalid webhook secret' });
+    // Webhook secret is REQUIRED in production. Previously, an empty
+    // JOTFORM_WEBHOOK_SECRET silently disabled verification → anyone on the
+    // internet could POST forged submissions to /api/webhook and pollute the DB.
+    if (!env.JOTFORM_WEBHOOK_SECRET) {
+      if (env.NODE_ENV === 'production') {
+        return res.status(503).json({ error: 'Webhook secret not configured' });
       }
+      req.log.warn('[webhook] JOTFORM_WEBHOOK_SECRET unset — accepting in non-production only');
+    } else if (req.query.secret !== env.JOTFORM_WEBHOOK_SECRET) {
+      return res.status(403).json({ error: 'Invalid webhook secret' });
     }
-    if (!env.JOTFORM_API_KEY) {
-      return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
+    // Webhooks carry no key-type header; default (gdmo) is the only live key.
+    const keyType = readKeyType(req);
+    if (!resolveApiKey(keyType)) {
+      return res.status(500).json({ error: `JotForm API key for "${keyType}" not set` });
     }
 
     let submissionId, formId;
@@ -93,6 +124,7 @@ router.post('/webhook', async (req, res, next) => {
     // Fetch submission from JotForm
     const jfData = await jotformFetch(`submission/${submissionId}`, {
       params: { addWorkflowStatus: '1' },
+      keyType,
     });
     const raw = jfData.content;
     if (!raw) throw new Error('No content in JotForm response');
@@ -103,7 +135,7 @@ router.post('/webhook', async (req, res, next) => {
     const answers = raw.answers || {};
     const get = (id) => id ? extractText(answers[id]?.answer) : '';
 
-    const detected = await getFieldsForForm(formId);
+    const detected = await getFieldsForForm(formId, keyType);
 
     const levels = detected.levelFields.map(lf => ({
       id: lf.level,
@@ -166,9 +198,11 @@ router.post('/webhook', async (req, res, next) => {
     try {
       const workflowInstanceID = raw.workflowInstanceID || raw.workflow_instance_id;
       if (workflowInstanceID) {
-        const instData = await jotformFetch(`workflow/instance/${workflowInstanceID}`);
+        const instData = await jotformFetch(`workflow/instance/${workflowInstanceID}`, { keyType });
         const taskList = instData?.content?.taskList || [];
-        workflowTasks = taskList;
+        // Flatten to the shape readers expect (top-level assigneeEmail) — matches
+        // the poller + admin-sync, so task assignees pass the visibility gate.
+        workflowTasks = taskList.map((t, idx) => extractTask(t, idx + 1));
 
         const activeTask = taskList.find(t => String(t.status || '').toUpperCase() === 'ACTIVE');
         if (activeTask) {
@@ -204,10 +238,29 @@ router.post('/webhook', async (req, res, next) => {
       req.log.warn({ err: wfErr }, 'Could not fetch workflow tasks');
     }
 
-    const levelHistory = levels.map(l => ({
-      level: l.id, status: l.status || 'pending',
-      approver: l.approver || pendingApproverName || '', date: l.date || '',
-    }));
+    // Authoritative status from the workflow engine (instance status + task list),
+    // overriding the form-field heuristic above. Clears the pending approver on
+    // terminal states so a finished submission isn't left "pending with" someone.
+    const derivedStatus = deriveWorkflowStatus(raw.workflowStatus || raw.workflow_status, workflowTasks);
+    if (derivedStatus) {
+      status = derivedStatus;
+      if (derivedStatus === 'completed') currentLevel = maxLevel;
+      if (derivedStatus !== 'pending') { pendingApproverName = ''; pendingApproverEmail = ''; }
+    }
+
+    const levelHistory = levels.map(l => {
+      // Parse email from JotFlow action text if present; fall back to the
+      // pending approver email for the current active level so visibility.js
+      // can match past approvers even when workflow_tasks is empty.
+      const approverEmail = parseEmailFromActionText(l.approver) ||
+        (l.id === currentLevel ? pendingApproverEmail : '');
+      return {
+        level: l.id, status: l.status || 'pending',
+        approver: l.approver || pendingApproverName || '',
+        approverEmail,
+        date: l.date || '',
+      };
+    });
 
     const genericStatus = status === 'completed' ? 'Completed' :
       status === 'rejected' ? 'Rejected' :

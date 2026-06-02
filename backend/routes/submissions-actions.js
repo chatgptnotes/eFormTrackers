@@ -1,6 +1,5 @@
 const { Router } = require('express');
 const pool = require('../db/pool');
-const env = require('../config/env');
 const { jotformFetch, resolveApiKey, buildJotformUrl } = require('../lib/jotform');
 const { readKeyType } = require('../lib/key-type');
 const { validate } = require('../middleware/validate');
@@ -21,12 +20,12 @@ router.use(requireAuth);
 // ── GET /api/workflow-tasks?submissionId=xxx&workflowInstanceId=yyy ──
 router.get('/workflow-tasks', async (req, res, next) => {
   try {
-    if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
+    const keyType = readKeyType(req);
+    if (!resolveApiKey(keyType)) return res.status(500).json({ error: `JotForm API key for "${keyType}" not set` });
 
     const submissionId = req.query.submissionId;
     if (!submissionId) return res.status(400).json({ error: 'submissionId required' });
 
-    const keyType = readKeyType(req);
     let workflowInstanceID = req.query.workflowInstanceId;
 
     if (!workflowInstanceID) {
@@ -64,10 +63,10 @@ router.get('/workflow-tasks', async (req, res, next) => {
 // ── POST /api/workflow-action ──
 router.post('/workflow-action', validate(workflowActionBodySchema), async (req, res, next) => {
   try {
-    if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'JOTFORM_API_KEY not set' });
+    const keyType = readKeyType(req);
+    if (!resolveApiKey(keyType)) return res.status(500).json({ error: `JotForm API key for "${keyType}" not set` });
 
     const { submissionId, action, comment, signature } = req.body;
-    const keyType = readKeyType(req);
 
     // Step 1: Get workflowInstanceID
     const subData = await jotformFetch(`submission/${submissionId}`, {
@@ -85,6 +84,13 @@ router.post('/workflow-action', validate(workflowActionBodySchema), async (req, 
     // Step 3: Find ACTIVE task
     const activeTask = taskList.find(t => t.status === 'ACTIVE');
     if (!activeTask) return res.status(400).json({ error: 'No active task — workflow may be completed' });
+
+    // Authorize: only the assigned approver for this step may act. No role
+    // override — authorization is purely per-workflow (JotForm-derived).
+    const { assigneeEmail } = extractTask(activeTask);
+    if (String(assigneeEmail).toLowerCase() !== String(req.session.email).toLowerCase()) {
+      return res.status(403).json({ error: 'You are not the assigned approver for this step' });
+    }
 
     const taskId = activeTask.id;
     const element = activeTask.element || {};
@@ -219,9 +225,9 @@ router.post('/workflow-action', validate(workflowActionBodySchema), async (req, 
 router.delete('/delete-submission', requireRole('admin'), validate(deleteSubmissionQuerySchema, 'query'), async (req, res, next) => {
   try {
     const submissionId = req.query.submissionId;
-    if (!env.JOTFORM_API_KEY) return res.status(500).json({ error: 'API key not configured' });
-
     const keyType = readKeyType(req);
+    if (!resolveApiKey(keyType)) return res.status(500).json({ error: `JotForm API key for "${keyType}" not set` });
+
     const deleteUrl = buildJotformUrl(`submission/${submissionId}`, keyType);
     const deleteRes = await fetch(deleteUrl.toString(), {
       method: 'DELETE',
@@ -239,7 +245,8 @@ router.delete('/delete-submission', requireRole('admin'), validate(deleteSubmiss
 });
 
 // ── POST /api/jotform-update?submissionId=xxx ──
-router.post('/jotform-update', validate(jotformUpdateQuerySchema, 'query'), async (req, res, next) => {
+// H-1: Restrict to approver+ — viewers must not write arbitrary fields to any submission.
+router.post('/jotform-update', requireRole('approver'), validate(jotformUpdateQuerySchema, 'query'), async (req, res, next) => {
   try {
     const submissionId = req.query.submissionId;
     const keyType = readKeyType(req);

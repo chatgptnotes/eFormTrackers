@@ -6,8 +6,8 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 
 const router = Router();
 const SALT_ROUNDS = 12;
-const ORG_ID = '971589dd-afcb-4a12-8900-47626e4d59cc';
-const VALID_ROLES = ['super_admin', 'admin', 'approver', 'viewer'];
+const ORG_ID = env.ORG_ID;
+const VALID_ROLES = ['super_admin', 'admin', 'approver', 'viewer', 'user'];
 // Configured at install time via the installer-generated backend/.env.
 const ADMIN_EMAIL = env.ADMIN_EMAIL;
 
@@ -27,8 +27,8 @@ router.post('/create-user', requireAuth, requireRole('admin'), async (req, res, 
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
     }
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    if (password.length < 12 || password.length > 128) {
+      return res.status(400).json({ error: 'Password must be 12–128 characters' });
     }
 
     // Check existing
@@ -69,11 +69,11 @@ router.post('/create-user', requireAuth, requireRole('admin'), async (req, res, 
 });
 
 // ── GET /api/setup-db ──
-// Returns the SQL schema for reference
+// M-6: Restricted to super_admin — exposes full DB schema which helps attackers.
 const fs = require('fs');
 const path = require('path');
 
-router.get('/setup-db', requireAuth, requireRole('admin'), (req, res) => {
+router.get('/setup-db', requireAuth, requireRole('super_admin'), (req, res) => {
   const sql = fs.readFileSync(path.join(__dirname, '..', 'db', 'schema.sql'), 'utf8');
   res.json({
     instructions: [
@@ -87,7 +87,7 @@ router.get('/setup-db', requireAuth, requireRole('admin'), (req, res) => {
 
 // ── POST /api/setup-db ──
 // Runs the schema migration
-router.post('/setup-db', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.post('/setup-db', requireAuth, requireRole('super_admin'), async (req, res, next) => {
   try {
     const sql = fs.readFileSync(path.join(__dirname, '..', 'db', 'schema.sql'), 'utf8');
     await pool.query(sql);

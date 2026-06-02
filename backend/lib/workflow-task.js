@@ -44,4 +44,33 @@ function extractTask(t, derivedLevel) {
   };
 }
 
-module.exports = { extractTask };
+/**
+ * Derive the authoritative submission status from the workflow engine, using the
+ * instance's own status string and/or its (flattened) task list — NOT the form's
+ * status dropdown fields, which are frequently blank on workflow-engine forms and
+ * leave rows stuck at "pending" after the workflow has actually finished.
+ *
+ * @param {string} workflowStatus  instance status from JotForm (COMPLETED, REJECTED, ACTIVE, …)
+ * @param {Array}  flatTasks       tasks already run through extractTask()
+ * @returns {'completed'|'rejected'|'pending'|null}  null = no authoritative
+ *          signal; caller should keep its form-field fallback.
+ */
+function deriveWorkflowStatus(workflowStatus, flatTasks = []) {
+  const ws = String(workflowStatus || '').toUpperCase();
+  if (ws === 'COMPLETED' || ws === 'COMPLETE') return 'completed';
+  if (ws === 'REJECTED' || ws === 'CANCELLED' || ws === 'DECLINED') return 'rejected';
+
+  const tasks = Array.isArray(flatTasks) ? flatTasks : [];
+  if (tasks.length > 0) {
+    const anyOpen = tasks.some(t => ['ACTIVE', 'PENDING'].includes(String(t.status).toUpperCase()));
+    if (anyOpen) return 'pending';
+    const endDone = tasks.some(t => String(t.type) === 'workflow_end_point' && String(t.status).toUpperCase() === 'COMPLETED');
+    const allDone = tasks.every(t => String(t.status).toUpperCase() === 'COMPLETED');
+    if (endDone || allDone) return 'completed';
+  }
+
+  if (ws === 'ACTIVE' || ws === 'PENDING' || ws === 'INPROGRESS' || ws === 'IN_PROGRESS') return 'pending';
+  return null;
+}
+
+module.exports = { extractTask, deriveWorkflowStatus };
