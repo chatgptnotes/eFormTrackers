@@ -336,7 +336,7 @@ export function useSubmissions() {
   const socketRef = useRef<Socket | null>(null);
   useEffect(() => {
     const socket = io(BACKEND_URL, {
-      transports: ['websocket', 'polling'],
+      transports: ['polling'],
       reconnectionAttempts: 5,
       reconnectionDelay: 2000,
     });
@@ -355,7 +355,7 @@ export function useSubmissions() {
   // Polling fallback — replaces Supabase realtime channel (30s).
   // Runs alongside Socket.IO so a missed event still catches up.
   useEffect(() => {
-    const interval = setInterval(loadFromSupabase, 30_000);
+    const interval = setInterval(loadFromSupabase, 15_000);
     return () => clearInterval(interval);
   }, [loadFromSupabase]);
 

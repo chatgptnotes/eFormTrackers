@@ -13,9 +13,6 @@ function readChoices(): Record<string, JotformKeyType> {
 }
 
 export function getJotformKeyType(): JotformKeyType {
-  // Default to 'gdmo' (Production): it's the only configured key. The Testing
-  // ('default') key is unset in this deployment, so only use it when the user
-  // has explicitly chosen it — otherwise fresh logins get a blank dashboard.
   const v = localStorage.getItem(ACTIVE_KEY);
   return v === 'default' ? 'default' : 'gdmo';
 }
