@@ -6,6 +6,7 @@ const { pMapLimit } = require('../lib/concurrency');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { detectLevelFields } = require('../lib/detect-fields');
 const { extractTask, deriveWorkflowStatus } = require('../lib/workflow-task');
+const { upsertEmailLogs } = require('../lib/email-log');
 
 const router = Router();
 
@@ -380,6 +381,12 @@ router.get('/admin/sync-all-stream', requireAuth, requireRole('admin'), async (r
           const chunk = [];
           for (let j = i; j < sliceEnd; j++) {
             chunk.push(mapRawToUpsertParams(rawSubs[j], formId, formTitle, fields, wfData[j].status, wfData[j].taskList));
+            // Log task assignments to email_logs
+            if (wfData[j].taskList.length > 0) {
+              const subId = String(rawSubs[j].id || '');
+              upsertEmailLogs(subId, formId, formTitle, wfData[j].taskList)
+                .catch(err => req.log.warn({ err, subId }, '[admin-sync-stream] email_logs upsert failed'));
+            }
           }
           formUpserted += await upsertChunk(chunk, req.log);
         }

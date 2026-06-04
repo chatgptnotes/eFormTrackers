@@ -5,6 +5,7 @@ const { detectLevelFields } = require('./detect-fields');
 const { emitToAll } = require('./realtime');
 const { pMapLimit } = require('./concurrency');
 const { extractTask, deriveWorkflowStatus } = require('./workflow-task');
+const { upsertEmailLogs } = require('./email-log');
 
 function parseEmailFromActionText(text) {
   if (!text || typeof text !== 'string') return '';
@@ -12,10 +13,12 @@ function parseEmailFromActionText(text) {
   return m ? m[1].trim() : '';
 }
 
-// Max workflow-instance enrichments in flight per form. Matches admin-sync's
-// SUBMISSION_ENRICH_CONCURRENCY — was previously a sequential per-submission
-// await, which made each poll's latency O(pending submissions) of JotForm calls.
-const POLL_ENRICH_CONCURRENCY = 8;
+// Max workflow-instance enrichments in flight per form. Reduced from 8 → 4 to
+// avoid burst-firing the JotForm API fast enough to trigger their 429 limit.
+const POLL_ENRICH_CONCURRENCY = 4;
+
+// Delay between processing each form (ms). Spreads the API burst across time.
+const INTER_FORM_DELAY_MS = 500;
 
 // Which JotForm key bucket the background poller authenticates with. It has no
 // HTTP request to read x-jotform-key-type from, so it must be configured. The
@@ -316,6 +319,10 @@ async function pollOnce() {
         }
       }
 
+      // Small pause before moving to the next form — prevents burst API calls
+      // across many forms from triggering JotForm's own rate limiter.
+      await new Promise(r => setTimeout(r, INTER_FORM_DELAY_MS));
+
       // 6. Upsert each prepared submission.
       for (const p of prepared) {
         try {
@@ -379,6 +386,10 @@ async function pollOnce() {
             ]
           );
           totalUpserted++;
+          // Log task assignments to email_logs
+          if (p.workflowTasks.length > 0) {
+            await upsertEmailLogs(p.submissionId, formId, formTitle, p.workflowTasks);
+          }
         } catch (err) {
           console.warn(`[poller] Failed to upsert submission ${p.submissionId}:`, err.message);
         }

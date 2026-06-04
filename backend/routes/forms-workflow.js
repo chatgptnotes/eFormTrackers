@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const env = require('../config/env');
+const pool = require('../db/pool');
 const { jotformFetch, resolveApiKey } = require('../lib/jotform');
 const { readKeyType } = require('../lib/key-type');
 const { validate } = require('../middleware/validate');
@@ -53,36 +54,17 @@ const ACTIVE_FORMS_TTL = 5 * 60 * 1000;
 
 router.get('/active-form-ids', async (req, res, next) => {
   try {
-    const keyType = readKeyType(req);
-    const cached = activeFormsCache[keyType];
-    if (cached && Date.now() - cached.at < ACTIVE_FORMS_TTL) {
-      res.setHeader('Cache-Control', 'private, max-age=60');
-      return res.json({ keyType, forms: cached.forms, cached: true });
-    }
-    // Fetch the scope-appropriate forms list. jotformFetch handles the
-    // path rewrite (user/ → enterprise/ for gdmo) + teamID rule internally.
-    const data = await jotformFetch('user/forms', { params: { limit: 1000 }, keyType });
-    let forms = (data.content || [])
-      .filter(f => f.id && f.status === 'ENABLED')
-      .map(f => ({
-        id: String(f.id),
-        title: String(f.title || `Form ${f.id}`),
-        count: parseInt(f.count) || 0,
-        updatedAt: String(f.updated_at || ''),
-      }));
-    // Production scope excludes the Testing team forms.
-    if (keyType === 'gdmo' && env.JOTFORM_TEAM_ID) {
-      try {
-        const teamData = await jotformFetch('user/forms', { params: { limit: 1000 }, keyType: 'default' });
-        const teamIds = new Set((teamData.content || []).map(f => String(f.id)));
-        forms = forms.filter(f => !teamIds.has(f.id));
-      } catch (e) {
-        req.log.warn({ err: e.message }, '[active-form-ids] could not subtract team forms');
-      }
-    }
-    activeFormsCache[keyType] = { forms, at: Date.now() };
+    // Serve from synced jf_forms table — no live JotForm API call needed.
+    // Poller keeps jf_forms up to date every POLL_INTERVAL_MINUTES.
+    const { rows } = await pool.query(
+      `SELECT form_id AS id, title, status FROM jf_forms ORDER BY title`
+    );
+    const forms = rows.map(f => ({
+      id: String(f.id),
+      title: String(f.title || `Form ${f.id}`),
+    }));
     res.setHeader('Cache-Control', 'private, max-age=60');
-    res.json({ keyType, forms });
+    res.json({ keyType: 'default', forms });
   } catch (err) { next(err); }
 });
 
@@ -271,6 +253,14 @@ router.get('/email-url', validate(formAndSubmissionQuerySchema, 'query'), async 
     const shareMatch = accessLink.match(/\/share\/(.+)$/);
     const accessToken = shareMatch ? shareMatch[1] : '';
     const taskType = String(element.type || '');
+
+    if (taskType === 'workflow_assign_task' && taskId) {
+      const deeplink = `jotform://workflow/${submissionId}/${formId}/${taskId}`;
+      return res.json({
+        approvalUrl: `${env.JOTFORM_HOST}/deeplink?deeplink=${encodeURIComponent(deeplink)}`,
+        formId, submissionId, source: 'workflow-task-deeplink',
+      });
+    }
 
     if (taskType === 'workflow_assign_form') {
       // Check prefill

@@ -142,6 +142,7 @@ router.post('/login', validate(loginBodySchema), async (req, res, next) => {
 router.post('/logout', (req, res) => {
   req.session.destroy(() => {
     res.clearCookie('connect.sid');
+    res.clearCookie('msal.interaction.status');
     res.json({ ok: true });
   });
 });

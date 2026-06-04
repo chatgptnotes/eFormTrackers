@@ -122,6 +122,7 @@ function createApp() {
   app.use('/api', require('./routes/admin-sync'));
   app.use('/api', require('./routes/signature-proxy'));
   app.use('/api', require('./routes/support'));
+  app.use('/api/email-logs', require('./routes/email-logs'));
 
   // ── Serve built frontend (production) ──
   const distPath = path.join(__dirname, '..', 'dist');

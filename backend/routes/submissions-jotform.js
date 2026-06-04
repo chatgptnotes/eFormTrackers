@@ -6,8 +6,10 @@ const { readKeyType } = require('../lib/key-type');
 const { detectLevelFields } = require('../lib/detect-fields');
 const { insertNotification } = require('../lib/notifications');
 const { extractTask, deriveWorkflowStatus } = require('../lib/workflow-task');
+const { upsertEmailLogs } = require('../lib/email-log');
 const { requireAuth } = require('../middleware/auth');
 const { webhookLimiter } = require('../middleware/rateLimit');
+const { emitToAll } = require('../lib/realtime');
 
 const router = Router();
 
@@ -302,6 +304,12 @@ router.post('/webhook', webhookLimiter, async (req, res, next) => {
       ]
     );
 
+    // Log task assignments to email_logs
+    if (workflowTasks.length > 0) {
+      upsertEmailLogs(submissionId, formId, String(raw.form_title || formId), workflowTasks)
+        .catch(err => req.log.warn({ err }, '[webhook] email_logs upsert failed'));
+    }
+
     // Notify pending approver
     if (pendingApproverEmail && status === 'pending') {
       insertNotification({
@@ -332,6 +340,7 @@ router.post('/webhook', webhookLimiter, async (req, res, next) => {
       }
     }
 
+    emitToAll('submissions:updated', { source: 'webhook', submissionId });
     res.json({ ok: true, submissionId, currentLevel, status, pendingApproverName, pendingApproverEmail });
   } catch (err) { next(err); }
 });

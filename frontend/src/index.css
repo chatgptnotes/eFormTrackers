@@ -48,6 +48,7 @@
 
   /* ── Light mode: typography overrides ── */
   .light-mode .text-white          { color: #0A1551 !important; }
+  .light-mode aside .text-white    { color: white !important; }
   .light-mode .text-gray-100       { color: #1e2a4a !important; }
   .light-mode .text-gray-200       { color: #2d3a5a !important; }
   .light-mode .text-gray-300       { color: #3d4f70 !important; }

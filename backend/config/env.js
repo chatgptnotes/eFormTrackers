@@ -43,6 +43,7 @@ module.exports = {
   MICROSOFT_TENANT_ID: process.env.MICROSOFT_TENANT_ID || '',
   MICROSOFT_CLIENT_SECRET: process.env.MICROSOFT_CLIENT_SECRET || '',
   MICROSOFT_REDIRECT_URI: process.env.MICROSOFT_REDIRECT_URI || '',
+  MICROSOFT_REDIRECT_URI_DEV: process.env.MICROSOFT_REDIRECT_URI_DEV || '',
   // Optional: a JotForm browser session cookie (e.g. 'jftoken=xyz...'),
   // used by /api/signature-proxy to fetch /uploads/ files that JotForm
   // protects behind session auth. Obtain from browser DevTools after
@@ -51,12 +52,13 @@ module.exports = {
   ADMIN_EMAIL: (process.env.ADMIN_EMAIL || '').trim().toLowerCase(),
   ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || '',
   ADMIN_NAME: process.env.ADMIN_NAME || '',
-  POLL_INTERVAL_MINUTES: parseInt(process.env.POLL_INTERVAL_MINUTES || '2', 10),
+  POLL_INTERVAL_MINUTES: parseFloat(process.env.POLL_INTERVAL_MINUTES || '0.5'),
+  POLLER_KEY_TYPE: process.env.POLLER_KEY_TYPE || 'gdmo',
   ORG_ID: process.env.ORG_ID || '',
   // M-2: Production-safe rate-limit defaults. Override via env vars if needed.
   // Auth: 15 attempts/15 min. Global: 500/15 min. API: 200/min.
-  RATE_LIMIT_GLOBAL_MAX: parseInt(process.env.RATE_LIMIT_GLOBAL_MAX || '500', 10),
-  RATE_LIMIT_API_MAX: parseInt(process.env.RATE_LIMIT_API_MAX || '200', 10),
+  RATE_LIMIT_GLOBAL_MAX: parseInt(process.env.RATE_LIMIT_GLOBAL_MAX || '1000', 10),
+  RATE_LIMIT_API_MAX: parseInt(process.env.RATE_LIMIT_API_MAX || '500', 10),
   RATE_LIMIT_AUTH_MAX: parseInt(process.env.RATE_LIMIT_AUTH_MAX || '15', 10),
   RATE_LIMIT_WEBHOOK_MAX: parseInt(process.env.RATE_LIMIT_WEBHOOK_MAX || '120', 10),
   RATE_LIMIT_MUTATION_MAX: parseInt(process.env.RATE_LIMIT_MUTATION_MAX || '100', 10),

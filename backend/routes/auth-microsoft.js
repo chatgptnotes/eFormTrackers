@@ -35,6 +35,13 @@ function getMsalClient() {
 // (department, jobTitle, displayName, mail — enriches the user profile in DB).
 const MS_SCOPES = ['openid', 'profile', 'email', 'User.Read'];
 
+// Pick redirect URI: dev uses localhost, production uses the configured URI.
+function getRedirectUri() {
+  return env.NODE_ENV !== 'production' && env.MICROSOFT_REDIRECT_URI_DEV
+    ? env.MICROSOFT_REDIRECT_URI_DEV
+    : env.MICROSOFT_REDIRECT_URI;
+}
+
 // Fetch the user's full profile from Microsoft Graph using the access token.
 // Returns null if the call fails (non-fatal — we fall back to ID token claims).
 async function fetchGraphProfile(accessToken) {
@@ -63,19 +70,20 @@ function roleFromAccountType(accountType, existingRole) {
 // ── GET /api/auth/microsoft — Redirect to Microsoft login ──
 // Uses HTML meta-refresh instead of 302 to avoid IIS ARR rewriting Location header.
 router.get('/microsoft', async (req, res) => {
-  if (!env.MICROSOFT_CLIENT_ID || !env.MICROSOFT_REDIRECT_URI) {
+  if (!env.MICROSOFT_CLIENT_ID || !getRedirectUri()) {
     return res.redirect('/login?error=microsoft_not_configured');
   }
   try {
     const authUrl = await getMsalClient().getAuthCodeUrl({
       scopes: MS_SCOPES,
-      redirectUri: env.MICROSOFT_REDIRECT_URI,
+      redirectUri: getRedirectUri(),
+      prompt: 'select_account',
     });
-    // H-4: HTML-escape the URL before injecting into markup to prevent script injection.
+    // meta-refresh needs HTML-escaped URL; script needs raw URL as a JSON string literal.
     const safeUrl = authUrl.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     res.send(
       `<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=${safeUrl}">` +
-      `<script>window.location.href="${safeUrl}";</script></head>` +
+      `<script>window.location.href=${JSON.stringify(authUrl)};</script></head>` +
       `<body>Redirecting to Microsoft…</body></html>`
     );
   } catch (err) {
@@ -96,7 +104,7 @@ router.get('/microsoft/callback', async (req, res) => {
     const tokenResponse = await getMsalClient().acquireTokenByCode({
       code: String(code),
       scopes: MS_SCOPES,
-      redirectUri: env.MICROSOFT_REDIRECT_URI,
+      redirectUri: getRedirectUri(),
     });
 
     // 2. Extract email from ID token claims

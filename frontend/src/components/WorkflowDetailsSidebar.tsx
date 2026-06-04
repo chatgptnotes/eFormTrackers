@@ -175,11 +175,13 @@ export default function WorkflowDetailsSidebar({
                                 </span>
                               </div>
 
-                              {/* Assignee */}
-                              {task.assigneeName && (
+                              {/* Assignee: name→email fallback chain per status */}
+                              {(task.assigneeName || task.assigneeEmail || (isActive && submission?.pendingApproverName) || (isCompleted && (task.submittedBy || task.submittedByEmail))) && (
                                 <p className="text-xs text-slate-600 mb-2">
-                                  {task.assigneeName}
-                                  {task.assigneeEmail && <span className="text-slate-500"> • {task.assigneeEmail}</span>}
+                                  {task.assigneeName || (isActive ? submission?.pendingApproverName : task.submittedBy) || (isCompleted ? task.submittedByEmail : task.assigneeEmail)}
+                                  {(task.assigneeName || (isActive ? submission?.pendingApproverName : task.submittedBy)) && (task.assigneeEmail || (isActive && submission?.pendingApproverEmail) || (isCompleted && task.submittedByEmail)) && (
+                                    <span className="text-slate-500"> • {task.assigneeEmail || (isActive ? submission?.pendingApproverEmail : task.submittedByEmail)}</span>
+                                  )}
                                 </p>
                               )}
 

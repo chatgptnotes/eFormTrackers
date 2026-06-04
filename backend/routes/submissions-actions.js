@@ -11,6 +11,7 @@ const {
   deleteSubmissionQuerySchema,
   jotformUpdateQuerySchema,
 } = require('../schemas/submissions');
+const { emitToAll } = require('../lib/realtime');
 
 const router = Router();
 
@@ -213,6 +214,7 @@ router.post('/workflow-action', validate(workflowActionBodySchema), async (req, 
       req.log.warn({ err: notifErr }, '[workflow-action] Notification logic failed');
     }
 
+    emitToAll('submissions:updated', { source: 'action', submissionId, action });
     res.json({
       ok: true, action, taskId, taskName, taskType, outcomeID,
       instanceCompleted: result?.content?.instanceCompleted || false,

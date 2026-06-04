@@ -11,6 +11,7 @@ import { mapSupabaseRow } from './submissionMappers';
 import { loadAndEnrichSubmissions, deltaSyncToSupabase } from './submissionLoader';
 import { getJotformKeyType } from '../lib/jotformKey';
 import { useToast } from '../components/ToastNotification';
+import { useAuth } from '../contexts/AuthContext';
 
 // ─── Workspace version — bump when switching teams to force full cache clear ──
 const WORKSPACE_VERSION = 'gdmo-bettroi-v4'; // bumped: new API key — force cache clear
@@ -55,6 +56,8 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 export function useSubmissions() {
+  const { orgRole } = useAuth();
+  const isAdmin = orgRole === 'admin' || orgRole === 'super_admin';
   const [allSubmissions, setAllSubmissions] = useState<Submission[]>([]);
   const [activeForms, setActiveForms] = useState<JFFormMeta[]>([]);
   const [loading, setLoading] = useState(true);
@@ -319,8 +322,9 @@ export function useSubmissions() {
     return () => window.removeEventListener('jotform-key-type-changed', onKeyTypeChanged);
   }, [loadFromSupabase]);
 
-  // Auto-register webhooks on mount (cached for 24h)
+  // Auto-register webhooks on mount (admin only, cached for 24h)
   useEffect(() => {
+    if (!isAdmin) return;
     const WEBHOOK_CACHE_KEY = 'jotflow_webhooks_registered';
     const WEBHOOK_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
     try {
@@ -330,7 +334,7 @@ export function useSubmissions() {
         .then(() => localStorage.setItem(WEBHOOK_CACHE_KEY, String(Date.now())))
         .catch(err => console.warn('[JotFlow] Webhook registration failed:', err));
     } catch {}
-  }, []);
+  }, [isAdmin]);
 
   // ─── Socket.IO: receive submissions:updated from backend poller ─────────────
   const socketRef = useRef<Socket | null>(null);

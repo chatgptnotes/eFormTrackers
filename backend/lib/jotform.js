@@ -73,6 +73,16 @@ async function jotformFetch(path, opts = {}) {
   // Tolerate non-JSON error responses (5xx HTML pages, gateway errors).
   const ct = response.headers.get('content-type') || '';
   const data = ct.includes('json') ? await response.json().catch(() => ({})) : { error: (await response.text().catch(() => '')).slice(0, 500) };
+
+  // JotForm rate-limit: retry once after the Retry-After delay (or 60s default).
+  if (response.status === 429 && !opts._retried) {
+    const retryAfter = parseInt(response.headers.get('retry-after') || '60', 10);
+    const waitMs = Math.min(retryAfter * 1000, 120000);
+    console.warn(`[jotform] 429 on ${path} — waiting ${waitMs / 1000}s before retry`);
+    await new Promise(r => setTimeout(r, waitMs));
+    return jotformFetch(path, { ...opts, _retried: true });
+  }
+
   if (!response.ok) {
     const err = new Error(`JotForm API error: ${response.status}`);
     err.status = response.status;
