@@ -2,21 +2,26 @@
 #  FlowAccel - ONE-SHOT installer (RUN AS ADMINISTRATOR)
 #
 #  Goal: on ANY fresh Windows machine, get from zero to a working login.
+#  Works fully OFFLINE when run from an extracted JotFlow-Offline-*.zip
+#  (installers in 1_INSTALLERS\, npm cache in 4_NPM_CACHE\).
+#
 #  Steps it performs:
+#    0. Install Node.js + PostgreSQL from bundled MSIs/EXEs (if in 1_INSTALLERS\)
 #    1. Verify prerequisites (Node, PostgreSQL, PM2)
 #    2. Create local PostgreSQL DB + role  (jotflow)
-#    3. Write backend\.env  (local DB, random session secret, port 3000)
-#    4. npm install (backend) if needed
+#    3. Write backend\.env  (local DB, random session secret, port 3001)
+#    4. npm ci  (offline-first via 4_NPM_CACHE\, then fallback to internet)
 #    5. Apply schema  (db/migrate.js)
-#    6. Seed default admin user  (db/seed-admin.js)
-#    7. Start backend with PM2 on port 3000
-#    8. Deploy frontend to IIS  (calls deploy-to-iis.ps1)
+#    6. Optionally restore data from 3_DATABASE\backup.sql
+#    7. Seed default admin user  (db/seed-admin.js)
+#    8. Start backend with PM2 on port 3001
+#    9. Deploy frontend to IIS  (calls deploy-to-iis.ps1)
 #
 #  After it finishes: open http://localhost/ and log in with the admin
 #  credentials printed at the end. pgAdmin connects to localhost:5432 / jotflow.
 # =======================================================================
 
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'
 $root = $PSScriptRoot
 $backend = Join-Path $root 'backend'
 
@@ -63,22 +68,83 @@ if (-not $pr.IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)) {
   Die 'Not running as Administrator. Right-click PowerShell, Run as Administrator.'
 }
 
+# -- 0b. Install bundled prerequisites (offline-first) --
+$installersDir = Join-Path $root '1_INSTALLERS'
+$npmCacheDir   = Join-Path $root '4_NPM_CACHE'
+
+if (Test-Path $installersDir) {
+  Step '0/9  Installing bundled prerequisites (offline)'
+
+  # Enable IIS (required before iisnode/URLRewrite can register)
+  # -All ensures parent features are auto-enabled; try/catch swallows any COMException
+  $iisFeatures = @('IIS-WebServer','IIS-CommonHttpFeatures','IIS-HttpErrors',
+    'IIS-ApplicationDevelopment','IIS-NetFxExtensibility45','IIS-ISAPIExtensions',
+    'IIS-ISAPIFilter','IIS-ASPNET45','IIS-DefaultDocument','IIS-StaticContent',
+    'IIS-ManagementConsole','IIS-WebSockets')
+  foreach ($f in $iisFeatures) {
+    try {
+      $feat = Get-WindowsOptionalFeature -Online -FeatureName $f -ErrorAction SilentlyContinue
+      if ($feat -and $feat.State -ne 'Enabled') {
+        Enable-WindowsOptionalFeature -Online -FeatureName $f -All -NoRestart -ErrorAction SilentlyContinue | Out-Null
+      }
+    } catch { Warn "IIS feature $f : $($_.Exception.Message)" }
+  }
+  Ok 'IIS features enabled'
+
+  # Node.js MSI
+  $nodeMsi = Get-ChildItem $installersDir -Filter 'node-*.msi' -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($nodeMsi -and -not (Get-Command node -ErrorAction SilentlyContinue)) {
+    Ok "Installing Node.js from $($nodeMsi.Name)..."
+    $p = Start-Process msiexec.exe -ArgumentList "/i `"$($nodeMsi.FullName)`" /qn /norestart" -Wait -PassThru
+    if ($p.ExitCode -eq 0 -or $p.ExitCode -eq 3010) { Ok 'Node.js installed' }
+    else { Warn "Node.js MSI exited $($p.ExitCode) - may need a reboot to take effect" }
+    # Refresh PATH so node/npm are available this session
+    $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')
+  }
+
+  # PostgreSQL EXE (EnterpriseDB - includes pgAdmin 4)
+  $pgExe = Get-ChildItem $installersDir -Filter 'postgresql-*.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($pgExe -and -not (Get-Command psql -ErrorAction SilentlyContinue)) {
+    Ok "Installing PostgreSQL from $($pgExe.Name) (this takes ~2 min)..."
+    $p = Start-Process $pgExe.FullName -ArgumentList '--mode unattended', '--superpassword postgres', '--servicename postgresql' -Wait -PassThru
+    if ($p.ExitCode -eq 0 -or $p.ExitCode -eq 3010) { Ok 'PostgreSQL installed' }
+    else { Warn "PostgreSQL installer exited $($p.ExitCode) - check if it already exists" }
+    $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')
+  }
+
+  # PM2 - prefer bundled tgz, fall back to npm registry
+  if (-not (Get-Command pm2 -ErrorAction SilentlyContinue)) {
+    $pm2Tgz = Get-ChildItem (Join-Path $installersDir 'npm') -Filter 'pm2-*.tgz' -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($pm2Tgz) {
+      Ok "Installing PM2 from bundled tgz..."
+      npm install -g $pm2Tgz.FullName 2>&1 | Out-Null
+    } elseif (Test-Path $npmCacheDir) {
+      Ok "Installing PM2 from npm cache..."
+      npm install -g pm2 --prefer-offline --cache $npmCacheDir 2>&1 | Out-Null
+    } else {
+      npm install -g pm2 2>&1 | Out-Null
+    }
+  }
+} else {
+  Step '0/9  No 1_INSTALLERS\ folder found - assuming prerequisites are already installed'
+}
+
 # -- 1. Prerequisites --
-Step '1/8  Checking prerequisites'
+Step '1/9  Checking prerequisites'
 
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-  Die 'Node.js not found. Install Node 18+ from https://nodejs.org and re-run.'
+  Die 'Node.js not found. Install Node 18+ from 1_INSTALLERS\node-*.msi or https://nodejs.org and re-run.'
 }
 Ok "Node $(node -v)"
 
 if (-not (Get-Command psql -ErrorAction SilentlyContinue)) {
-  Die 'psql (PostgreSQL client) not found in PATH. Install PostgreSQL 14+ and add its bin folder to PATH, then re-run.'
+  Die 'psql not found in PATH. Install PostgreSQL from 1_INSTALLERS\postgresql-*.exe or https://www.enterprisedb.com and re-run.'
 }
 Ok 'psql found'
 
 if (-not (Get-Command pm2 -ErrorAction SilentlyContinue)) {
   Warn 'PM2 not found - installing globally...'
-  npm install -g pm2 | Out-Null
+  npm install -g pm2 2>&1 | Out-Null
   if (-not (Get-Command pm2 -ErrorAction SilentlyContinue)) { Die 'PM2 install failed.' }
 }
 Ok 'PM2 present'
@@ -147,18 +213,23 @@ if (Test-Path $envPath) {
   Ok ".env written (DB=$DbName, port=$BackendPort, NODE_ENV=development)"
 }
 
-# -- 4. npm install --
-Step '4/8  Installing backend dependencies'
+# -- 4. npm install (offline-first) --
+Step '4/9  Installing backend dependencies'
 Push-Location $backend
 if (-not (Test-Path (Join-Path $backend 'node_modules'))) {
-  npm install | Out-Host
+  if (Test-Path $npmCacheDir) {
+    Ok "Using offline npm cache at $npmCacheDir ..."
+    npm ci --prefer-offline --cache $npmCacheDir 2>&1 | Out-Host
+  } else {
+    npm install 2>&1 | Out-Host
+  }
   Ok 'npm install complete'
 } else {
   Ok 'node_modules present - skipping'
 }
 
 # -- 5. Apply schema --
-Step '5/8  Applying database schema'
+Step '5/9  Applying database schema'
 node db/migrate.js
 Ok 'schema applied'
 
@@ -207,15 +278,33 @@ if ("$hasUsers".Trim() -ne 't') {
   Ok "verified: '$DbName' contains the expected schema (public.users present)"
 }
 
-# -- 6. Seed admin --
-Step '6/8  Seeding default admin user'
+# -- 5b. Ownership repair (already exists, unchanged) --
+
+# -- 6. Optionally restore backup --
+Step '6/9  Data restore'
+$backupSql = Join-Path $root '3_DATABASE\backup.sql'
+if (Test-Path $backupSql) {
+  $ans = Read-Host "  Found 3_DATABASE\backup.sql. Restore existing data? (y/N)"
+  if ($ans -match '^[Yy]') {
+    Ok "Restoring from backup.sql (this may take a minute)..."
+    & psql -h $DbHost -p $DbPort -U postgres -d $DbName -f $backupSql 2>&1 | Out-Null
+    Ok 'backup.sql restored'
+  } else {
+    Ok 'Skipped - starting with empty database'
+  }
+} else {
+  Ok 'No backup.sql found - starting with empty database'
+}
+
+# -- 7. Seed admin --
+Step '7/9  Seeding default admin user'
 $env:ADMIN_EMAIL = $AdminEmail
 $env:ADMIN_PASSWORD = $AdminPass
 node db/seed-admin.js
 Ok 'admin seeded'
 
-# -- 7. Start backend (PM2) --
-Step '7/8  Starting backend with PM2'
+# -- 8. Start backend (PM2) --
+Step '8/9  Starting backend with PM2'
 pm2 delete jotflow-backend 2>$null | Out-Null
 pm2 start ecosystem.config.js 2>&1 | Out-Host
 
@@ -235,8 +324,8 @@ pm2 save 2>&1 | Out-Null
 Ok "backend running on http://localhost:$BackendPort (saved for boot resurrection)"
 Pop-Location
 
-# -- 8. Deploy frontend to IIS --
-Step '8/8  Deploying frontend to IIS'
+# -- 9. Deploy frontend to IIS --
+Step '9/9  Deploying frontend to IIS'
 $deploy = Join-Path $root 'deploy-to-iis.ps1'
 if (Test-Path $deploy) {
   & $deploy

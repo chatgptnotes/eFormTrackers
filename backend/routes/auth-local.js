@@ -1,5 +1,5 @@
 const { Router } = require('express');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const pool = require('../db/pool');
 const env = require('../config/env');
 const { validate } = require('../middleware/validate');

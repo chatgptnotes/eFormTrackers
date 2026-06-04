@@ -79,15 +79,22 @@ try {
   # never reaches the backend. Detect via registry; download+install if absent.
   function Ensure-IISModule($name, $regKey, $url) {
     if (Test-Path $regKey) { Log "$name already installed"; return }
-    $msi = Join-Path $env:TEMP ((Split-Path $url -Leaf))
-    Log "$name missing - downloading..."
-    try {
-      [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-      Invoke-WebRequest -Uri $url -OutFile $msi -UseBasicParsing
-    } catch {
-      Log "ERROR: could not download $name from $url : $($_.Exception.Message)"
-      Log "Install it manually, then re-run this script."
-      throw "$name download failed"
+    # Prefer bundled installer (offline bundle) over downloading
+    $bundled = Join-Path $src "1_INSTALLERS\$(Split-Path $url -Leaf)"
+    if (Test-Path $bundled) {
+      $msi = $bundled
+      Log "$name - using bundled installer: $msi"
+    } else {
+      $msi = Join-Path $env:TEMP ((Split-Path $url -Leaf))
+      Log "$name missing - downloading from $url ..."
+      try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri $url -OutFile $msi -UseBasicParsing
+      } catch {
+        Log "ERROR: could not download $name from $url : $($_.Exception.Message)"
+        Log "Install it manually, then re-run this script."
+        throw "$name download failed"
+      }
     }
     $p = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart" -Wait -PassThru
     if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) { throw "$name install failed (exit $($p.ExitCode))" }

@@ -8,7 +8,7 @@
 //   ADMIN_PASSWORD (default: Admin@12345)
 //   ADMIN_NAME     (default: Administrator)
 
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const { Client } = require('pg');
 const env = require('../config/env');
 

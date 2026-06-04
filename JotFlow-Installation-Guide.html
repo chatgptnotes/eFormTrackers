@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JotFlow — Complete Installation Guide</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 11pt;
+    color: #1a1a2e;
+    background: #fff;
+    line-height: 1.6;
+  }
+
+  /* ── PRINT ── */
+  @media print {
+    .no-print { display: none !important; }
+    body { font-size: 10pt; }
+    .page-break { page-break-before: always; }
+    .cover { page-break-after: always; }
+    section { page-break-inside: avoid; }
+    .step-block { page-break-inside: avoid; }
+    .error-card { page-break-inside: avoid; }
+    a { color: #1a1a2e; text-decoration: none; }
+  }
+
+  /* ── PRINT BUTTON ── */
+  .print-bar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 999;
+    background: #16213e; color: #fff; padding: 10px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
+  .print-bar span { font-size: 13px; opacity: 0.8; }
+  .print-btn {
+    background: #0f3460; color: #fff; border: none;
+    padding: 8px 20px; border-radius: 6px; cursor: pointer;
+    font-size: 13px; font-weight: 600;
+  }
+  .print-btn:hover { background: #533483; }
+
+  /* ── COVER PAGE ── */
+  .cover {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #0f3460 0%, #16213e 50%, #1a1a2e 100%);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    color: #fff; text-align: center; padding: 60px 40px;
+  }
+  .cover-logo {
+    width: 80px; height: 80px; background: rgba(255,255,255,0.1);
+    border-radius: 20px; margin: 0 auto 28px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 40px; border: 2px solid rgba(255,255,255,0.2);
+  }
+  .cover h1 { font-size: 38pt; font-weight: 800; letter-spacing: -1px; margin-bottom: 8px; }
+  .cover .subtitle { font-size: 16pt; opacity: 0.75; margin-bottom: 40px; font-weight: 300; }
+  .cover-badges { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 50px; }
+  .badge {
+    background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2);
+    padding: 6px 16px; border-radius: 20px; font-size: 10pt;
+  }
+  .cover-meta { opacity: 0.5; font-size: 9pt; }
+
+  /* ── LAYOUT ── */
+  .content { max-width: 900px; margin: 0 auto; padding: 40px 32px; }
+  @media print { .content { padding: 20px 16px; max-width: 100%; } }
+  @media screen { body { padding-top: 50px; } }
+
+  /* ── HEADINGS ── */
+  h1.section-title {
+    font-size: 18pt; color: #0f3460; font-weight: 800;
+    border-bottom: 3px solid #0f3460; padding-bottom: 8px;
+    margin: 32px 0 20px;
+  }
+  h2.step-title {
+    font-size: 13pt; color: #16213e; font-weight: 700;
+    margin: 24px 0 10px;
+  }
+  h3 { font-size: 11pt; font-weight: 700; color: #0f3460; margin: 16px 0 6px; }
+
+  /* ── TOC ── */
+  .toc {
+    background: #f0f4ff; border-left: 4px solid #0f3460;
+    border-radius: 0 8px 8px 0; padding: 20px 24px; margin: 20px 0 32px;
+  }
+  .toc h2 { font-size: 12pt; color: #0f3460; margin-bottom: 12px; }
+  .toc ol { margin-left: 20px; }
+  .toc li { margin: 4px 0; font-size: 10pt; }
+  .toc a { color: #0f3460; text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+
+  /* ── STEP BLOCKS ── */
+  .step-block {
+    border: 1px solid #dde4f0; border-radius: 10px;
+    margin: 16px 0; overflow: hidden;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+  }
+  .step-header {
+    background: #0f3460; color: #fff;
+    padding: 12px 18px; display: flex; align-items: center; gap: 12px;
+  }
+  .step-num {
+    background: rgba(255,255,255,0.2); width: 30px; height: 30px;
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 13px; flex-shrink: 0;
+  }
+  .step-header h3 { color: #fff; margin: 0; font-size: 12pt; }
+  .step-body { padding: 16px 18px; }
+
+  /* ── INFO BOXES ── */
+  .info-box {
+    border-radius: 8px; padding: 12px 16px; margin: 12px 0;
+    display: flex; gap: 10px; align-items: flex-start;
+  }
+  .info-box .icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+  .info-box p { margin: 0; font-size: 10pt; }
+  .info-box.warn { background: #fff8e1; border: 1px solid #f0c040; }
+  .info-box.danger { background: #ffeef0; border: 1px solid #f08080; }
+  .info-box.tip { background: #e8f5e9; border: 1px solid #66bb6a; }
+  .info-box.note { background: #e3f2fd; border: 1px solid #64b5f6; }
+
+  /* ── CODE ── */
+  code {
+    font-family: 'Consolas', 'Courier New', monospace;
+    background: #f0f4ff; color: #0f3460;
+    padding: 1px 6px; border-radius: 4px; font-size: 10pt;
+  }
+  pre {
+    background: #1a1a2e; color: #e0e0e0;
+    border-radius: 8px; padding: 14px 16px; margin: 10px 0;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 10pt; line-height: 1.7; overflow-x: auto;
+    white-space: pre-wrap; word-break: break-all;
+  }
+  pre .comment { color: #6a9955; }
+  pre .cmd { color: #9cdcfe; }
+  pre .string { color: #ce9178; }
+  pre .keyword { color: #c586c0; }
+
+  /* ── TABLES ── */
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 10pt; }
+  th {
+    background: #0f3460; color: #fff;
+    padding: 8px 12px; text-align: left; font-weight: 600;
+  }
+  td { padding: 8px 12px; border-bottom: 1px solid #e8edf5; vertical-align: top; }
+  tr:nth-child(even) td { background: #f7f9ff; }
+  .ok-cell { color: #2e7d32; font-weight: 700; }
+  .fail-cell { color: #c62828; font-weight: 700; }
+
+  /* ── ERROR CARDS ── */
+  .error-section { margin: 24px 0; }
+  .error-card {
+    border: 1px solid #ffcdd2; border-radius: 10px;
+    margin: 14px 0; overflow: hidden;
+  }
+  .error-header {
+    background: #c62828; color: #fff;
+    padding: 10px 16px; font-weight: 700; font-size: 11pt;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .error-body { padding: 14px 16px; }
+  .error-body p { margin: 6px 0; font-size: 10pt; }
+  .fix-label {
+    display: inline-block; background: #2e7d32; color: #fff;
+    padding: 2px 8px; border-radius: 4px; font-size: 9pt;
+    font-weight: 700; margin-right: 6px;
+  }
+
+  /* ── CHECKLIST ── */
+  .checklist { list-style: none; margin: 10px 0; }
+  .checklist li {
+    padding: 6px 0 6px 28px; position: relative;
+    border-bottom: 1px solid #f0f0f0; font-size: 10pt;
+  }
+  .checklist li:last-child { border-bottom: none; }
+  .checklist li::before {
+    content: '☐'; position: absolute; left: 4px;
+    font-size: 14px; color: #0f3460;
+  }
+
+  /* ── PORT TABLE ── */
+  .port-row td:first-child { font-family: 'Consolas', monospace; font-weight: 700; color: #0f3460; }
+
+  /* ── FOOTER ── */
+  .footer {
+    margin-top: 48px; padding: 20px 0; border-top: 2px solid #e8edf5;
+    text-align: center; color: #888; font-size: 9pt;
+  }
+
+  /* ── DIVIDER ── */
+  hr { border: none; border-top: 2px solid #e8edf5; margin: 28px 0; }
+
+  /* ── PILL ── */
+  .pill {
+    display: inline-block; background: #0f3460; color: #fff;
+    padding: 2px 10px; border-radius: 12px; font-size: 9pt; font-weight: 600;
+  }
+  .pill.green { background: #2e7d32; }
+  .pill.orange { background: #e65100; }
+  .pill.red { background: #c62828; }
+
+  p { margin: 8px 0; }
+  ul, ol { margin: 8px 0 8px 22px; }
+  li { margin: 4px 0; font-size: 10pt; }
+</style>
+</head>
+<body>
+
+<!-- Print Bar -->
+<div class="print-bar no-print">
+  <span>JotFlow Installation Guide — Open in Chrome and print to PDF for best results</span>
+  <button class="print-btn" onclick="window.print()">🖨 Save as PDF</button>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     COVER PAGE
+═══════════════════════════════════════════════ -->
+<div class="cover">
+  <div class="cover-logo">📋</div>
+  <h1>JotFlow</h1>
+  <div class="subtitle">Complete Offline Installation Guide</div>
+  <div class="cover-badges">
+    <span class="badge">Windows 10 / 11 / Server 2019+</span>
+    <span class="badge">Node.js 20 LTS</span>
+    <span class="badge">PostgreSQL 16 + pgAdmin 4</span>
+    <span class="badge">IIS + iisnode</span>
+    <span class="badge">PM2</span>
+    <span class="badge">Socket.IO</span>
+  </div>
+  <div class="cover-meta">
+    Government of Dubai Media Office — JotForm Workflow Dashboard<br>
+    Version 1.0 &nbsp;|&nbsp; June 2026 &nbsp;|&nbsp; Offline Deployment Package
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     CONTENT
+═══════════════════════════════════════════════ -->
+<div class="content">
+
+<!-- TABLE OF CONTENTS -->
+<div class="toc">
+  <h2>Table of Contents</h2>
+  <ol>
+    <li><a href="#overview">System Overview &amp; Architecture</a></li>
+    <li><a href="#requirements">System Requirements</a></li>
+    <li><a href="#whats-inside">What's Inside the ZIP</a></li>
+    <li><a href="#step1">Step 1 — Enable IIS</a></li>
+    <li><a href="#step2">Step 2 — Install Node.js</a></li>
+    <li><a href="#step3">Step 3 — Install PostgreSQL + pgAdmin</a></li>
+    <li><a href="#step4">Step 4 — Reboot</a></li>
+    <li><a href="#step5">Step 5 — Extract the ZIP</a></li>
+    <li><a href="#step6">Step 6 — Run Setup Script</a></li>
+    <li><a href="#step7">Step 7 — Verify the Installation</a></li>
+    <li><a href="#postinstall">Post-Install Configuration</a></li>
+    <li><a href="#errors">Error Reference &amp; Fixes</a></li>
+    <li><a href="#maintenance">Maintenance &amp; Operations</a></li>
+    <li><a href="#ports">Port &amp; URL Reference</a></li>
+  </ol>
+</div>
+
+<!-- ══════════════════════════════════ -->
+<h1 class="section-title" id="overview">1. System Overview &amp; Architecture</h1>
+
+<p>JotFlow is a workflow approval dashboard for the Government of Dubai Media Office. It connects to JotForm Enterprise (<code>eforms.mediaoffice.ae</code>) and provides a modern approval interface with real-time updates.</p>
+
+<table>
+  <tr><th>Component</th><th>Role</th><th>Port</th></tr>
+  <tr><td><strong>IIS</strong> (Internet Information Services)</td><td>Serves the React frontend + reverse-proxies API/Socket calls to Node</td><td>80</td></tr>
+  <tr><td><strong>Node.js backend</strong> (via PM2)</td><td>Express API, Socket.IO real-time, background poller</td><td>3001</td></tr>
+  <tr><td><strong>PostgreSQL</strong></td><td>Database: users, submissions, approvals, sessions</td><td>5432</td></tr>
+  <tr><td><strong>pgAdmin 4</strong></td><td>Database management GUI</td><td>—</td></tr>
+</table>
+
+<p>Traffic flow: <code>Browser → IIS:80 → [static files] or [proxy → Node:3001 → PostgreSQL:5432]</code></p>
+
+<div class="info-box note">
+  <span class="icon">ℹ</span>
+  <p><strong>Offline-first:</strong> The ZIP contains all Windows installers. No internet is required on the target machine after extraction.</p>
+</div>
+
+<!-- ══════════════════════════════════ -->
+<h1 class="section-title" id="requirements">2. System Requirements</h1>
+
+<table>
+  <tr><th>Requirement</th><th>Minimum</th><th>Recommended</th></tr>
+  <tr><td>Operating System</td><td>Windows 10 (64-bit)</td><td>Windows 11 or Windows Server 2022</td></tr>
+  <tr><td>RAM</td><td>4 GB</td><td>8 GB or more</td></tr>
+  <tr><td>Disk Space</td><td>5 GB free</td><td>20 GB free</td></tr>
+  <tr><td>CPU</td><td>2 cores</td><td>4 cores</td></tr>
+  <tr><td>Network</td><td>Local LAN</td><td>Stable LAN + internet for JotForm sync</td></tr>
+  <tr><td>User Privileges</td><td colspan="2">Local Administrator account required for setup</td></tr>
+  <tr><td>IIS</td><td colspan="2">Must be enabled (Windows feature — done in Step 1)</td></tr>
+</table>
+
+<div class="info-box warn">
+  <span class="icon">⚠</span>
+  <p><strong>Windows Home editions</strong> do not include IIS. Use Windows 10/11 Pro, Enterprise, or any Windows Server edition.</p>
+</div>
+
+<!-- ══════════════════════════════════ -->
+<h1 class="section-title" id="whats-inside">3. What's Inside the ZIP</h1>
+
+<pre>JotFlow-Offline-&lt;date&gt;/
+├── <span class="string">1_INSTALLERS/</span>            ← All Windows software installers
+│   ├── node-v20.18.0-x64.msi          Node.js 20 LTS
+│   ├── postgresql-16.6-windows-x64.exe  PostgreSQL 16 + pgAdmin 4
+│   ├── iisnode-full-v0.2.21-x64.msi   iisnode IIS module
+│   ├── rewrite_amd64_en-US.msi        IIS URL Rewrite 2.1
+│   ├── requestRouter_amd64.msi        Application Request Routing 3.0
+│   └── npm/
+│       └── pm2-*.tgz                  PM2 process manager
+│
+├── <span class="string">2_APP/</span>                   ← The JotFlow application files
+│   ├── dist/                          Built React frontend
+│   ├── backend/                       Node.js backend source
+│   ├── server.js                      IIS entry point
+│   ├── web.config                     IIS URL rewrite rules
+│   └── ecosystem.config.js            PM2 configuration
+│
+├── <span class="string">3_DATABASE/</span>              ← Database files
+│   ├── schema.sql                     Table definitions (applied automatically)
+│   └── backup.sql                     Existing data (if included)
+│
+├── <span class="string">4_NPM_CACHE/</span>             ← Offline npm package cache
+│
+├── setup-flowaccel.ps1                One-shot installer script
+├── deploy-to-iis.ps1                  IIS deployment helper
+├── install-iis-iisnode.ps1            iisnode installer helper
+├── backend.env.template               Environment variable template
+└── INSTALL.md                         Quick reference guide</pre>
+
+<!-- ══════════════════════════════════ -->
+<div class="page-break"></div>
+<h1 class="section-title" id="step1">4. Step 1 — Enable IIS</h1>
+
+<div class="info-box warn">
+  <span class="icon">⚠</span>
+  <p><strong>Do this BEFORE installing Node.js or PostgreSQL.</strong> IIS must be active so that iisnode and URL Rewrite modules can register properly during installation.</p>
+</div>
+
+<div class="step-block">
+  <div class="step-header">
+    <div class="step-num">A</div>
+    <h3>Method A — PowerShell (Recommended)</h3>
+  </div>
+  <div class="step-body">
+    <p>Open <strong>PowerShell as Administrator</strong> (right-click Start → "Windows PowerShell (Admin)") and run:</p>
+    <pre><span class="comment"># Enable IIS with all required sub-features for JotFlow</span>
+Enable-WindowsOptionalFeature -Online -FeatureName IIS-WebServer -All -NoRestart
+Enable-WindowsOptionalFeature -Online -FeatureName IIS-WebSockets -NoRestart
+Enable-WindowsOptionalFeature -Online -FeatureName IIS-HttpCompressionDynamic -NoRestart
+Enable-WindowsOptionalFeature -Online -FeatureName IIS-ManagementConsole -NoRestart</pre>
+    <p>Wait for all commands to complete. Do NOT reboot yet — that is Step 4.</p>
+  </div>
+</div>
+
+<div class="step-block">
+  <div class="step-header">
+    <div class="step-num">B</div>
+    <h3>Method B — Control Panel (GUI)</h3>
+  </div>
+  <div class="step-body">
+    <ol>
+      <li>Press <code>Win + R</code>, type <code>optionalfeatures</code>, press Enter</li>
+      <li>Scroll to <strong>Internet Information Services</strong> and tick the checkbox</li>
+      <li>Expand it and ensure these sub-items are ticked:
+        <ul>
+          <li>Web Management Tools → IIS Management Console</li>
+          <li>World Wide Web Services → Application Development Features → <strong>WebSocket Protocol</strong></li>
+          <li>World Wide Web Services → Common HTTP Features (all)</li>
+        </ul>
+      </li>
+      <li>Click <strong>OK</strong> and wait for Windows to apply changes</li>
+    </ol>
+  </div>
+</div>
+
+<div class="info-box tip">
+  <span class="icon">✔</span>
+  <p><strong>Verify IIS is running:</strong> Open a browser and navigate to <code>http://localhost/</code> — you should see the IIS default "Welcome" page. If you see it, IIS is active.</p>
+</div>
+
+<!-- ══════════════════════════════════ -->
+<h1 class="section-title" id="step2">5. Step 2 — Install Node.js</h1>
+
+<div class="step-block">
+  <div class="step-header">
+    <div class="step-num">1</div>
+    <h3>Run the Node.js installer</h3>
+  </div>
+  <div class="step-body">
+    <ol>
+      <li>Navigate to <code>1_INSTALLERS\</code> inside the extracted ZIP</li>
+      <li>Double-click <code>node-v20.18.0-x64.msi</code></li>
+      <li>Click <strong>Next</strong> on all screens — accept all defaults</li>
+      <li>On the "Tools for Native Modules" screen: <strong>leave unchecked</strong> (not needed)</li>
+      <li>Click <strong>Install</strong>, then <strong>Finish</strong></li>
+    </ol>
+  </div>
+</div>
+
+<div class="info-box note">
+  <span class="icon">ℹ</span>
+  <p>Do NOT verify Node.js in PowerShell yet — PATH updates only take effect after a <strong>reboot</strong> (Step 4).</p>
+</div>
+
+<!-- ══════════════════════════════════ -->
+<h1 class="section-title" id="step3">6. Step 3 — Install PostgreSQL + pgAdmin</h1>
+
+<div class="info-box warn">
+  <span class="icon">⚠</span>
+  <p><strong>Critical:</strong> When asked for a superuser password during install, enter exactly: <code>postgres</code><br>
+  The setup script uses this password automatically. If you use a different password, you must edit the setup script before running it.</p>
+</div>
+
+<div class="step-block">
+  <div class="step-header">
+    <div class="step-num">1</div>
+    <h3>Run the PostgreSQL installer</h3>
+  </div>
+  <div class="step-body">
+    <ol>
+      <li>Navigate to <code>1_INSTALLERS\</code></li>
+      <li>Double-click <code>postgresql-16.6-windows-x64.exe</code></li>
+      <li><strong>Setup Wizard — click Next</strong></li>
+      <li><strong>Installation Directory</strong> — leave as default (<code>C:\Program Files\PostgreSQL\16</code>), click Next</li>
+      <li><strong>Select Components</strong> — leave all checked (PostgreSQL Server, pgAdmin 4, Stack Builder, Command Line Tools), click Next</li>
+      <li><strong>Data Directory</strong> — leave as default, click Next</li>
+      <li><strong>Password</strong> — type <code>postgres</code> (remember this!), click Next</li>
+      <li><strong>Port</strong> — leave as <code>5432</code>, click Next</li>
+      <li><strong>Locale</strong> — leave as default, click Next</li>
+      <li>Click <strong>Next</strong> to start installation (takes 2–5 minutes)</li>
+      <li>When asked to launch Stack Builder: <strong>uncheck</strong> and click Finish</li>
+    </ol>
+  </div>
+</div>
+
+<div class="info-box tip">
+  <span class="icon">✔</span>
+  <p>pgAdmin 4 is automatically installed alongside PostgreSQL — you don't need a separate installer.</p>
+</div>
+
+<!-- ══════════════════════════════════ -->
+<h1 class="section-title" id="step4">7. Step 4 — Reboot the Machine</h1>
+
+<div class="step-block">
+  <div class="step-header">
+    <div class="step-num">!</div>
+    <h3>Reboot is MANDATORY</h3>
+  </div>
+  <div class="step-body">
+    <p>After installing Node.js and PostgreSQL, the system PATH must be refreshed. Without a reboot:</p>
+    <ul>
+      <li>PowerShell will report <code>node: command not found</code></li>
+      <li>PowerShell will report <code>psql: command not found</code></li>
+      <li>The setup script (Step 6) will fail with prerequisite errors</li>
+    </ul>
+    <p style="margin-top: 12px;"><strong>Save all work and restart Windows now.</strong></p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════ -->
+<div class="page-break"></div>
+<h1 class="section-title" id="step5">8. Step 5 — Extract the ZIP</h1>
+
+<div class="step-block">
+  <div class="step-header">
+    <div class="step-num">1</div>
+    <h3>Extract to a permanent location</h3>
+  </div>
+  <div class="step-body">
+    <ol>
+      <li>Copy <code>JotFlow-Offline-&lt;date&gt;.zip</code> to the Windows machine (USB drive, network share, etc.)</li>
+      <li>Right-click the ZIP → <strong>Extract All</strong></li>
+      <li>Extract to: <code>C:\JotFlow-Setup\</code></li>
+      <li>After extraction, the folder structure should look like:
+        <pre>C:\JotFlow-Setup\
+├── 1_INSTALLERS\
+├── 2_APP\
+├── 3_DATABASE\
+├── 4_NPM_CACHE\
+├── setup-flowaccel.ps1
+├── deploy-to-iis.ps1
+└── INSTALL.md</pre>
+      </li>
+    </ol>
+    <div class="info-box warn">
+      <span class="icon">⚠</span>
+      <p>Do NOT extract to <code>C:\Users\...\Downloads\</code> or any path with spaces. Use <code>C:\JotFlow-Setup\</code> to avoid permission issues.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════ -->
+<h1 class="section-title" id="step6">9. Step 6 — Run the Setup Script</h1>
+
+<div class="info-box warn">
+  <span class="icon">⚠</span>
+  <p><strong>Must run as Administrator.</strong> Right-click on PowerShell → "Run as Administrator". Running as a normal user will fail with permission errors.</p>
+</div>
+
+<div class="step-block">
+  <div class="step-header">
+    <div class="step-num">1</div>
+    <h3>Open Administrator PowerShell</h3>
+  </div>
+  <div class="step-body">
+    <p>Press <code>Win + X</code> → select <strong>Windows PowerShell (Admin)</strong> or <strong>Terminal (Admin)</strong></p>
+  </div>
+</div>
+
+<div class="step-block">
+  <div class="step-header">
+    <div class="step-num">2</div>
+    <h3>Navigate to the extracted folder and run setup</h3>
+  </div>
+  <div class="step-body">
+    <pre><span class="cmd">cd C:\JotFlow-Setup</span>
+<span class="cmd">powershell -ExecutionPolicy Bypass -File .\setup-flowaccel.ps1</span></pre>
+  </div>
+</div>
+
+<div class="step-block">
+  <div class="step-header">
+    <div class="step-num">3</div>
+    <h3>What the script does automatically (9 steps)</h3>
+  </div>
+  <div class="step-body">
+    <table>
+      <tr><th>Step</th><th>Action</th><th>Duration</th></tr>
+      <tr><td>0</td><td>Installs URL Rewrite, ARR, iisnode from <code>1_INSTALLERS\</code></td><td>~1 min</td></tr>
+      <tr><td>1</td><td>Verifies Node.js, psql, PM2 are available</td><td>instant</td></tr>
+      <tr><td>2</td><td>Creates PostgreSQL database <code>jotflow</code> and role <code>jotflow</code></td><td>~10 sec</td></tr>
+      <tr><td>3</td><td>Writes <code>2_APP\backend\.env</code> with DB connection &amp; session secret</td><td>instant</td></tr>
+      <tr><td>4</td><td>Runs <code>npm ci --prefer-offline</code> using <code>4_NPM_CACHE\</code></td><td>~1 min</td></tr>
+      <tr><td>5</td><td>Applies database schema (creates all 15 tables)</td><td>~5 sec</td></tr>
+      <tr><td>6</td><td><strong>Asks you:</strong> Restore data from backup.sql? (Y/N)</td><td>varies</td></tr>
+      <tr><td>7</td><td>Seeds admin user (prints credentials)</td><td>instant</td></tr>
+      <tr><td>8</td><td>Starts backend with PM2 on port 3001</td><td>~5 sec</td></tr>
+      <tr><td>9</td><td>Deploys React frontend to IIS on port 80</td><td>~20 sec</td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="step-block">
+  <div class="step-header">
+    <div class="step-num">4</div>
+    <h3>Backup restore prompt</h3>
+  </div>
+  <div class="step-body">
+    <p>During Step 6, the script will pause and ask:</p>
+    <pre>Found 3_DATABASE\backup.sql. Restore existing data? (y/N)</pre>
+    <ul>
+      <li>Type <code>y</code> + Enter to restore all existing submissions, users, and history</li>
+      <li>Type <code>n</code> + Enter (or just press Enter) to start with a clean database</li>
+    </ul>
+  </div>
+</div>
+
+<div class="step-block">
+  <div class="step-header">
+    <div class="step-num">5</div>
+    <h3>Success output</h3>
+  </div>
+  <div class="step-body">
+    <p>When complete, you will see a green summary like this:</p>
+    <pre>==============================================
+ FlowAccel is ready.
+   Open:     http://localhost/
+   Login:    admin@flowaccel.local
+   Password: Admin@12345   (change after first login)
+   pgAdmin:  localhost : 5432  db=jotflow  user=jotflow
+==============================================</pre>
+    <div class="info-box warn">
+      <span class="icon">⚠</span>
+      <p><strong>Write down the admin credentials printed above.</strong> Change the password immediately after first login from Settings → Profile.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════ -->
+<div class="page-break"></div>
+<h1 class="section-title" id="step7">10. Step 7 — Verify the Installation</h1>
+
+<ul class="checklist">
+  <li>Open browser → <code>http://localhost/</code> → sees the JotFlow login page (not IIS default page)</li>
+  <li>Login with printed admin credentials → dashboard loads</li>
+  <li>Real-time indicator in top bar shows "Connected" (Socket.IO working)</li>
+  <li>Navigate to Settings → check all config sections load</li>
+  <li>Open pgAdmin → connect to localhost:5432, database=jotflow → tables are visible</li>
+  <li>In PowerShell: <code>pm2 status</code> → shows <code>jotflow-backend</code> with status <strong>online</strong></li>
+  <li>In PowerShell: <code>curl http://localhost:3001/api/health</code> → returns <code>{"status":"ok"}</code></li>
+</ul>
+
+<div class="info-box tip">
+  <span class="icon">✔</span>
+  <p><strong>API health check:</strong> Run <code>curl http://localhost:3001/api/health?deep=1</code> in PowerShell to get a detailed status including database connectivity.</p>
+</div>
+
+<!-- ══════════════════════════════════ -->
+<h1 class="section-title" id="postinstall">11. Post-Install Configuration</h1>
+
+<h2 class="step-title">Configure JotForm API Key</h2>
+<p>The backend needs a JotForm API key to sync submissions. Edit <code>C:\inetpub\flowaccel_backend\backend\.env</code> (or wherever the backend was deployed — check <code>2_APP\backend\.env</code>) and set:</p>
+<pre>JOTFORM_API_KEY=<span class="string">your-api-key-here</span>
+JOTFORM_TEAM_ID=<span class="string">260541093809054</span>
+JOTFORM_BASE=<span class="string">https://eforms.mediaoffice.ae/API</span>
+JOTFORM_HOST=<span class="string">https://eforms.mediaoffice.ae</span>
+ENABLE_POLLER=<span class="string">1</span>
+POLL_INTERVAL_MINUTES=<span class="string">5</span></pre>
+<p>After editing, restart the backend: <code>pm2 restart jotflow-backend</code></p>
+
+<h2 class="step-title">Change Admin Password</h2>
+<ol>
+  <li>Login at <code>http://localhost/</code> with the printed credentials</li>
+  <li>Go to <strong>Settings → Profile</strong></li>
+  <li>Click <strong>Change Password</strong></li>
+  <li>Set a strong password and save</li>
+</ol>
+
+<h2 class="step-title">Connect pgAdmin to the Database</h2>
+<ol>
+  <li>Open <strong>pgAdmin 4</strong> from the Start menu</li>
+  <li>Right-click <strong>Servers → Register → Server</strong></li>
+  <li><strong>General tab</strong> → Name: <code>JotFlow Local</code></li>
+  <li><strong>Connection tab</strong>:
+    <ul>
+      <li>Host: <code>localhost</code></li>
+      <li>Port: <code>5432</code></li>
+      <li>Database: <code>jotflow</code></li>
+      <li>Username: <code>postgres</code> (superuser) or <code>jotflow</code> (app user)</li>
+      <li>Password: <code>postgres</code></li>
+    </ul>
+  </li>
+  <li>Click <strong>Save</strong></li>
+</ol>
+
+<h2 class="step-title">Set Windows Firewall Rule (for LAN access)</h2>
+<p>If other machines on the LAN need to access JotFlow at the server's IP:</p>
+<pre><span class="comment"># Allow port 80 inbound (run in Admin PowerShell)</span>
+<span class="cmd">New-NetFirewallRule -DisplayName "JotFlow HTTP" -Direction Inbound -Protocol TCP -LocalPort 80 -Action Allow</span></pre>
+
+<!-- ══════════════════════════════════ -->
+<div class="page-break"></div>
+<h1 class="section-title" id="errors">12. Error Reference &amp; Fixes</h1>
+
+<div class="info-box note">
+  <span class="icon">ℹ</span>
+  <p>Every error listed here includes the exact message you will see and the exact fix. Work through them in order — most errors have a single root cause.</p>
+</div>
+
+<!-- ──────────── INSTALLATION ERRORS ──────────── -->
+<h2 class="step-title">A. During Installation (setup-flowaccel.ps1)</h2>
+
+<div class="error-card">
+  <div class="error-header">⛔ "Not running as Administrator"</div>
+  <div class="error-body">
+    <p><strong>Message:</strong> <code>[X] Not running as Administrator. Right-click PowerShell, Run as Administrator.</code></p>
+    <p><span class="fix-label">FIX</span> Close PowerShell. Right-click the Start button → <strong>Windows PowerShell (Admin)</strong>. Re-run the script.</p>
+  </div>
+</div>
+
+<div class="error-card">
+  <div class="error-header">⛔ "Node.js not found" / "node: command not found"</div>
+  <div class="error-body">
+    <p><strong>Cause:</strong> Node.js was installed but PATH has not refreshed yet, OR the installer didn't complete.</p>
+    <p><span class="fix-label">FIX 1</span> <strong>Reboot the machine.</strong> This is the most common fix.</p>
+    <p><span class="fix-label">FIX 2</span> If already rebooted, manually check: open PowerShell and run <code>node -v</code>. If still not found, re-run <code>1_INSTALLERS\node-v20.18.0-x64.msi</code> and reboot again.</p>
+    <p><span class="fix-label">FIX 3</span> If node.exe exists but isn't in PATH: <code>$env:Path += ";C:\Program Files\nodejs"</code> in the same PowerShell session.</p>
+  </div>
+</div>
+
+<div class="error-card">
+  <div class="error-header">⛔ "psql not found in PATH"</div>
+  <div class="error-body">
+    <p><strong>Cause:</strong> PostgreSQL was installed but its bin folder isn't in PATH, OR a reboot is needed.</p>
+    <p><span class="fix-label">FIX 1</span> <strong>Reboot the machine.</strong></p>
+    <p><span class="fix-label">FIX 2</span> Add PostgreSQL to PATH manually in the same PowerShell session:</p>
+    <pre>$env:Path += ";C:\Program Files\PostgreSQL\16\bin"</pre>
+    <p><span class="fix-label">FIX 3</span> Then re-run the setup script.</p>
+  </div>
+</div>
+
+<div class="error-card">
+  <div class="error-header">⛔ PostgreSQL connection refused / "could not connect to server"</div>
+  <div class="error-body">
+    <p><strong>Cause:</strong> PostgreSQL service is not running.</p>
+    <p><span class="fix-label">FIX</span> Start the PostgreSQL service:</p>
+    <pre><span class="comment"># In Admin PowerShell:</span>
+Start-Service -Name "postgresql*"
+<span class="comment"># OR use Services app: Win+R → services.msc → find "postgresql-x64-16" → Start</span></pre>
+  </div>
+</div>
+
+<div class="error-card">
+  <div class="error-header">⛔ "password authentication failed for user postgres"</div>
+  <div class="error-body">
+    <p><strong>Cause:</strong> You used a different superuser password during PostgreSQL installation (not <code>postgres</code>).</p>
+    <p><span class="fix-label">FIX</span> Set the correct password in the PowerShell session before running setup:</p>
+    <pre>$env:PGPASSWORD = "your-actual-password"
+powershell -ExecutionPolicy Bypass -File .\setup-flowaccel.ps1</pre>
+  </div>
+</div>
+
+<div class="error-card">
+  <div class="error-header">⛔ "npm ci" fails / "npm ERR! Missing: package-lock.json"</div>
+  <div class="error-body">
+    <p><strong>Cause:</strong> The <code>package-lock.json</code> is missing from <code>2_APP\backend\</code>.</p>
+    <p><span class="fix-label">FIX</span> Run <code>npm install</code> instead:</p>
+    <pre>cd C:\JotFlow-Setup\2_APP\backend
+npm install --cache C:\JotFlow-Setup\4_NPM_CACHE --prefer-offline</pre>
+  </div>
+</div>
+
+<div class="error-card">
+  <div class="error-header">⛔ "PM2 install failed" / PM2 not found after install</div>
+  <div class="error-body">
+    <p><strong>Cause:</strong> Global npm packages sometimes need a PATH refresh, or the pm2 tgz in the bundle had an issue.</p>
+    <p><span class="fix-label">FIX 1</span> Close and re-open PowerShell as Admin, then:</p>
+    <pre>npm install -g pm2
+pm2 -v</pre>
+    <p><span class="fix-label">FIX 2</span> If no internet, install from bundled tgz:</p>
+    <pre>npm install -g C:\JotFlow-Setup\1_INSTALLERS\npm\pm2-*.tgz</pre>
+  </div>
+</div>
+
+<div class="error-card">
+  <div class="error-header">⛔ iisnode install failed / "iisnode registry key still missing"</div>
+  <div class="error-body">
+    <p><strong>Cause:</strong> iisnode MSI installer failed because IIS was not fully enabled when it ran.</p>
+    <p><span class="fix-label">FIX</span></p>
+    <ol>
+      <li>Enable IIS fully (Step 1 of this guide)</li>
+      <li>Run the iisnode installer manually:</li>
+    </ol>
+    <pre>msiexec /i "C:\JotFlow-Setup\1_INSTALLERS\iisnode-full-v0.2.21-x64.msi" /qn</pre>
+    <li>Re-run: <code>powershell -ExecutionPolicy Bypass -File .\setup-flowaccel.ps1</code></li>
+  </div>
+</div>
+
+<div class="error-card">
+  <div class="error-header">⛔ URL Rewrite / ARR install fails</div>
+  <div class="error-body">
+    <p><strong>Cause:</strong> IIS is not enabled, or the MSI is blocked by Windows SmartScreen / AV.</p>
+    <p><span class="fix-label">FIX</span> Install manually:</p>
+    <pre><span class="comment"># Run both in Admin PowerShell:</span>
+msiexec /i "C:\JotFlow-Setup\1_INSTALLERS\rewrite_amd64_en-US.msi" /qn
+msiexec /i "C:\JotFlow-Setup\1_INSTALLERS\requestRouter_amd64.msi" /qn</pre>
+    <p>Then re-run the setup script.</p>
+  </div>
+</div>
+
+<!-- ──────────── BROWSER / IIS ERRORS ──────────── -->
+<div class="page-break"></div>
+<h2 class="step-title">B. After Installation — Browser Errors</h2>
+
+<div class="error-card">
+  <div class="error-header">⛔ http://localhost/ shows IIS default "Welcome" page</div>
+  <div class="error-body">
+    <p><strong>Cause:</strong> The "Default Web Site" on port 80 is overriding the FlowAccel site.</p>
+    <p><span class="fix-label">FIX</span></p>
+    <pre><span class="comment"># In Admin PowerShell:</span>
+& "$env:windir\system32\inetsrv\appcmd.exe" stop site "Default Web Site"
+& "$env:windir\system32\inetsrv\appcmd.exe" start site "FlowAccel"
+<span class="comment"># OR open IIS Manager → Sites → right-click "Default Web Site" → Stop</span></pre>
+  </div>
+</div>
+
+<div class="error-card">
+  <div class="error-header">⛔ http://localhost/ shows 502 Bad Gateway</div>
+  <div class="error-body">
+    <p><strong>Cause:</strong> The Node.js backend on port 3001 is not running. IIS is up but the API backend is down.</p>
+    <p><span class="fix-label">FIX 1</span> Check PM2 status and restart:</p>
+    <pre>pm2 status
+pm2 restart jotflow-backend
+pm2 logs jotflow-backend --lines 30</pre>
+    <p><span class="fix-label">FIX 2</span> If PM2 shows the process is erroring, check the backend log for the real error:</p>
+    <pre>type C:\JotFlow-Setup\2_APP\backend\logs\err.log</pre>
+    <p><span class="fix-label">FIX 3</span> If the <code>.env</code> file is missing, recreate it (see Post-Install Config section) and restart PM2.</p>
+  </div>
+</div>
+
+<div class="error-card">
+  <div class="error-header">⛔ http://localhost/ shows 403 Forbidden</div>
+  <div class="error-body">
+    <p><strong>Cause:</strong> IIS app pool doesn't have read permission on the site folder.</p>
+    <p><span class="fix-label">FIX</span></p>
+    <pre><span class="comment"># Grant IIS read permissions (Admin PowerShell):</span>
+icacls "C:\inetpub\flowaccel" /grant "IIS_IUSRS:(OI)(CI)RX" /T
+icacls "C:\inetpub\flowaccel" /grant "IUSR:(OI)(CI)RX" /T</pre>
+  </div>
+</div>
+
+<div class="error-card">
+  <div class="error-header">⛔ http://localhost/ shows 404 Not Found</div>
+  <div class="error-body">
+    <p><strong>Cause:</strong> The IIS site is not pointing to the <code>dist\</code> folder, or the frontend files were not deployed.</p>
+    <p><span class="fix-label">FIX</span> Re-run the IIS deployment script:</p>
+    <pre>cd C:\JotFlow-Setup
+powershell -ExecutionPolicy Bypass -File .\deploy-to-iis.ps1</pre>
+  </div>
+</div>
+
+<div class="error-card">
+  <div class="error-header">⛔ http://localhost/ shows 500 Internal Server Error</div>
+  <div class="error-body">
+    <p><strong>Cause:</strong> URL Rewrite module is missing or ARR reverse-proxy is disabled.</p>
+    <p><span class="fix-label">FIX 1</span> Install URL Rewrite + ARR (see install error above)</p>
+    <p><span class="fix-label">FIX 2</span> Enable ARR proxy:</p>
+    <pre>& "$env:windir\system32\inetsrv\appcmd.exe" set config -section:system.webServer/proxy /enabled:'True' /commit:apphost</pre>
+  </div>
+</div>
+
+<div class="error-card">
+  <div class="error-header">⛔ Login page loads but login fails with "Invalid credentials"</div>
+  <div class="error-body">
+    <p><strong>Cause:</strong> Admin user was not seeded correctly, or you're using the wrong password.</p>
+    <p><span class="fix-label">FIX</span> Re-run the seed script to reset admin credentials:</p>
+    <pre>cd C:\JotFlow-Setup\2_APP\backend
+$env:ADMIN_EMAIL = "admin@flowaccel.local"
+$env:ADMIN_PASSWORD = "Admin@12345"
+node db/seed-admin.js</pre>
+    <p>Then try logging in again with <code>admin@flowaccel.local</code> / <code>Admin@12345</code></p>
+  </div>
+</div>
+
+<div class="error-card">
+  <div class="error-header">⛔ Login fails with "Database error" or "connection refused"</div>
+  <div class="error-body">
+    <p><strong>Cause:</strong> PostgreSQL is not running, or the <code>.env</code> DATABASE_URL is wrong.</p>
+    <p><span class="fix-label">FIX 1</span> Start PostgreSQL:</p>
+    <pre>Start-Service -Name "postgresql*"</pre>
+    <p><span class="fix-label">FIX 2</span> Check the .env file:</p>
+    <pre>type C:\JotFlow-Setup\2_APP\backend\.env</pre>
+    <p>The <code>DATABASE_URL</code> should be: <code>postgresql://jotflow:jotflow@localhost:5432/jotflow</code></p>
+  </div>
+</div>
+
+<!-- ──────────── REAL-TIME / SOCKET ERRORS ──────────── -->
+<h2 class="step-title">C. Real-Time / Socket.IO Errors</h2>
+
+<div class="error-card">
+  <div class="error-header">⛔ Dashboard shows "Disconnected" or real-time updates don't work</div>
+  <div class="error-body">
+    <p><strong>Cause:</strong> WebSocket connections are blocked — IIS WebSocket feature is disabled, or ARR isn't forwarding WebSocket upgrades.</p>
+    <p><span class="fix-label">FIX 1</span> Enable IIS WebSockets feature:</p>
+    <pre>Enable-WindowsOptionalFeature -Online -FeatureName IIS-WebSockets -NoRestart</pre>
+    <p><span class="fix-label">FIX 2</span> Verify <code>web.config</code> in <code>C:\inetpub\flowaccel\</code> has Socket.IO rewrite rules — re-run <code>deploy-to-iis.ps1</code> if missing.</p>
+    <p><span class="fix-label">FIX 3</span> Test if backend is accessible directly:</p>
+    <pre>curl http://localhost:3001/api/health</pre>
+    <p>If this fails, restart PM2: <code>pm2 restart jotflow-backend</code></p>
+  </div>
+</div>
+
+<!-- ──────────── DATA / POLLER ERRORS ──────────── -->
+<h2 class="step-title">D. Data Sync / JotForm API Errors</h2>
+
+<div class="error-card">
+  <div class="error-header">⛔ No submissions appear in the dashboard</div>
+  <div class="error-body">
+    <p><strong>Cause:</strong> JotForm API key is not set or is invalid.</p>
+    <p><span class="fix-label">FIX</span></p>
+    <ol>
+      <li>Edit <code>2_APP\backend\.env</code> — set the correct <code>JOTFORM_API_KEY</code></li>
+      <li>Restart backend: <code>pm2 restart jotflow-backend</code></li>
+      <li>Trigger a manual sync: go to <strong>Settings → Sync All</strong> in the dashboard</li>
+      <li>Check poller logs: <code>pm2 logs jotflow-backend --lines 50</code></li>
+    </ol>
+  </div>
+</div>
+
+<div class="error-card">
+  <div class="error-header">⛔ "[poller] Poll failed: Jotform API error: 401"</div>
+  <div class="error-body">
+    <p><strong>Cause:</strong> The JotForm API key is wrong or pointing to the wrong endpoint.</p>
+    <p><span class="fix-label">FIX</span> Verify the key works against the GDMO endpoint:</p>
+    <pre><span class="comment"># Test in PowerShell:</span>
+$headers = @{ "APIKEY" = "your-api-key-here" }
+Invoke-RestMethod "https://eforms.mediaoffice.ae/API/user" -Headers $headers</pre>
+    <p>If this returns <code>responseCode: 200</code>, the key is valid. Ensure <code>JOTFORM_BASE=https://eforms.mediaoffice.ae/API</code> in <code>.env</code>.</p>
+  </div>
+</div>
+
+<div class="error-card">
+  <div class="error-header">⛔ "[poller] Poll failed: Jotform API error: 429"</div>
+  <div class="error-body">
+    <p><strong>Cause:</strong> JotForm API rate limit hit. The poller is running too frequently.</p>
+    <p><span class="fix-label">FIX</span> Increase poll interval in <code>.env</code>:</p>
+    <pre>POLL_INTERVAL_MINUTES=15</pre>
+    <p>Then restart: <code>pm2 restart jotflow-backend</code></p>
+  </div>
+</div>
+
+<!-- ──────────── AFTER REBOOT ERRORS ──────────── -->
+<div class="page-break"></div>
+<h2 class="step-title">E. After Rebooting the Server</h2>
+
+<div class="error-card">
+  <div class="error-header">⛔ App stops working after Windows reboot</div>
+  <div class="error-body">
+    <p><strong>Cause:</strong> PM2 is not set up to auto-start on boot, so the Node backend is dead after restart.</p>
+    <p><span class="fix-label">FIX</span> Set up PM2 auto-start (run once in Admin PowerShell):</p>
+    <pre>pm2 startup
+<span class="comment"># Run the command it prints, then:</span>
+pm2 save</pre>
+    <p>After this, PM2 will start automatically on every Windows boot.</p>
+    <p><span class="fix-label">VERIFY</span> After a reboot, run: <code>pm2 status</code> — should show <code>online</code></p>
+  </div>
+</div>
+
+<div class="error-card">
+  <div class="error-header">⛔ PostgreSQL doesn't start after reboot</div>
+  <div class="error-body">
+    <p><strong>Cause:</strong> PostgreSQL service is not set to Automatic start.</p>
+    <p><span class="fix-label">FIX</span></p>
+    <pre><span class="comment"># Set PostgreSQL service to auto-start:</span>
+Set-Service -Name "postgresql-x64-16" -StartupType Automatic
+Start-Service -Name "postgresql-x64-16"</pre>
+  </div>
+</div>
+
+<!-- ──────────── PERMISSION ERRORS ──────────── -->
+<h2 class="step-title">F. Permission Errors</h2>
+
+<div class="error-card">
+  <div class="error-header">⛔ "EACCES: permission denied" when writing uploads/logs</div>
+  <div class="error-body">
+    <p><strong>Cause:</strong> The IIS app pool identity doesn't have write access to the uploads or logs folder.</p>
+    <p><span class="fix-label">FIX</span></p>
+    <pre>$backendPath = "C:\JotFlow-Setup\2_APP\backend"
+icacls "$backendPath\uploads" /grant "IIS_IUSRS:(OI)(CI)F" /T
+icacls "$backendPath\logs"   /grant "IIS_IUSRS:(OI)(CI)F" /T</pre>
+  </div>
+</div>
+
+<div class="error-card">
+  <div class="error-header">⛔ "permission denied for table users" (PostgreSQL)</div>
+  <div class="error-body">
+    <p><strong>Cause:</strong> Database tables are owned by the postgres superuser instead of the jotflow app role. This happens after restoring a dump.</p>
+    <p><span class="fix-label">FIX</span> Run the ownership repair SQL (Admin PowerShell):</p>
+    <pre>$env:PGPASSWORD = "postgres"
+psql -h localhost -U postgres -d jotflow -c "
+GRANT ALL ON ALL TABLES IN SCHEMA public TO jotflow;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO jotflow;"</pre>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════ -->
+<h1 class="section-title" id="maintenance">13. Maintenance &amp; Operations</h1>
+
+<h2 class="step-title">Daily Operations — Quick Reference</h2>
+<table>
+  <tr><th>Task</th><th>Command (Admin PowerShell)</th></tr>
+  <tr><td>Check backend status</td><td><code>pm2 status</code></td></tr>
+  <tr><td>View backend logs (live)</td><td><code>pm2 logs jotflow-backend</code></td></tr>
+  <tr><td>Restart backend</td><td><code>pm2 restart jotflow-backend</code></td></tr>
+  <tr><td>Stop backend</td><td><code>pm2 stop jotflow-backend</code></td></tr>
+  <tr><td>Start backend</td><td><code>pm2 start jotflow-backend</code></td></tr>
+  <tr><td>Check IIS site</td><td><code>&amp; "$env:windir\system32\inetsrv\appcmd.exe" list sites</code></td></tr>
+  <tr><td>Restart IIS</td><td><code>iisreset</code></td></tr>
+  <tr><td>Check PostgreSQL</td><td><code>Get-Service postgresql*</code></td></tr>
+  <tr><td>Health check</td><td><code>curl http://localhost:3001/api/health?deep=1</code></td></tr>
+</table>
+
+<h2 class="step-title">Taking a Database Backup</h2>
+<pre><span class="comment"># Backup (run in PowerShell where pg bin is in PATH)</span>
+$env:PGPASSWORD = "postgres"
+pg_dump -h localhost -U postgres -d jotflow -f "C:\Backups\jotflow-$(Get-Date -Format 'yyyyMMdd').sql"</pre>
+
+<h2 class="step-title">Restoring a Database Backup</h2>
+<pre><span class="comment"># Restore from a .sql backup file</span>
+$env:PGPASSWORD = "postgres"
+psql -h localhost -U postgres -d jotflow -f "C:\Backups\jotflow-20260604.sql"</pre>
+
+<h2 class="step-title">Updating JotFlow (New Version)</h2>
+<ol>
+  <li>Get the new <code>JotFlow-Offline-*.zip</code></li>
+  <li>Take a database backup first (see above)</li>
+  <li>Stop backend: <code>pm2 stop jotflow-backend</code></li>
+  <li>Extract new ZIP to <code>C:\JotFlow-Update\</code></li>
+  <li>Copy <code>C:\JotFlow-Setup\2_APP\backend\.env</code> → <code>C:\JotFlow-Update\2_APP\backend\.env</code></li>
+  <li>Run: <code>powershell -ExecutionPolicy Bypass -File C:\JotFlow-Update\setup-flowaccel.ps1</code></li>
+</ol>
+
+<h2 class="step-title">Log File Locations</h2>
+<table>
+  <tr><th>Log</th><th>Location</th></tr>
+  <tr><td>Backend stdout</td><td><code>2_APP\backend\logs\out.log</code></td></tr>
+  <tr><td>Backend errors</td><td><code>2_APP\backend\logs\err.log</code></td></tr>
+  <tr><td>IIS site logs</td><td><code>C:\inetpub\logs\LogFiles\W3SVC*\</code></td></tr>
+  <tr><td>IIS deploy log</td><td><code>%TEMP%\flowaccel-iis-deploy.log</code></td></tr>
+  <tr><td>PM2 logs (live)</td><td><code>pm2 logs jotflow-backend</code></td></tr>
+</table>
+
+<!-- ══════════════════════════════════ -->
+<div class="page-break"></div>
+<h1 class="section-title" id="ports">14. Port &amp; URL Reference</h1>
+
+<table class="port-row">
+  <tr><th>Port</th><th>Service</th><th>URL</th><th>Notes</th></tr>
+  <tr><td>80</td><td>IIS (Frontend)</td><td><code>http://localhost/</code></td><td>Main app — users access this</td></tr>
+  <tr><td>3001</td><td>Node.js Backend (PM2)</td><td><code>http://localhost:3001/api/</code></td><td>Internal only — IIS proxies to it</td></tr>
+  <tr><td>5432</td><td>PostgreSQL</td><td><code>localhost:5432</code></td><td>Database — pgAdmin connects here</td></tr>
+</table>
+
+<h2 class="step-title">IIS Rewrite Rules (what web.config does)</h2>
+<table>
+  <tr><th>Incoming Request</th><th>Routed To</th></tr>
+  <tr><td><code>/api/*</code></td><td><code>http://localhost:3001/api/*</code> (Node backend)</td></tr>
+  <tr><td><code>/socket.io/*</code></td><td><code>http://localhost:3001/socket.io/*</code> (Socket.IO)</td></tr>
+  <tr><td><code>/uploads/*</code></td><td><code>http://localhost:3001/uploads/*</code> (file uploads)</td></tr>
+  <tr><td>Everything else</td><td><code>dist/index.html</code> (React SPA)</td></tr>
+</table>
+
+<h2 class="step-title">Key Files After Installation</h2>
+<table>
+  <tr><th>File / Folder</th><th>Purpose</th></tr>
+  <tr><td><code>C:\inetpub\flowaccel\</code></td><td>IIS site root (React frontend files)</td></tr>
+  <tr><td><code>C:\JotFlow-Setup\2_APP\backend\.env</code></td><td>All backend configuration (API keys, DB URL, ports)</td></tr>
+  <tr><td><code>C:\JotFlow-Setup\2_APP\backend\logs\</code></td><td>Runtime logs</td></tr>
+  <tr><td><code>C:\JotFlow-Setup\2_APP\backend\uploads\</code></td><td>User-uploaded files (avatars, signatures)</td></tr>
+  <tr><td><code>C:\JotFlow-Setup\2_APP\ecosystem.config.js</code></td><td>PM2 process config</td></tr>
+</table>
+
+<!-- ══════════════════════════════════ -->
+<hr>
+<div class="footer">
+  <p>JotFlow — Government of Dubai Media Office &nbsp;|&nbsp; Workflow Approval Dashboard</p>
+  <p>For support: review the error logs first, then contact the system administrator.</p>
+  <p style="margin-top: 6px; opacity: 0.6;">Generated June 2026 &nbsp;|&nbsp; Node.js 20 LTS + PostgreSQL 16 + IIS + iisnode + PM2 + Socket.IO</p>
+</div>
+
+</div><!-- end .content -->
+
+<script>
+  // Auto-scroll to anchors on click
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const el = document.querySelector(a.getAttribute('href'));
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    });
+  });
+</script>
+</body>
+</html>

@@ -253,3 +253,29 @@ CREATE TABLE IF NOT EXISTS jf_forms (
   updated_at_jf    TIMESTAMPTZ,
   last_synced      TIMESTAMPTZ DEFAULT now()
 );
+
+-- ============================================================
+-- 15. email_logs (workflow task assignment tracking)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS email_logs (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  submission_id     TEXT NOT NULL,
+  form_id           TEXT NOT NULL,
+  form_title        TEXT DEFAULT '',
+  task_id           TEXT NOT NULL,
+  task_name         TEXT DEFAULT '',
+  task_type         TEXT DEFAULT '',
+  assignee_name     TEXT DEFAULT '',
+  assignee_email    TEXT DEFAULT '',
+  task_status       TEXT DEFAULT '',
+  assigned_at       TIMESTAMPTZ,
+  submitted_by_name  TEXT DEFAULT '',
+  submitted_by_email TEXT DEFAULT '',
+  access_link        TEXT DEFAULT '',
+  created_at        TIMESTAMPTZ DEFAULT now(),
+  updated_at        TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(submission_id, task_id)
+);
+CREATE INDEX IF NOT EXISTS idx_email_logs_submission ON email_logs (submission_id);
+CREATE INDEX IF NOT EXISTS idx_email_logs_assignee  ON email_logs (assignee_email);
+CREATE INDEX IF NOT EXISTS idx_email_logs_form      ON email_logs (form_id);
