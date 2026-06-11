@@ -5,7 +5,7 @@ const { jotformFetch, resolveApiKey } = require('../lib/jotform');
 const { readKeyType } = require('../lib/key-type');
 const { detectLevelFields } = require('../lib/detect-fields');
 const { insertNotification } = require('../lib/notifications');
-const { extractTask, deriveWorkflowStatus } = require('../lib/workflow-task');
+const { extractTask, deriveWorkflowStatus, mergeWorkflowTasksSql } = require('../lib/workflow-task');
 const { upsertEmailLogs } = require('../lib/email-log');
 const { requireAuth } = require('../middleware/auth');
 const { webhookLimiter } = require('../middleware/rateLimit');
@@ -284,7 +284,7 @@ router.post('/webhook', webhookLimiter, async (req, res, next) => {
         submitted_by=$6, submitter_name=$7, submitter_email=$8, department=$9,
         submission_date=$10, current_level=$11, status=$12, priority=$13, amount=$14,
         approver_name=$15, approver_email=$16, pending_approver_name=$17, pending_approver_email=$18,
-        jotform_status=$19, answers=$20, workflow_tasks=$21, level_history=$22, edit_link=$23,
+        jotform_status=$19, answers=$20, workflow_tasks=${mergeWorkflowTasksSql('$21')}, level_history=$22, edit_link=$23,
         raw_data=$24, created_at_jf=$25, updated_at_jf=$26, days_at_level=$27, total_days=$28,
         last_synced=now(), needs_sync=$29, approval_url=$30`,
       [

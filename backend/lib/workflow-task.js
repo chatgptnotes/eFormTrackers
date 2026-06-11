@@ -73,4 +73,33 @@ function deriveWorkflowStatus(workflowStatus, flatTasks = []) {
   return null;
 }
 
-module.exports = { extractTask, deriveWorkflowStatus };
+/**
+ * SQL expression for `workflow_tasks = ...` in an ON CONFLICT DO UPDATE.
+ * Merges the incoming task array (bind param, e.g. '$21') with the existing
+ * row: when an incoming task's accessLink is empty but the stored task (same
+ * taskId) has one, the stored link is kept. JotForm's API only exposes
+ * /share/{token} links for the API key's own account, so links harvested from
+ * sent emails (lib/email-link-harvester.js) live ONLY in our DB — without this
+ * merge every sync wipes them.
+ */
+function mergeWorkflowTasksSql(param) {
+  return `(
+    SELECT COALESCE(jsonb_agg(
+      CASE WHEN COALESCE(nt->>'accessLink','') = '' AND COALESCE(ot.link,'') <> ''
+           THEN jsonb_set(nt, '{accessLink}', to_jsonb(ot.link))
+           ELSE nt END
+    ), '[]'::jsonb)
+    FROM jsonb_array_elements(${param}::jsonb) nt
+    LEFT JOIN LATERAL (
+      SELECT t->>'accessLink' AS link
+      FROM jsonb_array_elements(
+        CASE WHEN jsonb_typeof(jf_submissions.workflow_tasks) = 'array'
+             THEN jf_submissions.workflow_tasks ELSE '[]'::jsonb END
+      ) t
+      WHERE t->>'taskId' = nt->>'taskId' AND COALESCE(t->>'accessLink','') <> ''
+      LIMIT 1
+    ) ot ON true
+  )`;
+}
+
+module.exports = { extractTask, deriveWorkflowStatus, mergeWorkflowTasksSql };

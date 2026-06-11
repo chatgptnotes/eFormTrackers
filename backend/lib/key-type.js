@@ -7,7 +7,7 @@ function readKeyType(req) {
   // don't set the header — including bare fetch() calls — should hit Production,
   // not the unconfigured Testing key. Only an explicit 'default' opts out.
   const v = req.headers['x-jotform-key-type'] || req.query?.keyType;
-  return v === 'gdmo' ? 'gdmo' : 'default';
+  return v === 'default' ? 'default' : 'gdmo';
 }
 
 module.exports = { readKeyType };

@@ -6,7 +6,7 @@ import {
   Users, FileText, CreditCard, HelpCircle, Building2, BarChart3, Kanban,
   FolderOpen, Folder, ChevronRight, ChevronDown, LayoutGrid, Package,
   DollarSign, Monitor, Scale, Briefcase, Megaphone, ShieldCheck, PlusCircle,
-  ClipboardList, Layers, Sun, Moon, ExternalLink, CheckCircle2,
+  ClipboardList, Layers, Sun, Moon, ExternalLink, CheckCircle2, Mail,
 } from 'lucide-react';
 import { RefreshConfig, SidebarCategory } from '../types';
 import { JFFormMeta } from '../services/formDiscovery';
@@ -121,6 +121,8 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
     ? "Completed Requests"
     : location.pathname === '/app/pending-with'
     ? "Pending With"
+    : location.pathname === '/app/my-emails'
+    ? "My Workflow Emails"
     : TOOL_NAV.find(i => i.path === location.pathname)?.label || 'Dashboard';
 
   return (
@@ -224,6 +226,20 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
               >
                 <Clock className="w-4.5 h-4.5" />
                 <span className="text-sm font-medium">Pending With</span>
+              </Link>
+
+              {/* My Workflow Emails link */}
+              <Link
+                to="/app/my-emails"
+                onClick={() => { setActiveSidebarCategory(null); setSidebarOpen(false); }}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl mb-1 transition-all duration-200 ${
+                  location.pathname === '/app/my-emails'
+                    ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                    : 'text-white hover:bg-slate-800'
+                }`}
+              >
+                <Mail className="w-4.5 h-4.5" />
+                <span className="text-sm font-medium">My Emails</span>
               </Link>
 
               {/* Category items */}
@@ -408,7 +424,7 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
       {/* Main */}
       <div className="flex-1 lg:ml-72 h-screen overflow-y-scroll">
         {/* Top bar */}
-        <header className="sticky top-0 z-30 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800">
+        <header className="sticky top-0 z-[60] bg-slate-900/80 backdrop-blur-xl border-b border-slate-800">
           <div className="flex items-center justify-between px-6 py-4">
             <div className="flex items-center gap-4">
               <button onClick={() => setSidebarOpen(!sidebarOpen)} className="lg:hidden text-gray-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded-lg p-1 cursor-pointer">

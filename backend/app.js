@@ -123,6 +123,7 @@ function createApp() {
   app.use('/api', require('./routes/signature-proxy'));
   app.use('/api', require('./routes/support'));
   app.use('/api/email-logs', require('./routes/email-logs'));
+  app.use('/api/my-workflow-emails', require('./routes/workflow-emails'));
 
   // ── Serve built frontend (production) ──
   const distPath = path.join(__dirname, '..', 'dist');

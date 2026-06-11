@@ -3,6 +3,7 @@ const msal = require('@azure/msal-node');
 const pool = require('../db/pool');
 const env = require('../config/env');
 const { checkWorkspaceMember } = require('../lib/workspace');
+const { pollOnce } = require('../lib/poller');
 
 const router = Router();
 // L-3: Use env.ORG_ID to stay in sync with auth-local.js.
@@ -218,6 +219,9 @@ router.get('/microsoft/callback', async (req, res) => {
       department: userRow.department,
       jfAccountType,
     }, '[microsoft/callback] login success');
+
+    // Trigger a background sync so the dashboard has fresh data immediately.
+    pollOnce().catch(err => req.log.warn({ err }, '[microsoft/callback] background sync error'));
 
     res.redirect('/app');
   } catch (err) {

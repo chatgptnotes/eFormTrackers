@@ -26,11 +26,11 @@ async function checkWorkspaceMember(rawEmail) {
   }
 
   const { rows } = await pool.query(
-    `SELECT 1 FROM email_logs WHERE assignee_email = $1
+    `SELECT 1 FROM email_logs WHERE lower(assignee_email) = $1
      UNION
      SELECT 1 FROM jf_submissions
-       WHERE submitter_email = $1
-          OR pending_approver_email = $1
+       WHERE lower(submitter_email) = $1
+          OR lower(pending_approver_email) = $1
      LIMIT 1`,
     [email]
   );

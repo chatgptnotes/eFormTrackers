@@ -5,6 +5,7 @@ const { jotformFetch, resolveApiKey } = require('../lib/jotform');
 const { readKeyType } = require('../lib/key-type');
 const { validate } = require('../middleware/validate');
 const { requireAuth } = require('../middleware/auth');
+const { extractTask } = require('../lib/workflow-task');
 const { pMapLimit } = require('../lib/concurrency');
 const {
   formIdRequiredQuerySchema,
@@ -17,6 +18,79 @@ const router = Router();
 router.use(requireAuth);
 
 const JOTFORM_INBOX = `${env.JOTFORM_HOST}/inbox`;
+
+// ── Email token link resolution ──
+// JotForm only sends the /share/{token} access link in the assignment email.
+// These helpers fetch the recent email event log, find the email for the
+// given submission addressed to the logged-in user, and extract the action URL.
+
+const emailTokenCache = new Map(); // `${userEmail}:${submissionId}` → { link, at }
+const EMAIL_TOKEN_TTL = 15 * 60 * 1000;
+
+function extractEmailLinks(html) {
+  if (!html) return [];
+  const results = [];
+  const re = /<a\s+[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const url = m[1].trim();
+    const text = m[2].replace(/<[^>]+>/g, '').trim();
+    if (url.startsWith('http')) results.push({ url, text });
+  }
+  return results;
+}
+
+async function resolveEmailTokenLink(submissionId, formId, userEmail) {
+  const logsData = await jotformFetch('enterprise/system-logs', {
+    params: { 'event[0]': 'email', limit: 50, sortWay: 'DESC' },
+    keyType: 'gdmo',
+    timeoutMs: 15000,
+  });
+  const entries = Array.isArray(logsData.content) ? logsData.content
+    : Array.isArray(logsData.data) ? logsData.data
+    : Array.isArray(logsData) ? logsData : [];
+
+  // Find log entries whose raw JSON mentions this submission or form ID
+  const candidates = entries.filter(e => {
+    const s = JSON.stringify(e).toLowerCase();
+    return s.includes(String(submissionId).toLowerCase()) ||
+           (formId && s.includes(String(formId).toLowerCase()));
+  });
+
+  for (const entry of candidates.slice(0, 5)) {
+    const emailId = String(
+      entry.emailId || entry.email_id || entry.emailID || entry.id || entry.resource_id || ''
+    );
+    if (!emailId) continue;
+
+    const emailData = await jotformFetch(`emailq/${emailId}`, { keyType: 'gdmo', timeoutMs: 10000 });
+    const c = emailData.content || emailData;
+
+    // Verify this email was sent to the requesting user
+    const toRaw = c.to || c.recipient || c.email || c.recipientEmail || '';
+    const toAddr = String(Array.isArray(toRaw) ? toRaw.join(',') : toRaw).toLowerCase();
+    if (!toAddr.includes(userEmail)) continue;
+
+    // Extract links from the email body; prefer task/form/share URLs
+    const body = c.body || c.html || c.message || '';
+    const links = extractEmailLinks(body);
+
+    const preferred = links.find(l => {
+      const u = l.url.toLowerCase();
+      const t = l.text.toLowerCase();
+      return u.includes('/share/') || u.includes('/approval-form/')
+        || t.includes('fill') || t.includes('complete') || t.includes('open task')
+        || t.includes('view task') || t.includes('start');
+    }) || links.find(l => {
+      const u = l.url.toLowerCase();
+      return u.includes(env.JOTFORM_HOST && env.JOTFORM_HOST.replace(/^https?:\/\//, ''))
+        || u.includes('jotform');
+    });
+
+    if (preferred) return preferred.url;
+  }
+  return null;
+}
 
 // ── GET /api/team-form-ids ──
 // Returns the form IDs that belong to the Testing team (env.JOTFORM_TEAM_ID).
@@ -231,86 +305,126 @@ router.get('/detect-approvers', validate(formIdOptionalQuerySchema, 'query'), as
 router.get('/email-url', validate(formAndSubmissionQuerySchema, 'query'), async (req, res, next) => {
   try {
     const { formId, submissionId } = req.query;
-    const keyType = readKeyType(req);
+    const keyType = 'default';
+    const inboxUrl = `${env.JOTFORM_HOST}/inbox/${formId}/${submissionId}`;
 
-    const subData = await jotformFetch(`submission/${submissionId}`, { params: { addWorkflowStatus: '1' }, keyType });
-    const content = subData?.content || {};
-    const workflowInstanceID = content?.workflowInstanceID || content?.workflow_instance_id;
+    // Step 1: Read active task from DB (workflow_tasks JSONB) — no API call needed.
+    // JotForm never exposes the /share/{token} access link via API (only via email),
+    // so the best we can do is the inbox link when accessLink is empty.
+    const { rows: subRows } = await pool.query(
+      `SELECT workflow_tasks,
+              COALESCE(raw_data->>'workflowInstanceID', raw_data->>'workflow_instance_id') AS wid
+       FROM jf_submissions WHERE jotform_submission_id = $1`,
+      [submissionId]
+    );
 
-    if (!workflowInstanceID) return res.json({ approvalUrl: null, formId, submissionId, reason: 'no workflow instance' });
+    const myEmail = (req.session.email || '').toLowerCase();
+    const dbTasks = Array.isArray(subRows[0]?.workflow_tasks) ? subRows[0].workflow_tasks : [];
+    const activeDbTasks = dbTasks.filter(t => String(t.status).toUpperCase() === 'ACTIVE');
+    // Prefer the task assigned to THIS user (parallel steps have several
+    // ACTIVE tasks). A personal /share/{token} link must only ever go to its
+    // own assignee — for everyone else the inbox is the right destination.
+    const myDbTask = activeDbTasks.find(t => String(t.assigneeEmail || '').toLowerCase() === myEmail);
+    const activeDbTask = myDbTask || activeDbTasks[0];
 
-    const instData = await jotformFetch(`workflow/instance/${workflowInstanceID}`, { keyType });
-    const taskList = instData?.content?.taskList || [];
-    const activeTask = taskList.find(t => String(t.status).toUpperCase() === 'ACTIVE');
+    // Shared email-token lookup (cached). The /share/{token} URL for any user
+    // other than the API key's own account exists ONLY in the email JotForm
+    // sent them — the workflow API returns an empty accessLink for everyone else.
+    const lookupEmailLink = async () => {
+      const userEmail = (req.session.email || '').toLowerCase();
+      if (!userEmail) return null;
+      const cacheKey = `${userEmail}:${submissionId}`;
+      const cached = emailTokenCache.get(cacheKey);
+      if (cached && Date.now() - cached.at < EMAIL_TOKEN_TTL) return cached.link || null;
+      try {
+        const link = await resolveEmailTokenLink(submissionId, formId, userEmail);
+        emailTokenCache.set(cacheKey, { link, at: Date.now() });
+        return link;
+      } catch (emailErr) {
+        req.log?.warn({ err: emailErr, submissionId }, '[email-url] email token lookup failed');
+        return null;
+      }
+    };
 
-    if (!activeTask) return res.json({ approvalUrl: null, formId, submissionId, reason: 'no active task' });
-
-    const element = activeTask.element || {};
-    const props = activeTask.properties || {};
-    const taskFormID = element.internalFormID || element.resourceID || element.formID || props.formID;
-    const taskId = String(activeTask.id || '');
-    const accessLink = String(activeTask.accessLink || props.accessLink || element.accessLink || '');
-    const shareMatch = accessLink.match(/\/share\/(.+)$/);
-    const accessToken = shareMatch ? shareMatch[1] : '';
-    const taskType = String(element.type || '');
-
-    if (taskType === 'workflow_assign_task' && taskId) {
-      const deeplink = `jotform://workflow/${submissionId}/${formId}/${taskId}`;
-      return res.json({
-        approvalUrl: `${env.JOTFORM_HOST}/deeplink?deeplink=${encodeURIComponent(deeplink)}`,
-        formId, submissionId, source: 'workflow-task-deeplink',
-      });
+    if (myDbTask) {
+      // Use access link from DB if present
+      if (myDbTask.accessLink) {
+        return res.json({ approvalUrl: myDbTask.accessLink, formId, submissionId, source: 'db-access-link' });
+      }
+      // No stored link — try the user's own assignment email for the token link
+      const emailLink = await lookupEmailLink();
+      if (emailLink) {
+        return res.json({ approvalUrl: emailLink, formId, submissionId, source: 'email-token' });
+      }
+      // For assign-form tasks: construct form URL from stored internalFormID
+      if (myDbTask.type === 'workflow_assign_form' && myDbTask.internalFormID) {
+        const taskId = myDbTask.taskId || '';
+        return res.json({
+          approvalUrl: `${env.JOTFORM_HOST}/${myDbTask.internalFormID}?workflowAssignFormTask=1&taskID=${taskId}`,
+          formId, submissionId, source: 'db-form-url',
+        });
+      }
+      // All other task types (workflow_assign_task, workflow_approval): inbox
+      return res.json({ approvalUrl: inboxUrl, formId, submissionId, source: 'inbox-active-task' });
     }
 
-    if (taskType === 'workflow_assign_form') {
-      // Check prefill
-      const prefillEnabled = String(element.prefillEnabled || '') === 'Yes';
-      if (prefillEnabled && taskFormID) {
-        try {
-          const prefillData = await jotformFetch(`form/${taskFormID}/prefills`, { keyType });
-          const prefills = prefillData?.content || [];
-          for (const p of prefills) {
-            const urls = p.urls || [];
-            const match = urls.find(u => u.settings?.id === submissionId);
-            if (match) {
-              return res.json({
-                approvalUrl: `${env.JOTFORM_HOST}/${taskFormID}/prefill/${match.id}?workflowAssignFormTask=1&taskID=${taskId}`,
-                formId, submissionId, source: 'prefill-api',
-              });
-            }
+    if (activeDbTask) {
+      // The active step is pending with someone else — never hand out their
+      // personal token link. The inbox shows the submission read-only.
+      return res.json({ approvalUrl: inboxUrl, formId, submissionId, source: 'inbox-not-assignee' });
+    }
+
+    // Step 2: DB has no active task — try live JotForm API for fresher data.
+    try {
+      const workflowInstanceID = subRows[0]?.wid;
+      if (workflowInstanceID) {
+        const instData = await jotformFetch(`workflow/instance/${workflowInstanceID}`, { keyType });
+        const taskList = instData?.content?.taskList || [];
+        // Same user-scoping as the DB path: only this user's own active task
+        // may yield a personal link.
+        const activeTask = taskList.find(t =>
+          String(t.status).toUpperCase() === 'ACTIVE' &&
+          String(extractTask(t).assigneeEmail).toLowerCase() === myEmail
+        );
+
+        if (activeTask) {
+          const element = activeTask.element || {};
+          const props = activeTask.properties || {};
+          const taskFormID = element.internalFormID || element.resourceID || element.formID || props.formID;
+          const taskId = String(activeTask.id || '');
+          const accessLink = String(activeTask.accessLink || props.accessLink || element.accessLink || '');
+          const taskType = String(element.type || '');
+
+          if (accessLink) return res.json({ approvalUrl: accessLink, formId, submissionId, source: 'api-access-link' });
+          if (taskType === 'workflow_assign_form' && taskFormID) {
+            return res.json({
+              approvalUrl: `${env.JOTFORM_HOST}/${taskFormID}?workflowAssignFormTask=1&taskID=${taskId}`,
+              formId, submissionId, source: 'api-form-url',
+            });
           }
-        } catch (e) {
-          req.log.warn({ err: e, formId, submissionId }, '[forms] prefill API fetch failed');
         }
       }
-      return res.json({
-        approvalUrl: `${env.JOTFORM_HOST}/${taskFormID}?workflowAssignFormTask=1&taskID=${taskId}`,
-        formId, submissionId, source: 'constructed-form',
-      });
+    } catch (apiErr) {
+      req.log.warn({ err: apiErr, submissionId }, '[email-url] JotForm API lookup failed, using inbox');
     }
 
-    // Approval / assigned-task types
-    if (accessLink) return res.json({ approvalUrl: accessLink, formId, submissionId, source: 'accessLink' });
-    if (taskFormID && taskId && accessToken) {
-      return res.json({
-        approvalUrl: `${env.JOTFORM_HOST}/approval-form/${taskFormID}/task/${taskId}/access-token/${encodeURIComponent(accessToken)}`,
-        formId, submissionId, source: 'constructed-path',
-      });
+    // Step 3: try to get the original token link from the JotForm assignment email.
+    // The /share/{token} URL is only in the email body — fetch it from emailq.
+    const emailLink = await lookupEmailLink();
+    if (emailLink) {
+      return res.json({ approvalUrl: emailLink, formId, submissionId, source: 'email-token' });
     }
 
-    // JotForm doesn't expose the per-task access token via any API — the
-    // /share/{token} link is sent only in the assignment EMAIL. Without it we
-    // can't construct an /approval-form/... URL, but the assignee can still
-    // open the submission's JotForm inbox page and act on the task natively
-    // (it uses their JotForm session). This matches submission.taskUrl in the
-    // mapper and the DirectorDashboard "View Task" button.
     res.json({
       approvalUrl: `${env.JOTFORM_HOST}/inbox/${formId}/${submissionId}`,
       formId, submissionId, source: 'inbox-fallback',
-      note: 'JotForm did not expose an access token for this task type; opening the submission in the JotForm inbox where the assignee can act on it.',
     });
   } catch (err) {
-    res.json({ approvalUrl: null, formId: req.query.formId, submissionId: req.query.submissionId, error: String(err) });
+    // Never block the user — always return inbox as last resort.
+    const fId = req.query.formId;
+    const sId = req.query.submissionId;
+    req.log?.warn({ err }, '[email-url] unexpected error, falling back to inbox');
+    res.json({ approvalUrl: `${env.JOTFORM_HOST}/inbox/${fId}/${sId}`, formId: fId, submissionId: sId, source: 'inbox-error-fallback' });
   }
 });
 

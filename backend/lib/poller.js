@@ -4,7 +4,7 @@ const { jotformFetch } = require('./jotform');
 const { detectLevelFields } = require('./detect-fields');
 const { emitToAll } = require('./realtime');
 const { pMapLimit } = require('./concurrency');
-const { extractTask, deriveWorkflowStatus } = require('./workflow-task');
+const { extractTask, deriveWorkflowStatus, mergeWorkflowTasksSql } = require('./workflow-task');
 const { upsertEmailLogs } = require('./email-log');
 
 function parseEmailFromActionText(text) {
@@ -37,6 +37,12 @@ function workflowIsActive(status) {
 
 let isRunning = false;
 let pollTimer = null;
+let quickTimer = null;
+
+// Per-form questions cache — form fields rarely change, so quick polls reuse
+// the structure detected by the last full poll instead of refetching it.
+const questionsCache = new Map(); // formId → { detectedFields, at }
+const QUESTIONS_TTL_MS = 10 * 60 * 1000;
 
 // ── Text extractor (mirrors webhook handler) ──────────────────────────────────
 function extractText(answer) {
@@ -134,14 +140,19 @@ async function getFallbackApprover(formId, level) {
 }
 
 // ── Main poll cycle ───────────────────────────────────────────────────────────
-async function pollOnce() {
+// opts.quick: lightweight incremental pass — cached questions, only the latest
+// submissions per form, shorter inter-form pause. Runs every POLL_QUICK_SECONDS
+// so new/changed data lands in the DB within seconds; the full pass (every
+// POLL_INTERVAL_MINUTES) still re-syncs everything.
+async function pollOnce(opts = {}) {
+  const quick = !!opts.quick;
   if (isRunning) {
-    console.log('[poller] Previous poll still running — skipping');
+    if (!quick) console.log('[poller] Previous poll still running — skipping');
     return;
   }
   isRunning = true;
   const start = Date.now();
-  console.log('[poller] Poll started');
+  if (!quick) console.log('[poller] Poll started');
 
   try {
     // 1. Fetch all enabled forms
@@ -178,27 +189,35 @@ async function pollOnce() {
       const formId = String(form.id);
       const formTitle = String(form.title || '');
 
-      // Fetch questions for field detection
+      // Fetch questions for field detection (cached — quick polls always reuse,
+      // full polls refresh after QUESTIONS_TTL_MS)
       let detectedFields = null;
-      try {
-        const qData = await jotformFetch(`form/${formId}/questions`, { keyType: POLLER_KEY_TYPE });
-        detectedFields = detectLevelFields(qData.content || {});
-      } catch (err) {
-        console.warn(`[poller] Could not fetch questions for form ${formId}:`, err.message);
-        continue;
+      const cachedQ = questionsCache.get(formId);
+      if (cachedQ && (quick || Date.now() - cachedQ.at < QUESTIONS_TTL_MS)) {
+        detectedFields = cachedQ.detectedFields;
+      } else {
+        try {
+          const qData = await jotformFetch(`form/${formId}/questions`, { keyType: POLLER_KEY_TYPE });
+          detectedFields = detectLevelFields(qData.content || {});
+          questionsCache.set(formId, { detectedFields, at: Date.now() });
+        } catch (err) {
+          console.warn(`[poller] Could not fetch questions for form ${formId}:`, err.message);
+          continue;
+        }
       }
 
-      // Fetch all submissions (up to 2000)
+      // Fetch submissions — quick polls grab only the latest page (new
+      // submissions + recent updates), full polls re-pull up to 2000.
       let submissions = [];
       try {
         const subData = await jotformFetch(`form/${formId}/submissions`, {
-          params: { limit: '1000', offset: '0', orderby: 'created_at', direction: 'DESC', addWorkflowStatus: '1' },
+          params: { limit: quick ? '100' : '1000', offset: '0', orderby: 'created_at', direction: 'DESC', addWorkflowStatus: '1' },
           keyType: POLLER_KEY_TYPE,
         });
         submissions = subData.content || [];
 
         // Fetch second page if full
-        if (submissions.length === 1000) {
+        if (!quick && submissions.length === 1000) {
           const subData2 = await jotformFetch(`form/${formId}/submissions`, {
             params: { limit: '1000', offset: '1000', orderby: 'created_at', direction: 'DESC', addWorkflowStatus: '1' },
             keyType: POLLER_KEY_TYPE,
@@ -321,7 +340,7 @@ async function pollOnce() {
 
       // Small pause before moving to the next form — prevents burst API calls
       // across many forms from triggering JotForm's own rate limiter.
-      await new Promise(r => setTimeout(r, INTER_FORM_DELAY_MS));
+      await new Promise(r => setTimeout(r, quick ? 100 : INTER_FORM_DELAY_MS));
 
       // 6. Upsert each prepared submission.
       for (const p of prepared) {
@@ -365,7 +384,7 @@ async function pollOnce() {
               pending_approver_name = CASE WHEN $12 IN ('completed','rejected') THEN NULL WHEN $17 = '' THEN jf_submissions.pending_approver_name ELSE $17 END,
               pending_approver_email = CASE WHEN $12 IN ('completed','rejected') THEN NULL WHEN $18 = '' THEN jf_submissions.pending_approver_email ELSE $18 END,
               jotform_status=$19, answers=$20,
-              workflow_tasks = CASE WHEN $21::jsonb = '[]'::jsonb THEN jf_submissions.workflow_tasks ELSE $21::jsonb END,
+              workflow_tasks = CASE WHEN $21::jsonb = '[]'::jsonb THEN jf_submissions.workflow_tasks ELSE ${mergeWorkflowTasksSql('$21')} END,
               level_history=$22, edit_link=$23,
               raw_data=$24, created_at_jf=$25, updated_at_jf=$26, days_at_level=$27, total_days=$28,
               last_synced=now(), needs_sync=$29, approval_url=$30`,
@@ -396,11 +415,24 @@ async function pollOnce() {
       }
     }
 
-    // 6. Broadcast to all connected frontend clients
+    // 6. Harvest /share/{token} links from sent emails for tasks whose
+    // accessLink the workflow API doesn't expose (any assignee other than the
+    // API key's own account). Throttled internally; never fails the poll.
+    // Skipped on quick polls to keep them fast.
+    if (!quick) {
+      try {
+        const { harvestEmailLinks } = require('./email-link-harvester');
+        await harvestEmailLinks();
+      } catch (err) {
+        console.warn('[poller] email link harvest failed:', err.message);
+      }
+    }
+
+    // 7. Broadcast to all connected frontend clients
     emitToAll('submissions:updated', { polledAt: new Date().toISOString(), count: totalUpserted });
 
     const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-    console.log(`[poller] Poll complete — ${totalUpserted} submissions upserted in ${elapsed}s`);
+    console.log(`[poller] ${quick ? 'Quick poll' : 'Poll'} complete — ${totalUpserted} submissions upserted in ${elapsed}s`);
   } catch (err) {
     console.error('[poller] Poll failed:', err.message);
   } finally {
@@ -411,7 +443,9 @@ async function pollOnce() {
 // ── Start the poller ──────────────────────────────────────────────────────────
 function startPoller() {
   const intervalMs = (env.POLL_INTERVAL_MINUTES || 2) * 60 * 1000;
-  console.log(`[poller] Starting — polling every ${env.POLL_INTERVAL_MINUTES || 2} minutes`);
+  const quickMs = (env.POLL_QUICK_SECONDS || 0) * 1000;
+  console.log(`[poller] Starting — full poll every ${env.POLL_INTERVAL_MINUTES || 2} min` +
+    (quickMs ? `, quick poll every ${env.POLL_QUICK_SECONDS}s` : ''));
 
   // Run immediately on startup
   pollOnce().catch(err => console.error('[poller] Initial poll error:', err.message));
@@ -420,10 +454,19 @@ function startPoller() {
   pollTimer = setInterval(() => {
     pollOnce().catch(err => console.error('[poller] Interval poll error:', err.message));
   }, intervalMs);
+
+  // Lightweight incremental syncs between full polls (skipped automatically
+  // while a full poll is running via the shared isRunning guard).
+  if (quickMs > 0) {
+    quickTimer = setInterval(() => {
+      pollOnce({ quick: true }).catch(err => console.error('[poller] Quick poll error:', err.message));
+    }, quickMs);
+  }
 }
 
 function stopPoller() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (quickTimer) { clearInterval(quickTimer); quickTimer = null; }
 }
 
 module.exports = { startPoller, stopPoller, pollOnce };

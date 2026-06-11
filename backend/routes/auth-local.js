@@ -4,6 +4,7 @@ const pool = require('../db/pool');
 const env = require('../config/env');
 const { validate } = require('../middleware/validate');
 const { checkWorkspaceMember } = require('../lib/workspace');
+const { pollOnce } = require('../lib/poller');
 const {
   signupBodySchema,
   loginBodySchema,
@@ -121,6 +122,10 @@ router.post('/login', validate(loginBodySchema), async (req, res, next) => {
     req.session.email = user.email;
     req.session.role = user.role || 'viewer';
     req.session.fullName = user.full_name;
+
+    // Trigger a background sync so the dashboard has fresh data immediately.
+    // pollOnce() is guarded by isRunning so concurrent logins don't stack up.
+    pollOnce().catch(err => req.log.warn({ err }, '[login] background sync error'));
 
     res.json({
       ok: true,

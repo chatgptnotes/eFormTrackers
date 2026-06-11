@@ -53,6 +53,8 @@ module.exports = {
   ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || '',
   ADMIN_NAME: process.env.ADMIN_NAME || '',
   POLL_INTERVAL_MINUTES: parseFloat(process.env.POLL_INTERVAL_MINUTES || '0.5'),
+  // Quick incremental sync between full polls (seconds). 0 disables quick polls.
+  POLL_QUICK_SECONDS: parseInt(process.env.POLL_QUICK_SECONDS || '20', 10),
   POLLER_KEY_TYPE: process.env.POLLER_KEY_TYPE || 'gdmo',
   ORG_ID: process.env.ORG_ID || '',
   // M-2: Production-safe rate-limit defaults. Override via env vars if needed.

@@ -21,7 +21,10 @@ router.use(requireAuth);
 // ── GET /api/workflow-tasks?submissionId=xxx&workflowInstanceId=yyy ──
 router.get('/workflow-tasks', async (req, res, next) => {
   try {
-    const keyType = readKeyType(req);
+    // Use 'default' keyType so teamID is appended — same as the poller.
+    // The request's x-jotform-key-type header is for UI account switching,
+    // not for internal workflow API calls.
+    const keyType = 'default';
     if (!resolveApiKey(keyType)) return res.status(500).json({ error: `JotForm API key for "${keyType}" not set` });
 
     const submissionId = req.query.submissionId;
@@ -30,12 +33,25 @@ router.get('/workflow-tasks', async (req, res, next) => {
     let workflowInstanceID = req.query.workflowInstanceId;
 
     if (!workflowInstanceID) {
-      const subData = await jotformFetch(`submission/${submissionId}`, {
-        params: { addWorkflowStatus: '1' },
-        keyType,
-      });
-      const content = subData?.content || subData;
-      workflowInstanceID = content?.workflowInstanceID || content?.workflow_instance_id;
+      const { rows: wRows } = await pool.query(
+        `SELECT COALESCE(raw_data->>'workflowInstanceID', raw_data->>'workflow_instance_id') AS wid
+         FROM jf_submissions WHERE jotform_submission_id = $1`,
+        [submissionId]
+      );
+      workflowInstanceID = wRows[0]?.wid || null;
+    }
+
+    if (!workflowInstanceID) {
+      try {
+        const subData = await jotformFetch(`submission/${submissionId}`, {
+          params: { addWorkflowStatus: '1' },
+          keyType,
+        });
+        const content = subData?.content || subData;
+        workflowInstanceID = content?.workflowInstanceID || content?.workflow_instance_id || null;
+      } catch (apiErr) {
+        req.log.warn({ err: apiErr, submissionId }, '[workflow-tasks] submission API fallback failed');
+      }
     }
 
     if (!workflowInstanceID) return res.json({ tasks: [] });
@@ -64,32 +80,53 @@ router.get('/workflow-tasks', async (req, res, next) => {
 // ── POST /api/workflow-action ──
 router.post('/workflow-action', validate(workflowActionBodySchema), async (req, res, next) => {
   try {
-    const keyType = readKeyType(req);
+    const keyType = 'default';
     if (!resolveApiKey(keyType)) return res.status(500).json({ error: `JotForm API key for "${keyType}" not set` });
 
     const { submissionId, action, comment, signature } = req.body;
 
-    // Step 1: Get workflowInstanceID
-    const subData = await jotformFetch(`submission/${submissionId}`, {
-      params: { addWorkflowStatus: '1' },
-      keyType,
-    });
-    const content = subData?.content || subData;
-    const instanceId = content?.workflowInstanceID || content?.workflow_instance_id;
+    // Step 1: Get workflowInstanceID — read from DB first to avoid a JotForm
+    // submission/{id} call that 401s on the Enterprise endpoint.
+    const { rows: subRows } = await pool.query(
+      `SELECT form_id,
+              COALESCE(raw_data->>'workflowInstanceID', raw_data->>'workflow_instance_id') AS wid
+       FROM jf_submissions WHERE jotform_submission_id = $1`,
+      [submissionId]
+    );
+    let instanceId = subRows[0]?.wid || null;
+    let formIdForHistory = subRows[0]?.form_id || '';
+
+    if (!instanceId) {
+      try {
+        const subData = await jotformFetch(`submission/${submissionId}`, {
+          params: { addWorkflowStatus: '1' },
+          keyType,
+        });
+        const content = subData?.content || subData;
+        instanceId = content?.workflowInstanceID || content?.workflow_instance_id || null;
+        formIdForHistory = formIdForHistory || content?.formID || '';
+      } catch (apiErr) {
+        req.log.warn({ err: apiErr, submissionId }, '[workflow-action] submission API fallback failed');
+      }
+    }
+
     if (!instanceId) return res.status(404).json({ error: 'No workflow instance found' });
 
     // Step 2: Get workflow instance taskList
     const instData = await jotformFetch(`workflow/instance/${instanceId}`, { keyType });
     const taskList = instData?.content?.taskList || [];
 
-    // Step 3: Find ACTIVE task
-    const activeTask = taskList.find(t => t.status === 'ACTIVE');
-    if (!activeTask) return res.status(400).json({ error: 'No active task — workflow may be completed' });
+    // Step 3: Find the ACTIVE task assigned to THIS user. Parallel-approval
+    // steps have several ACTIVE tasks at once — picking the first would 403
+    // every assignee whose task isn't listed first.
+    const myEmail = String(req.session.email || '').toLowerCase();
+    const activeTasks = taskList.filter(t => t.status === 'ACTIVE');
+    if (activeTasks.length === 0) return res.status(400).json({ error: 'No active task — workflow may be completed' });
+    const activeTask = activeTasks.find(t => String(extractTask(t).assigneeEmail).toLowerCase() === myEmail);
 
-    // Authorize: only the assigned approver for this step may act. No role
+    // Authorize: only an assigned approver for an active step may act. No role
     // override — authorization is purely per-workflow (JotForm-derived).
-    const { assigneeEmail } = extractTask(activeTask);
-    if (String(assigneeEmail).toLowerCase() !== String(req.session.email).toLowerCase()) {
+    if (!activeTask) {
       return res.status(403).json({ error: 'You are not the assigned approver for this step' });
     }
 
@@ -141,7 +178,7 @@ router.post('/workflow-action', validate(workflowActionBodySchema), async (req, 
          VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT ON CONSTRAINT idx_jf_approval_history_sub_level DO UPDATE SET
            action=$4, approver_name=$5, approver_email=$6, comment=$7`,
-        [submissionId, content?.formID || '', Number(activeTask.level || 0),
+        [submissionId, formIdForHistory, Number(activeTask.level || 0),
          action.toUpperCase(), String(assigneeUser.name || ''), String(assigneeUser.email || ''),
          comment || '']
       );

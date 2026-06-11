@@ -83,6 +83,7 @@ interface SubmissionCardProps {
   user: ReturnType<typeof import('../contexts/AuthContext').useAuth>['user'];
   onViewDetails: (submission: Submission) => void;
   onOpenModal: (submission: Submission) => void;
+  onOpenTask: (submission: Submission) => void;
 }
 
 interface StatCardProps {
@@ -120,7 +121,7 @@ const StatCard = memo(function StatCard({ label, value, trend, color, idx }: Sta
   );
 });
 
-const SubmissionCard = memo(function SubmissionCard({ submission, idx, user, onViewDetails, onOpenModal }: SubmissionCardProps) {
+const SubmissionCard = memo(function SubmissionCard({ submission, idx, user, onViewDetails, onOpenModal, onOpenTask }: SubmissionCardProps) {
   const status = getSubmissionStatus(submission);
   const sc = statusConfig[status];
   const StatusIcon = sc.icon;
@@ -176,10 +177,10 @@ const SubmissionCard = memo(function SubmissionCard({ submission, idx, user, onV
               return <motion.button whileHover={{ scale: 1.02 }} onClick={() => onViewDetails(submission)} className={btnClass}><CheckCircle2 className="w-4 h-4" /><span>Review &amp; Approve</span></motion.button>;
             }
             if (myAction === 'form') {
-              return <motion.button whileHover={{ scale: 1.02 }} onClick={(e) => { e.stopPropagation(); onOpenModal(submission); }} className={btnClass}><FileText className="w-4 h-4" /><span>Fill Form</span></motion.button>;
+              return <motion.button whileHover={{ scale: 1.02 }} onClick={(e) => { e.stopPropagation(); onOpenTask(submission); }} className={btnClass}><FileText className="w-4 h-4" /><span>Fill Form</span></motion.button>;
             }
             if (myAction === 'task') {
-              return <motion.button whileHover={{ scale: 1.02 }} onClick={(e) => { e.stopPropagation(); onOpenModal(submission); }} className={btnClass}><ExternalLink className="w-4 h-4" /><span>Open Task</span></motion.button>;
+              return <motion.button whileHover={{ scale: 1.02 }} onClick={(e) => { e.stopPropagation(); onOpenTask(submission); }} className={btnClass}><ExternalLink className="w-4 h-4" /><span>Open Task</span></motion.button>;
             }
             return <motion.button whileHover={{ x: 4 }} onClick={(e) => { e.stopPropagation(); onOpenModal(submission); }} className={`${btnClass} group/btn`}><span>View Details</span><span className="group-hover/btn:translate-x-1 transition-transform">→</span></motion.button>;
           })()}
@@ -298,6 +299,54 @@ export default function ModernDashboard({ data }: Props) {
   const openSidebarApproveModal = useCallback(() => {
     if (workflowSidebarSubmission) setSelectedSubmission(workflowSidebarSubmission);
   }, [workflowSidebarSubmission]);
+
+  // Card "Fill Form" / "Open Task": open the SAME direct link JotForm sends in
+  // the assignment email (the /share/{token} access link). Fast path: the link
+  // is already synced on submission.workflowTasks; otherwise resolve it
+  // server-side via /api/email-url.
+  const openCardTaskLink = useCallback(async (submission: Submission) => {
+    // Synchronous open keeps the click as a "user gesture" so popup blockers
+    // don't suppress the new tab (same trick as openTaskLink below).
+    const pop = window.open('about:blank', '_blank');
+    const me = user?.email?.toLowerCase();
+    const tasks = submission.workflowTasks || [];
+    const myActive = tasks.find(t => t.status === 'ACTIVE' && t.assigneeEmail?.toLowerCase() === me && t.accessLink)
+      || tasks.find(t => t.status === 'ACTIVE' && t.accessLink);
+    let url = myActive?.accessLink || '';
+    let reason = '';
+    if (!url) {
+      try {
+        const json = await apiFetch<{ approvalUrl?: string | null; reason?: string; error?: string }>(
+          `/api/email-url?formId=${submission.formId}&submissionId=${submission.id}`,
+          { throwOnError: false },
+        );
+        if (json?.approvalUrl) url = json.approvalUrl;
+        else reason = json?.reason || json?.error || 'no url returned';
+      } catch (e) {
+        reason = (e as Error)?.message || String(e);
+      }
+    }
+
+    if (!url) {
+      if (pop && !pop.closed) pop.close();
+      // eslint-disable-next-line no-console
+      console.warn('[openCardTaskLink] no URL resolved:', { reason, submissionId: submission.id });
+      alert(`Couldn't open the JotForm task: ${reason || 'this step has no accessible link'}`);
+      return;
+    }
+
+    if (pop && !pop.closed) {
+      try {
+        pop.location.href = url;
+        try { pop.opener = null; } catch { /* cross-origin once navigated */ }
+      } catch {
+        pop.close();
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  }, [user?.email]);
 
   const openTaskLink = useCallback(async (task: WorkflowTask) => {
     // Synchronous open keeps the click as a "user gesture" so popup blockers
@@ -467,7 +516,7 @@ export default function ModernDashboard({ data }: Props) {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ staggerChildren: 0.05 }} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
       <AnimatePresence>
         {paginatedSubmissions.length > 0 ? paginatedSubmissions.map((sub, idx) => (
-          <SubmissionCard key={sub.id} submission={sub} idx={idx} user={user} onViewDetails={handleViewDetails} onOpenModal={openSidebarWithTasks} />
+          <SubmissionCard key={sub.id} submission={sub} idx={idx} user={user} onViewDetails={handleViewDetails} onOpenModal={openSidebarWithTasks} onOpenTask={openCardTaskLink} />
         )) : renderEmpty()}
       </AnimatePresence>
     </motion.div>

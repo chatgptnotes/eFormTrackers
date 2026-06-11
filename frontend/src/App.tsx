@@ -32,6 +32,7 @@ const CompletedPage = lazy(() => import('./pages/CompletedPage'));
 const PendingWithPage = lazy(() => import('./pages/PendingWithPage'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const MyEmails = lazy(() => import('./pages/MyEmails'));
 
 function PageLoader() {
   return (
@@ -82,6 +83,7 @@ function ProtectedApp() {
           <Route path="/submit-request" element={<SubmitRequest activeForms={data.activeForms} />} />
           <Route path="/completed" element={<CompletedPage data={data} />} />
           <Route path="/pending-with" element={<PendingWithPage data={data} />} />
+          <Route path="/my-emails" element={<MyEmails />} />
         </Routes>
       </Suspense>
     </Layout>

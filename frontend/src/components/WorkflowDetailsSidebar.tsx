@@ -141,7 +141,11 @@ export default function WorkflowDetailsSidebar({
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {expandedTasks.map((task, idx) => {
+                    {[...expandedTasks].sort((a, b) => {
+                      const ord: Record<string, number> = { COMPLETED: 0, ACTIVE: 1, PENDING: 2 };
+                      const diff = (ord[a.status ?? ''] ?? 3) - (ord[b.status ?? ''] ?? 3);
+                      return diff !== 0 ? diff : (a.level ?? 0) - (b.level ?? 0);
+                    }).map((task, idx) => {
                       const isCompleted = task.status === 'COMPLETED';
                       const isActive = task.status === 'ACTIVE';
                       const isPending = task.status === 'PENDING';
