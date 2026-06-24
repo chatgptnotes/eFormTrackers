@@ -1,6 +1,7 @@
 const pool = require('../db/pool');
 const { jotformFetch } = require('./jotform');
 const { pMapLimit } = require('./concurrency');
+const { getDefaultProfile } = require('./profiles');
 
 // JotForm's workflow API only exposes a task's /share/{token} accessLink to
 // the API key's OWN account — other assignees' links exist only in the emails
@@ -19,25 +20,69 @@ function extractShareLink(html) {
   let m;
   while ((m = re.exec(html)) !== null) {
     const url = m[1].trim();
-    if (/\/share\/|\/approval-form\//i.test(url)) return url;
+    if (/\/share\/|\/approval-form\/|\/prefill\//i.test(url)) return url;
   }
   return null;
 }
 
-async function harvestEmailLinks() {
-  if (Date.now() - lastRunAt < MIN_INTERVAL_MS) return { skipped: true };
+async function harvestFromInboxThread(submissionId, tasksByAssignee, profileId) {
+  let updated = 0;
+  try {
+    const threadData = await jotformFetch(`inbox/submission/${submissionId}/thread`,
+      { keyType: profileId, timeoutMs: 15000 });
+    const actions = Array.isArray(threadData.content) ? threadData.content : [];
+    for (const action of actions) {
+      if (action.actionType !== 'MAIL') continue;
+      const emailQID = String(action.actionDetails?.emailQID || '');
+      if (!emailQID || seenEmailIds.has(emailQID)) continue;
+      const toAddr = String(action.actionDetails?.to || '').toLowerCase();
+      const entry = [...tasksByAssignee.entries()].find(([email]) => toAddr.includes(email));
+      if (!entry) continue;
+      const [, task] = entry;
+      const emailData = await jotformFetch(`emailq/${emailQID}`, { keyType: profileId, timeoutMs: 15000 });
+      seenEmailIds.add(emailQID);
+      const c = emailData.content || emailData;
+      const link = extractShareLink(String(c.body || ''));
+      if (!link) continue;
+      // assign-form tasks must use the /prefill/ link (lib/prefill.js); a
+      // /share/ link opens the form without pre-filled data. Never let it win.
+      if (String(task.type) === 'workflow_assign_form' && !link.includes('/prefill/')) continue;
+      const { rowCount } = await pool.query(
+        `UPDATE jf_submissions
+         SET workflow_tasks = (
+           SELECT jsonb_agg(
+             CASE WHEN t->>'taskId' = $2
+               THEN jsonb_set(t, '{accessLink}', to_jsonb($3::text))
+               ELSE t END
+           ) FROM jsonb_array_elements(workflow_tasks) t
+         ),
+         approval_url = $3
+         WHERE jotform_submission_id = $1 AND profile_id = $4`,
+        [submissionId, String(task.taskId), link, profileId]
+      );
+      if (rowCount > 0) { task.accessLink = link; updated++; }
+    }
+  } catch { /* non-fatal — retry next run */ }
+  return updated;
+}
+
+async function harvestEmailLinks(opts = {}) {
+  if (!opts.force && Date.now() - lastRunAt < MIN_INTERVAL_MS) return { skipped: true };
   lastRunAt = Date.now();
+  const profileId = opts.profileId || getDefaultProfile().id;
 
   // 1. Submissions with a non-completed task that has no accessLink yet
   const { rows } = await pool.query(
     `SELECT jotform_submission_id, workflow_tasks
      FROM jf_submissions
-     WHERE jsonb_typeof(workflow_tasks) = 'array'
+     WHERE profile_id = $1
+       AND jsonb_typeof(workflow_tasks) = 'array'
        AND EXISTS (
          SELECT 1 FROM jsonb_array_elements(workflow_tasks) t
          WHERE t->>'status' IN ('ACTIVE', 'PENDING')
            AND COALESCE(t->>'accessLink', '') = ''
-       )`
+       )`,
+    [profileId]
   );
   if (rows.length === 0) return { updated: 0 };
   const bySubmission = new Map(rows.map(r => [String(r.jotform_submission_id), r.workflow_tasks]));
@@ -45,7 +90,7 @@ async function harvestEmailLinks() {
   // 2. Recent enterprise email log (full ~6-day retention)
   const logsData = await jotformFetch('enterprise/system-logs', {
     params: { 'event[0]': 'email', limit: 500, sortWay: 'DESC', sortBy: 'date' },
-    keyType: 'gdmo',
+    keyType: profileId,
     timeoutMs: 30000,
   });
   const entries = Array.isArray(logsData.content) ? logsData.content
@@ -60,7 +105,7 @@ async function harvestEmailLinks() {
   await pMapLimit(candidates, 4, async (entry) => {
     const emailId = String(entry.id);
     try {
-      const emailData = await jotformFetch(`emailq/${emailId}`, { keyType: 'gdmo', timeoutMs: 15000 });
+      const emailData = await jotformFetch(`emailq/${emailId}`, { keyType: profileId, timeoutMs: 15000 });
       const c = emailData.content || emailData;
       seenEmailIds.add(emailId);
 
@@ -76,6 +121,9 @@ async function harvestEmailLinks() {
         t.assigneeEmail && toAddr.includes(String(t.assigneeEmail).toLowerCase())
       );
       if (!task || !task.taskId) return;
+      // assign-form tasks must use the /prefill/ link (lib/prefill.js); a
+      // /share/ link opens the form without pre-filled data. Never let it win.
+      if (String(task.type) === 'workflow_assign_form' && !link.includes('/prefill/')) return;
 
       const { rowCount } = await pool.query(
         `UPDATE jf_submissions
@@ -83,9 +131,10 @@ async function harvestEmailLinks() {
            SELECT jsonb_agg(
              CASE WHEN t->>'taskId' = $2 THEN jsonb_set(t, '{accessLink}', to_jsonb($3::text)) ELSE t END
            ) FROM jsonb_array_elements(workflow_tasks) t
-         )
-         WHERE jotform_submission_id = $1`,
-        [submissionId, String(task.taskId), link]
+         ),
+         approval_url = $3
+         WHERE jotform_submission_id = $1 AND profile_id = $4`,
+        [submissionId, String(task.taskId), link, profileId]
       );
       if (rowCount > 0) {
         task.accessLink = link; // keep in-memory copy current for this run
@@ -94,6 +143,16 @@ async function harvestEmailLinks() {
     } catch {
       // leave emailId out of seenEmailIds so a transient failure retries next run
     }
+  });
+
+  // Secondary: inbox thread — catches external user emails not in enterprise/system-logs
+  await pMapLimit(rows, 4, async (r) => {
+    const emptyTasks = (r.workflow_tasks || []).filter(
+      t => ['ACTIVE', 'PENDING'].includes(String(t.status)) && !t.accessLink && t.assigneeEmail
+    );
+    if (!emptyTasks.length) return;
+    const byEmail = new Map(emptyTasks.map(t => [String(t.assigneeEmail).toLowerCase(), t]));
+    updated += await harvestFromInboxThread(String(r.jotform_submission_id), byEmail, profileId);
   });
 
   if (updated > 0) console.log(`[email-harvester] persisted ${updated} access link(s) from sent emails`);

@@ -2,6 +2,7 @@ const { Router } = require('express');
 const env = require('../config/env');
 const pool = require('../db/pool');
 const { jotformFetch, resolveApiKey } = require('../lib/jotform');
+const { resolvePrefillUrl } = require('../lib/prefill');
 const { readKeyType } = require('../lib/key-type');
 const { validate } = require('../middleware/validate');
 const { requireAuth } = require('../middleware/auth');
@@ -347,22 +348,48 @@ router.get('/email-url', validate(formAndSubmissionQuerySchema, 'query'), async 
     };
 
     if (myDbTask) {
-      // Use access link from DB if present
-      if (myDbTask.accessLink) {
-        return res.json({ approvalUrl: myDbTask.accessLink, formId, submissionId, source: 'db-access-link' });
-      }
-      // No stored link — try the user's own assignment email for the token link
-      const emailLink = await lookupEmailLink();
-      if (emailLink) {
-        return res.json({ approvalUrl: emailLink, formId, submissionId, source: 'email-token' });
-      }
-      // For assign-form tasks: construct form URL from stored internalFormID
+      // Convert a raw /share/{token}?teamID=...&moreActions email URL to the
+      // magic-link /approval-form/ format that bypasses JotForm login.
+      const buildUrl = (rawLink) => {
+        const m = rawLink && rawLink.match(/\/share\/([^?#]+)/);
+        const token = m ? m[1] : '';
+        const fid = myDbTask.internalFormID;
+        const tid = myDbTask.taskId;
+        if (fid && tid && token) {
+          return `${env.JOTFORM_HOST}/approval-form/${fid}/task/${tid}/access-token/${encodeURIComponent(token)}`;
+        }
+        return rawLink;
+      };
+
+      // For assign-form tasks the /prefill/ link is authoritative — resolve it
+      // BEFORE honouring any stored accessLink, because a harvested /share/ link
+      // opens the form without pre-filled data. Prefill first, stored link
+      // (only if it's already a prefill URL) next, bare form URL last.
       if (myDbTask.type === 'workflow_assign_form' && myDbTask.internalFormID) {
         const taskId = myDbTask.taskId || '';
+        const prefillUrl = await resolvePrefillUrl({
+          formId: myDbTask.internalFormID, submissionId, taskId,
+          assigneeEmail: myDbTask.assigneeEmail, profileId: 'gdmo',
+        });
+        if (prefillUrl) {
+          return res.json({ approvalUrl: prefillUrl, formId, submissionId, source: 'db-prefill-url' });
+        }
+        if (String(myDbTask.accessLink || '').includes('/prefill/')) {
+          return res.json({ approvalUrl: myDbTask.accessLink, formId, submissionId, source: 'db-access-link' });
+        }
         return res.json({
           approvalUrl: `${env.JOTFORM_HOST}/${myDbTask.internalFormID}?workflowAssignFormTask=1&taskID=${taskId}`,
           formId, submissionId, source: 'db-form-url',
         });
+      }
+      // Use access link from DB if present (approval / assign-task tasks)
+      if (myDbTask.accessLink) {
+        return res.json({ approvalUrl: buildUrl(myDbTask.accessLink), formId, submissionId, source: 'db-access-link' });
+      }
+      // No stored link — try the user's own assignment email for the token link
+      const emailLink = await lookupEmailLink();
+      if (emailLink) {
+        return res.json({ approvalUrl: buildUrl(emailLink), formId, submissionId, source: 'email-token' });
       }
       // All other task types (workflow_assign_task, workflow_approval): inbox
       return res.json({ approvalUrl: inboxUrl, formId, submissionId, source: 'inbox-active-task' });
@@ -395,12 +422,34 @@ router.get('/email-url', validate(formAndSubmissionQuerySchema, 'query'), async 
           const accessLink = String(activeTask.accessLink || props.accessLink || element.accessLink || '');
           const taskType = String(element.type || '');
 
-          if (accessLink) return res.json({ approvalUrl: accessLink, formId, submissionId, source: 'api-access-link' });
+          // assign-form: /prefill/ link is authoritative — resolve it before
+          // honouring a stored accessLink (which may be a non-prefill /share/).
           if (taskType === 'workflow_assign_form' && taskFormID) {
+            const prefillUrl = await resolvePrefillUrl({
+              formId: taskFormID, submissionId, taskId,
+              assigneeEmail: extractTask(activeTask).assigneeEmail, profileId: 'gdmo',
+            });
+            if (prefillUrl) return res.json({ approvalUrl: prefillUrl, formId, submissionId, source: 'api-prefill-url' });
+            if (accessLink.includes('/prefill/')) return res.json({ approvalUrl: accessLink, formId, submissionId, source: 'api-access-link' });
             return res.json({
               approvalUrl: `${env.JOTFORM_HOST}/${taskFormID}?workflowAssignFormTask=1&taskID=${taskId}`,
               formId, submissionId, source: 'api-form-url',
             });
+          }
+          if (accessLink) return res.json({ approvalUrl: accessLink, formId, submissionId, source: 'api-access-link' });
+          // Approval/task type with no accessLink from API — get token from email
+          // and build the magic link using the task context we have right here.
+          const tok = await lookupEmailLink();
+          if (tok) {
+            const m = tok.match(/\/share\/([^?#]+)/);
+            const token = m ? m[1] : '';
+            if (taskFormID && taskId && token) {
+              return res.json({
+                approvalUrl: `${env.JOTFORM_HOST}/approval-form/${taskFormID}/task/${taskId}/access-token/${encodeURIComponent(token)}`,
+                formId, submissionId, source: 'api-email-approval-url',
+              });
+            }
+            return res.json({ approvalUrl: tok, formId, submissionId, source: 'email-token' });
           }
         }
       }
@@ -438,6 +487,22 @@ router.get('/form-url', validate(formAndSubmissionQuerySchema, 'query'), (req, r
 router.get('/task-url', validate(formAndSubmissionQuerySchema, 'query'), (req, res) => {
   const { formId, submissionId } = req.query;
   res.json({ taskUrl: `${JOTFORM_INBOX}/${formId}/${submissionId}`, formId, submissionId, source: 'inbox' });
+});
+
+// ── GET /api/task-token?submissionId=xxx&taskId=yyy ──
+// Returns a magic-link URL that the assignee can click to complete the task
+// without logging into JotForm or JotFlow.
+router.get('/task-token', async (req, res, next) => {
+  try {
+    const { submissionId, taskId } = req.query;
+    if (!submissionId || !taskId) {
+      return res.status(400).json({ error: 'submissionId and taskId are required' });
+    }
+    const { getOrCreateToken } = require('../lib/task-token');
+    const token = await getOrCreateToken(String(submissionId), String(taskId), '');
+    const baseUrl = env.APP_URL || `${req.protocol}://${req.get('host')}`;
+    return res.json({ url: `${baseUrl}/api/public/complete-task?token=${token}` });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;
