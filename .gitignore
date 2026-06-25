@@ -10,11 +10,17 @@ deploy-output
 everything-claude-code/
 backend/.env.production
 
+# JotForm API profiles — routing config may reference secrets; keep local
+backend/config/jotform-profiles.json
+
 .vercel
 
 # Runtime data - never commit (user PII + logs)
 backend/uploads/
 backend/logs/
+
+# Bulk link exports — contain real workflow access links (sensitive); keep local
+backend/scripts/exports/
 
 # Pull-rescue backups (created when git pull conflicts with untracked files)
 .pull-backup/
