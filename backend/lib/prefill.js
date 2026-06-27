@@ -94,6 +94,9 @@ async function enrichTasksWithPrefill(flatTasks, submissionId, profileId) {
       profileId,
     });
     if (url) task.accessLink = url;
+    else if (String(task.accessLink || '').includes('/share/')) {
+      task.accessLink = `${env.JOTFORM_HOST}/${task.internalFormID}?workflowAssignFormTask=1&taskID=${String(task.taskId || '')}`;
+    }
   }
   return flatTasks;
 }

@@ -32,6 +32,7 @@ const syncToSupabaseBodySchema = z.object({
 // POST /api/workflow-action — approve/reject/complete a workflow task.
 const workflowActionBodySchema = z.object({
   submissionId: z.string().min(1, 'submissionId required'),
+  taskId: z.string().optional(),
   action: z.enum(['approve', 'reject', 'complete']),
   comment: z.string().optional(),
   signature: z.string().optional(),

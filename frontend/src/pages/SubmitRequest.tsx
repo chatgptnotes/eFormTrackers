@@ -1,5 +1,6 @@
 import { ExternalLink, FileText } from 'lucide-react';
 import { JFFormMeta } from '../services/formDiscovery';
+import { jotformUrl } from '../config/jotform';
 
 interface Props {
   activeForms?: JFFormMeta[];
@@ -37,7 +38,7 @@ export default function SubmitRequest({ activeForms }: Props) {
                     <p className="text-sm text-gray-400 mb-4">Submit a request using this form. It will go through the configured approval workflow.</p>
 
                     <a
-                      href={`https://eforms.mediaoffice.ae/${form.id}`}
+                      href={jotformUrl(form.id)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${

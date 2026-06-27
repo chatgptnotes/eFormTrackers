@@ -104,6 +104,9 @@ function createApp() {
   app.use('/api/webhook', webhookLimiter);
   app.use('/api', apiLimiter);
 
+  // ── Public routes (no auth) ──
+  app.use('/api/public', require('./routes/task-complete-public'));
+
   // ── Routes ──
   app.use('/api/auth', require('./routes/auth-local'));
   app.use('/api/auth', require('./routes/auth-microsoft'));
@@ -124,6 +127,10 @@ function createApp() {
   app.use('/api', require('./routes/support'));
   app.use('/api/email-logs', require('./routes/email-logs'));
   app.use('/api/my-workflow-emails', require('./routes/workflow-emails'));
+  app.use('/api/admin/emails', require('./routes/admin-emails'));
+  app.use('/api/admin/mail-sender', require('./routes/admin-mail-sender'));
+  app.use('/api/admin/users', require('./routes/admin-users'));
+  app.use('/api', require('./routes/profiles'));
 
   // ── Serve built frontend (production) ──
   const distPath = path.join(__dirname, '..', 'dist');

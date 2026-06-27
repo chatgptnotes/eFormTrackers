@@ -6,6 +6,7 @@ const { readKeyType } = require('../lib/key-type');
 const { detectLevelFields } = require('../lib/detect-fields');
 const { insertNotification } = require('../lib/notifications');
 const { extractTask, deriveWorkflowStatus, mergeWorkflowTasksSql } = require('../lib/workflow-task');
+const { enrichTasksWithPrefill } = require('../lib/prefill');
 const { upsertEmailLogs } = require('../lib/email-log');
 const { requireAuth } = require('../middleware/auth');
 const { webhookLimiter } = require('../middleware/rateLimit');
@@ -205,6 +206,8 @@ router.post('/webhook', webhookLimiter, async (req, res, next) => {
         // Flatten to the shape readers expect (top-level assigneeEmail) — matches
         // the poller + admin-sync, so task assignees pass the visibility gate.
         workflowTasks = taskList.map((t, idx) => extractTask(t, idx + 1));
+        // Resolve the real prefill (access) link for active assign_form tasks.
+        await enrichTasksWithPrefill(workflowTasks, submissionId, keyType);
 
         const activeTask = taskList.find(t => String(t.status || '').toUpperCase() === 'ACTIVE');
         if (activeTask) {
@@ -223,7 +226,11 @@ router.post('/webhook', webhookLimiter, async (req, res, next) => {
           const taskType = String(element.type || '');
 
           if (taskType === 'workflow_assign_form') {
-            approvalUrl = `${env.JOTFORM_HOST}/${internalFormID}?workflowAssignFormTask=1&taskID=${taskId}`;
+            // Prefer the resolved prefill link (set on the flat task above); fall
+            // back to the bare form URL when no prefill matched.
+            const flat = workflowTasks.find(t => t.taskId === taskId);
+            approvalUrl = (flat && flat.accessLink)
+              || `${env.JOTFORM_HOST}/${internalFormID}?workflowAssignFormTask=1&taskID=${taskId}`;
           } else {
             const rawAccessLink = String(activeTask.accessLink || props.accessLink || '');
             const shareMatch = rawAccessLink.match(/\/share\/(.+)$/);
@@ -268,6 +275,11 @@ router.post('/webhook', webhookLimiter, async (req, res, next) => {
       status === 'rejected' ? 'Rejected' :
       levels.some(l => l.status?.toLowerCase() === 'approved') ? 'In Progress' : 'Pending';
 
+    // Which profile this webhook's data belongs to. A JotForm push carries no
+    // x-jotform-profile-id header, so this resolves to the default profile —
+    // webhooks are configured against the primary instance.
+    const profileId = readKeyType(req);
+
     // Upsert into jf_submissions
     await pool.query(
       `INSERT INTO jf_submissions (
@@ -277,9 +289,10 @@ router.post('/webhook', webhookLimiter, async (req, res, next) => {
         approver_name, approver_email, pending_approver_name, pending_approver_email,
         jotform_status, answers, workflow_tasks, level_history, edit_link,
         raw_data, created_at_jf, updated_at_jf, days_at_level, total_days,
-        last_synced, needs_sync, approval_url
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,now(),$29,$30)
+        last_synced, needs_sync, approval_url, profile_id
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,now(),$29,$30,$31)
       ON CONFLICT (jotform_submission_id) DO UPDATE SET
+        profile_id=$31,
         form_id=$2, form_title=$3, title=$4, description=$5,
         submitted_by=$6, submitter_name=$7, submitter_email=$8, department=$9,
         submission_date=$10, current_level=$11, status=$12, priority=$13, amount=$14,
@@ -300,13 +313,13 @@ router.post('/webhook', webhookLimiter, async (req, res, next) => {
         JSON.stringify({ ...raw, _mapped: { levels, email, amount } }),
         submissionDate.toISOString(), updatedDate?.toISOString() || null,
         totalDays, totalDays,
-        needsSync, approvalUrl || null,
+        needsSync, approvalUrl || null, profileId,
       ]
     );
 
     // Log task assignments to email_logs
     if (workflowTasks.length > 0) {
-      upsertEmailLogs(submissionId, formId, String(raw.form_title || formId), workflowTasks)
+      upsertEmailLogs(submissionId, formId, String(raw.form_title || formId), workflowTasks, profileId)
         .catch(err => req.log.warn({ err }, '[webhook] email_logs upsert failed'));
     }
 

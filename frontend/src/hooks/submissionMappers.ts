@@ -21,6 +21,7 @@ import {
 import { DetectedFields } from '../services/formDiscovery';
 import { WorkflowStep, WorkflowTaskInfo, getWorkflowTaskApprover, getActionType } from './workflowTaskCache';
 import { ApproverConfig, getConfiguredApprover } from './useApproverConfig';
+import { jotformInboxUrl } from '../config/jotform';
 
 // ─── Shared utilities ────────────────────────────────────────────────────────
 /** Parse JotForm "YYYY-MM-DD HH:MM:SS" (UTC) or ISO 8601 string into a Date.
@@ -374,7 +375,7 @@ export function mapGenericSubmission(
   const id = String(raw.id);
   const editLink = String(raw.edit_link || '');
   const actionType = getActionType(workflowSteps, currentLevel);
-  const inboxUrl = `https://eforms.mediaoffice.ae/inbox/${formId}/${id}`;
+  const inboxUrl = jotformInboxUrl(formId, id);
   const prefix = formTitle.split(/\s+/).filter(Boolean).map(w => w[0]).join('').toUpperCase().slice(0, 3) || 'WF';
 
   const rawGenericStatus = get(fields.overallStatusFieldId);
@@ -515,8 +516,8 @@ export function mapSupabaseRow(row: Record<string, unknown>): Submission {
     description: String(row.description || row.title || 'Request'),
     editLink: String(row.edit_link || '') || undefined,
     actionType: 'approval' as WorkflowActionType,
-    taskUrl: `https://eforms.mediaoffice.ae/inbox/${sbFormId}/${sbId}`,
-    formUrl: `https://eforms.mediaoffice.ae/inbox/${sbFormId}/${sbId}`,
+    taskUrl: jotformInboxUrl(sbFormId, sbId),
+    formUrl: jotformInboxUrl(sbFormId, sbId),
     submittedBy: {
       name: String(row.submitter_name || row.submitted_by || 'Unknown'),
       department: String(row.department || 'General'),

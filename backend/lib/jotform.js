@@ -1,23 +1,25 @@
-const env = require('../config/env');
+const { getProfile } = require('./profiles');
 
+// `keyType` is now a PROFILE ID indexing the profile registry (lib/profiles.js).
+// The old values 'gdmo'/'default' are still valid ids in the env-derived
+// registry, so existing callers keep working unchanged.
 function resolveApiKey(keyType) {
-  if (keyType === 'gdmo') return env.JOTFORM_API_KEY_GDMO || env.JOTFORM_API_KEY;
-  return env.JOTFORM_API_KEY;
+  return getProfile(keyType).apiKey;
 }
 
 /**
  * Fetch from JotForm API. The API key is passed via the `APIKEY` request
  * header (never in the URL) so the secret never appears in URL logs.
  *
- * Key/scope rules (empirically verified against eforms.mediaoffice.ae):
- *  - keyType 'default' (regular JotForm API key): use the path as-is and
- *    append `teamID` from env so the call is scoped to the configured team.
- *  - keyType 'gdmo' (Enterprise admin key): rewrite leading `user/` to
- *    `enterprise/` (e.g. `user/forms` → `enterprise/forms`) for tenant-wide
- *    scope, and DO NOT append `teamID` — the Enterprise admin key already has
- *    org-wide access and adding teamID either re-scopes or fails. Resource-id
- *    paths (`form/{id}/...`, `submission/{id}`, `workflow/instance/{id}`)
- *    are untouched — they're global lookups by id.
+ * Key/scope rules come from the selected PROFILE (lib/profiles.js), keyed by
+ * `opts.keyType` = profile id:
+ *  - scope 'user' (regular JotForm key): path as-is, append the profile's
+ *    `teamId` when set, base URL = profile.baseUrl.
+ *  - scope 'enterprise' (admin key): rewrite leading `user/` → `enterprise/`
+ *    (e.g. `user/forms` → `enterprise/forms`), NO teamID. Resource-id paths
+ *    (`form/{id}/...`, `submission/{id}`, `workflow/instance/{id}`) are
+ *    untouched — global lookups by id.
+ * An unknown/missing profile id resolves to the default profile.
  *
  * Build a manual URL via `buildJotformUrl(path, keyType)` (exported below) for
  * call sites that need fetch() directly (POSTs with custom bodies, DELETE).
@@ -25,9 +27,8 @@ function resolveApiKey(keyType) {
  *
  * @param {string} path  e.g. "user/forms", "submission/123", "form/{id}/questions"
  * @param {object} [opts]  { params, method, body, headers, keyType }
- *   keyType: 'default' (env JOTFORM_API_KEY, gets teamID) |
- *            'gdmo'    (env JOTFORM_API_KEY_GDMO, user/* → enterprise/*, no teamID)
- *   Undefined keyType is treated as 'default'.
+ *   keyType: a profile id from lib/profiles.js (e.g. 'gdmo', 'default', or a
+ *            custom id). Undefined resolves to the default profile.
  * @returns {Promise<object>} parsed JSON response
  */
 async function jotformFetch(path, opts = {}) {
@@ -101,13 +102,15 @@ async function jotformFetch(path, opts = {}) {
  * key via the `APIKEY` request header (use `resolveApiKey(keyType)`).
  */
 function buildJotformUrl(path, keyType) {
-  const isGdmo = keyType === 'gdmo';
-  const effectivePath = isGdmo && path.startsWith('user/')
+  const profile = getProfile(keyType);
+  const isEnterprise = profile.scope === 'enterprise';
+  const effectivePath = isEnterprise && path.startsWith('user/')
     ? 'enterprise/' + path.slice('user/'.length)
     : path;
-  const url = new URL(`${env.JOTFORM_BASE}/${effectivePath}`);
-  if (!isGdmo && env.JOTFORM_TEAM_ID) url.searchParams.set('teamID', env.JOTFORM_TEAM_ID);
-  // L-5: Use the module-level logger (not console.log) so output is controlled by log level.
+  const url = new URL(`${profile.baseUrl}/${effectivePath}`);
+  // 'user'-scope profiles (regular accounts / single team) get teamID when set;
+  // enterprise admin keys are org-wide and take no teamID.
+  if (!isEnterprise && profile.teamId) url.searchParams.set('teamID', profile.teamId);
   return url;
 }
 

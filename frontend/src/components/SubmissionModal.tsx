@@ -11,6 +11,7 @@ import { getUserConfig } from '../config/currentUser';
 import { useAuth } from '../contexts/AuthContext';
 import { apiFetch } from '../lib/api';
 import { humanizeError, messageFromStatus } from '../lib/errors';
+import { getUsableTaskAccessLink } from '../lib/jotformLinks';
 
 interface Props {
   submission: Submission | null;
@@ -294,12 +295,43 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
     window.open(submission.taskUrl, '_blank', 'noopener,noreferrer');
   };
 
-  const openFormUrl = () => {
-    if (!submission?.formUrl) return;
-    // Link to main form's inbox for this submission — the native JotForm
-    // "View This Form" button on that page leads to the actual form-fill URL.
-    // (JotForm does not expose the internal form-fill URL per-submission via API.)
-    window.open(submission.formUrl, '_blank', 'noopener,noreferrer');
+  const openFormUrl = async () => {
+    if (!submission) return;
+    // Open the popup synchronously (inside the click) so it isn't blocked, then
+    // navigate once the URL resolves.
+    const pop = window.open('about:blank', '_blank');
+    const me = user?.email?.toLowerCase();
+    const tasks = submission.workflowTasks || [];
+
+    // 1. Prefer the prefill access link on the user's own ACTIVE assign_form task.
+    const myActive = tasks.find(
+      t => t.status === 'ACTIVE' && t.type === 'workflow_assign_form'
+        && t.assigneeEmail?.toLowerCase() === me && getUsableTaskAccessLink(t),
+    ) || tasks.find(t => t.status === 'ACTIVE' && getUsableTaskAccessLink(t));
+    let url = getUsableTaskAccessLink(myActive);
+
+    // 2. Fall back to the backend resolver (live prefill / email token).
+    if (!url) {
+      try {
+        const taskParam = myActive?.taskId ? `&taskId=${encodeURIComponent(myActive.taskId)}` : '';
+        const json = await apiFetch<{ approvalUrl?: string | null }>(
+          `/api/email-url?formId=${encodeURIComponent(submission.formId)}&submissionId=${encodeURIComponent(submission.id)}${taskParam}`,
+          { throwOnError: false },
+        );
+        if (json?.approvalUrl) url = json.approvalUrl;
+      } catch { /* fall through to inbox */ }
+    }
+
+    // 3. Last resort: the submission inbox URL.
+    if (!url) url = submission.formUrl || '';
+    if (!url) { if (pop && !pop.closed) pop.close(); return; }
+
+    if (pop && !pop.closed) {
+      try { pop.location.href = url; try { pop.opener = null; } catch { /* ignore */ } }
+      catch { pop.close(); window.open(url, '_blank', 'noopener,noreferrer'); }
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
   };
 
   // Reset form when submission changes; cancel any in-flight upload

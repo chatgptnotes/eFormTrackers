@@ -4,6 +4,7 @@ const { validate } = require('../middleware/validate');
 const { buildUpdateQuery } = require('../db/queryBuilder');
 const { requireAuth } = require('../middleware/auth');
 const { isRowVisible, filterVisibleRows } = require('../lib/visibility');
+const { readKeyType } = require('../lib/key-type');
 const { submissionsPutBodySchema } = require('../schemas/data');
 
 const router = Router();
@@ -39,6 +40,10 @@ router.get('/submissions', async (req, res, next) => {
     const params = [];
     let idx = 1;
 
+    // Scope every read to the active profile so different APIs' data never mix.
+    conditions.push(`profile_id = $${idx++}`);
+    params.push(readKeyType(req));
+
     if (req.query.form_ids) {
       const ids = req.query.form_ids.split(',').map(s => s.trim()).filter(Boolean);
       if (ids.length > 0) {
@@ -67,6 +72,7 @@ router.get('/submissions', async (req, res, next) => {
       `SELECT ${SUBMISSION_LIST_COLUMNS} FROM jf_submissions ${where} ORDER BY submission_date ${order} LIMIT $${idx++} OFFSET $${idx++}`,
       [...params, limit, offset]
     );
+    res.setHeader('Cache-Control', 'no-store');
     res.json(filterVisibleRows(rows, req.session.email, req.session.role));
   } catch (err) { next(err); }
 });

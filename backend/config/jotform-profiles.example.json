@@ -1,0 +1,22 @@
+[
+  {
+    "id": "gdmo",
+    "label": "Bettroi Workspace",
+    "apiKeyEnv": "JOTFORM_API_KEY_GDMO",
+    "baseUrl": "https://bettroi.jotform.com/API",
+    "host": "https://bettroi.jotform.com",
+    "scope": "user",
+    "teamId": "",
+    "default": true
+  },
+  {
+    "id": "myaccount",
+    "label": "Testing",
+    "apiKeyEnv": "JOTFORM_API_KEY",
+    "baseUrl": "https://bettroi.jotform.com/API",
+    "host": "https://bettroi.jotform.com",
+    "scope": "user",
+    "teamId": "",
+    "default": false
+  }
+]

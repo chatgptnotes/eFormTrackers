@@ -6,6 +6,7 @@ const { pMapLimit } = require('../lib/concurrency');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { detectLevelFields } = require('../lib/detect-fields');
 const { extractTask, deriveWorkflowStatus, mergeWorkflowTasksSql } = require('../lib/workflow-task');
+const { enrichTasksWithPrefill } = require('../lib/prefill');
 const { upsertEmailLogs } = require('../lib/email-log');
 
 const router = Router();
@@ -81,6 +82,8 @@ async function fetchWorkflowInstance(raw, keyType, log) {
     // Flatten raw JotForm tasks to the shape WorkflowDetailsSidebar expects.
     // Level derives from 1-based taskList order when properties.level is absent.
     const taskList = rawTasks.map((t, idx) => extractTask(t, idx + 1));
+    // Resolve the real prefill (access) link for active assign_form tasks.
+    await enrichTasksWithPrefill(taskList, raw.id, keyType);
     // Authoritative status from instance status + task list (end node / all-done).
     const status = deriveWorkflowStatus(wfStatus, taskList);
     return { status, taskList };
@@ -202,7 +205,7 @@ async function fetchFieldsForForm(formId, keyType, log) {
   }
 }
 
-async function upsertChunk(rows, log) {
+async function upsertChunk(rows, log, profileId) {
   if (rows.length === 0) return 0;
   let ok = 0;
   for (const params of rows) {
@@ -215,9 +218,10 @@ async function upsertChunk(rows, log) {
           approver_name, approver_email, pending_approver_name, pending_approver_email,
           jotform_status, answers, workflow_tasks, level_history, edit_link,
           raw_data, created_at_jf, updated_at_jf, days_at_level, total_days,
-          last_synced, needs_sync, approval_url
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,now(),$29,$30)
+          last_synced, needs_sync, approval_url, profile_id
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,now(),$29,$30,$31)
         ON CONFLICT (jotform_submission_id) DO UPDATE SET
+          profile_id=$31,
           form_id=$2, form_title=$3, title=$4, description=$5,
           submitted_by=$6, submitter_name=$7, submitter_email=$8, department=$9,
           submission_date=$10, current_level=$11, status=$12, priority=$13, amount=$14,
@@ -225,7 +229,7 @@ async function upsertChunk(rows, log) {
           jotform_status=$19, answers=$20, workflow_tasks=${mergeWorkflowTasksSql('$21')}, level_history=$22, edit_link=$23,
           raw_data=$24, created_at_jf=$25, updated_at_jf=$26, days_at_level=$27, total_days=$28,
           last_synced=now(), needs_sync=$29, approval_url=$30`,
-        params
+        [...params, profileId]
       );
       ok++;
     } catch (e) {
@@ -292,7 +296,7 @@ router.post('/admin/sync-all', requireAuth, requireRole('admin'), async (req, re
           for (let j = i; j < sliceEnd; j++) {
             chunk.push(mapRawToUpsertParams(rawSubs[j], formId, formTitle, fields, wfData[j].status, wfData[j].taskList));
           }
-          formUpserted += await upsertChunk(chunk, req.log);
+          formUpserted += await upsertChunk(chunk, req.log, keyType);
         }
 
         const failed = rawSubs.length - formUpserted;
@@ -384,11 +388,11 @@ router.get('/admin/sync-all-stream', requireAuth, requireRole('admin'), async (r
             // Log task assignments to email_logs
             if (wfData[j].taskList.length > 0) {
               const subId = String(rawSubs[j].id || '');
-              upsertEmailLogs(subId, formId, formTitle, wfData[j].taskList)
+              upsertEmailLogs(subId, formId, formTitle, wfData[j].taskList, keyType)
                 .catch(err => req.log.warn({ err, subId }, '[admin-sync-stream] email_logs upsert failed'));
             }
           }
-          formUpserted += await upsertChunk(chunk, req.log);
+          formUpserted += await upsertChunk(chunk, req.log, keyType);
         }
 
         const failed = rawSubs.length - formUpserted;

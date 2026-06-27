@@ -8,8 +8,8 @@
 
 // Pin the host BEFORE requiring env/prefill (dotenv won't overwrite a value
 // already present in process.env), so the expected URL is deterministic.
-process.env.JOTFORM_HOST = 'https://eforms.mediaoffice.ae';
-process.env.JOTFORM_BASE = 'https://eforms.mediaoffice.ae/API';
+process.env.JOTFORM_HOST = 'https://bettroi.jotform.com';
+process.env.JOTFORM_BASE = 'https://bettroi.jotform.com/API';
 
 const assert = require('assert');
 
@@ -68,7 +68,7 @@ async function t(name, fn) {
     });
     assert.strictEqual(
       url,
-      `https://eforms.mediaoffice.ae/${FORM}/prefill/NEW_A?workflowAssignFormTask=1&taskID=T123`,
+      `https://bettroi.jotform.com/${FORM}/prefill/NEW_A?workflowAssignFormTask=1&taskID=T123`,
     );
   });
 
@@ -97,7 +97,7 @@ async function t(name, fn) {
   await t('OVERWRITES a harvested /share/ accessLink with the /prefill/ link', async () => {
     const tasks = [{
       type: 'workflow_assign_form', status: 'ACTIVE',
-      accessLink: 'https://eforms.mediaoffice.ae/share/SVdmVjBvVWtp',
+      accessLink: 'https://bettroi.jotform.com/share/SVdmVjBvVWtp',
       internalFormID: FORM, taskId: 'T123', assigneeEmail: 'a@gdmo.ae',
     }];
     await enrichTasksWithPrefill(tasks, SUB, 'gdmo');
@@ -106,7 +106,7 @@ async function t(name, fn) {
   });
 
   await t('keeps an existing /prefill/ accessLink untouched', async () => {
-    const existing = `https://eforms.mediaoffice.ae/${FORM}/prefill/ALREADY?workflowAssignFormTask=1&taskID=T123`;
+    const existing = `https://bettroi.jotform.com/${FORM}/prefill/ALREADY?workflowAssignFormTask=1&taskID=T123`;
     const tasks = [{
       type: 'workflow_assign_form', status: 'ACTIVE',
       accessLink: existing, internalFormID: FORM, taskId: 'T123', assigneeEmail: 'a@gdmo.ae',

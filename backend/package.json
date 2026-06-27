@@ -10,7 +10,8 @@
     "dev": "node server.js",
     "start": "node server.js",
     "build": "node -e \"require('fs').mkdirSync('logs',{recursive:true})\" && echo Backend ready",
-    "migrate": "node db/migrate.js"
+    "migrate": "node db/migrate.js",
+    "sync:mail-sender": "node scripts/sync-mail-sender.js"
   },
   "dependencies": {
     "@azure/msal-node": "^5.2.1",
@@ -22,8 +23,11 @@
     "express-rate-limit": "^8.5.2",
     "express-session": "^1.18.1",
     "helmet": "^8.0.0",
+    "imapflow": "1.4.3",
+    "mailparser": "3.7.2",
     "multer": "^1.4.5-lts.1",
     "node-cron": "^4.2.1",
+    "nodemailer": "^6.10.1",
     "pg": "^8.13.1",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",

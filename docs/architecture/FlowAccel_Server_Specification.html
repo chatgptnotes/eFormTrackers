@@ -96,7 +96,7 @@
   <tr><td>Frontend</td><td>React 18 + TypeScript + Vite (2.4 MB static build)</td></tr>
   <tr><td>Backend</td><td>Node.js Express (converted from 22 Vercel serverless functions)</td></tr>
   <tr><td>Database</td><td>PostgreSQL 15+ (self-hosted on-premise on Server 1)</td></tr>
-  <tr><td>External APIs</td><td>JotForm Enterprise API (eforms.mediaoffice.ae), Microsoft Azure AD</td></tr>
+  <tr><td>External APIs</td><td>JotForm Enterprise API (bettroi.jotform.com), Microsoft Azure AD</td></tr>
   <tr><td>Servers Required</td><td>2 &times; Windows Server (Production + Backup)</td></tr>
   <tr><td>Total Storage</td><td>500 GB per server (1 TB total)</td></tr>
 </table>
@@ -515,7 +515,7 @@ sc config postgresql-x64-15 start= auto
 <h3>9.2 Outbound Rules (Server → Internet)</h3>
 <table class="data">
   <tr><th>Port</th><th>Protocol</th><th>Destination</th><th>Purpose</th></tr>
-  <tr><td>443</td><td>TCP</td><td>eforms.mediaoffice.ae</td><td>JotForm Enterprise API — fetch forms, submissions, workflow data</td></tr>
+  <tr><td>443</td><td>TCP</td><td>bettroi.jotform.com</td><td>JotForm Enterprise API — fetch forms, submissions, workflow data</td></tr>
   <tr><td>5432</td><td>TCP</td><td>localhost only (127.0.0.1)</td><td>PostgreSQL — local database connection (not exposed to network)</td></tr>
   <tr><td>443</td><td>TCP</td><td>login.microsoftonline.com</td><td>Microsoft Azure AD OAuth token exchange</td></tr>
   <tr><td>443</td><td>TCP</td><td>graph.microsoft.com</td><td>Microsoft Graph API — user profile lookup (optional)</td></tr>

@@ -14,7 +14,7 @@ for (const key of required) {
   }
 }
 
-const jotformBase = process.env.JOTFORM_BASE || 'https://eforms.mediaoffice.ae/API';
+const jotformBase = process.env.JOTFORM_BASE || 'https://bettroi.jotform.com/API';
 if (!jotformBase.startsWith('https://')) {
   console.error('[env] JOTFORM_BASE must use https://');
   process.exit(1);
@@ -27,6 +27,9 @@ if (nodeEnv === 'production' && allowedOrigin === '*') {
   process.exit(1);
 }
 
+const emailForwardTo = (process.env.EMAIL_FORWARD_TO || '').trim().toLowerCase();
+const mailSenderAccount = (process.env.MAIL_SENDER_ACCOUNT || emailForwardTo || '').trim().toLowerCase();
+
 module.exports = {
   DATABASE_URL: process.env.DATABASE_URL,
   SESSION_SECRET: process.env.SESSION_SECRET,
@@ -34,7 +37,7 @@ module.exports = {
   JOTFORM_API_KEY_GDMO: process.env.JOTFORM_API_KEY_GDMO || '',
   JOTFORM_TEAM_ID: process.env.JOTFORM_TEAM_ID || '',
   JOTFORM_BASE: jotformBase,
-  JOTFORM_HOST: process.env.JOTFORM_HOST || 'https://eforms.mediaoffice.ae',
+  JOTFORM_HOST: process.env.JOTFORM_HOST || 'https://bettroi.jotform.com',
   JOTFORM_WEBHOOK_SECRET: process.env.JOTFORM_WEBHOOK_SECRET || '',
   ALLOWED_ORIGIN: allowedOrigin,
   PORT: parseInt(process.env.PORT || '3001', 10),
@@ -47,8 +50,29 @@ module.exports = {
   // Optional: a JotForm browser session cookie (e.g. 'jftoken=xyz...'),
   // used by /api/signature-proxy to fetch /uploads/ files that JotForm
   // protects behind session auth. Obtain from browser DevTools after
-  // logging into eforms.mediaoffice.ae as the GDMO admin.
+  // logging into bettroi.jotform.com as the workspace admin.
   JOTFORM_SESSION_COOKIE: process.env.JOTFORM_SESSION_COOKIE || '',
+  EMAIL_FORWARD_ENABLED: process.env.EMAIL_FORWARD_ENABLED === '1',
+  EMAIL_FORWARD_TO: emailForwardTo,
+  EMAIL_FORWARD_FROM: process.env.EMAIL_FORWARD_FROM || '',
+  SMTP_HOST: process.env.SMTP_HOST || '',
+  SMTP_PORT: parseInt(process.env.SMTP_PORT || '587', 10),
+  SMTP_SECURE: process.env.SMTP_SECURE === '1',
+  SMTP_USER: process.env.SMTP_USER || '',
+  SMTP_PASS: process.env.SMTP_PASS || '',
+  MAIL_SENDER_ENABLED: process.env.MAIL_SENDER_ENABLED === '1',
+  MAIL_SENDER_ACCOUNT: mailSenderAccount,
+  MAIL_SENDER_IMAP_HOST: process.env.MAIL_SENDER_IMAP_HOST || 'imap.gmail.com',
+  MAIL_SENDER_IMAP_PORT: parseInt(process.env.MAIL_SENDER_IMAP_PORT || '993', 10),
+  MAIL_SENDER_IMAP_SECURE: process.env.MAIL_SENDER_IMAP_SECURE !== '0',
+  MAIL_SENDER_IMAP_USER: (process.env.MAIL_SENDER_IMAP_USER || mailSenderAccount || '').trim(),
+  MAIL_SENDER_IMAP_PASS: process.env.MAIL_SENDER_IMAP_PASS || '',
+  MAIL_SENDER_IMAP_ACCESS_TOKEN: process.env.MAIL_SENDER_IMAP_ACCESS_TOKEN || '',
+  MAIL_SENDER_IMAP_MAILBOX: process.env.MAIL_SENDER_IMAP_MAILBOX || '[Gmail]/Sent Mail',
+  MAIL_SENDER_SYNC_LIMIT: parseInt(process.env.MAIL_SENDER_SYNC_LIMIT || '500', 10),
+  MAIL_SENDER_MAX_BYTES: parseInt(process.env.MAIL_SENDER_MAX_BYTES || `${5 * 1024 * 1024}`, 10),
+  MAIL_SENDER_SOCKET_TIMEOUT_MS: parseInt(process.env.MAIL_SENDER_SOCKET_TIMEOUT_MS || `${10 * 60 * 1000}`, 10),
+  MAIL_SENDER_SENT_SINCE: process.env.MAIL_SENDER_SENT_SINCE || '',
   ADMIN_EMAIL: (process.env.ADMIN_EMAIL || '').trim().toLowerCase(),
   ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || '',
   ADMIN_NAME: process.env.ADMIN_NAME || '',

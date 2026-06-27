@@ -15,6 +15,7 @@ import { pMapLimit, pMapLimitSettled } from '../lib/pMapLimit';
 import { WorkflowStep, fetchWorkflowSteps, fetchWorkflowTasks } from './workflowTaskCache';
 import { ApproverConfig, fetchApproverConfigs } from './useApproverConfig';
 import { mapGenericSubmission } from './submissionMappers';
+import { JOTFORM_HOST } from '../config/jotform';
 
 export interface LoadFromJotFormResult {
   submissions: Submission[];
@@ -176,7 +177,7 @@ async function enrichWithWorkflowTasks(mapped: Submission[]): Promise<void> {
       if (activeTask.accessLink) {
         sub.approvalUrl = activeTask.accessLink;
       } else if (activeTask.taskId && activeTask.internalFormID) {
-        const host = 'https://eforms.mediaoffice.ae';
+        const host = JOTFORM_HOST;
         const qp = taskType === 'workflow_assign_form' ? 'workflowAssignFormTask'
           : taskType === 'workflow_assign_task' ? 'workflowAssignTask'
           : 'workflowApprovalTask';

@@ -19,11 +19,12 @@ export async function apiFetch<T = unknown>(
   const jfHdrs = jotformHeaders();
   // DEBUG: visible in browser console — confirm header is being sent on each call.
   // eslint-disable-next-line no-console
-  console.log(`[apiFetch] ${init.method || 'GET'} ${path}  x-jotform-key-type=${(jfHdrs as Record<string,string>)['x-jotform-key-type']}`);
+  console.log(`[apiFetch] ${init.method || 'GET'} ${path}  x-jotform-profile-id=${(jfHdrs as Record<string,string>)['x-jotform-profile-id'] || ''}`);
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, {
       ...init,
+      cache: init.cache || 'no-store',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json', ...jfHdrs, ...init.headers },
     });

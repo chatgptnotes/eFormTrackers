@@ -5,7 +5,9 @@ const { detectLevelFields } = require('./detect-fields');
 const { emitToAll } = require('./realtime');
 const { pMapLimit } = require('./concurrency');
 const { extractTask, deriveWorkflowStatus, mergeWorkflowTasksSql } = require('./workflow-task');
+const { enrichTasksWithPrefill } = require('./prefill');
 const { upsertEmailLogs } = require('./email-log');
+const { getDefaultProfile, hasProfile } = require('./profiles');
 
 function parseEmailFromActionText(text) {
   if (!text || typeof text !== 'string') return '';
@@ -20,11 +22,13 @@ const POLL_ENRICH_CONCURRENCY = 4;
 // Delay between processing each form (ms). Spreads the API burst across time.
 const INTER_FORM_DELAY_MS = 500;
 
-// Which JotForm key bucket the background poller authenticates with. It has no
-// HTTP request to read x-jotform-key-type from, so it must be configured. The
-// GDMO Enterprise key is the only one set in this deployment; without this every
-// poller call used the empty default key + user/* paths and fetched nothing.
-const POLLER_KEY_TYPE = env.POLLER_KEY_TYPE || 'gdmo';
+// Which JotForm profile the background poller authenticates with. It has no HTTP
+// request to read a header from, so it uses POLLER_KEY_TYPE (a profile id) if it
+// names a real profile, otherwise the registry's default profile.
+function pollerProfileId() {
+  const id = env.POLLER_KEY_TYPE;
+  return id && hasProfile(id) ? id : getDefaultProfile().id;
+}
 
 // Workflow states that need no (more) enrichment: not yet started (no instance)
 // or already finished. The submissions bulk API returns `workflowStatus` for
@@ -61,22 +65,33 @@ function extractText(answer) {
 }
 
 // ── Build approval URL from active task ──────────────────────────────────────
-function buildApprovalUrl(activeTask) {
+function buildApprovalUrl(activeTask, formId, submissionId) {
   const element = activeTask.element || {};
   const props = activeTask.properties || {};
   const taskType = String(element.type || '');
   const taskId = String(activeTask.id || '');
-  const internalFormID = element.internalFormID || element.resourceID || element.formID || props.formID;
+  const internalFormID = element.internalFormID || element.resourceID || element.formID || props.formID || formId;
 
   if (taskType === 'workflow_assign_form') {
     return internalFormID ? `${env.JOTFORM_HOST}/${internalFormID}?workflowAssignFormTask=1&taskID=${taskId}` : '';
   }
 
   const rawAccessLink = String(activeTask.accessLink || props.accessLink || '');
-  const shareMatch = rawAccessLink.match(/\/share\/(.+)$/);
+
+  if (taskType === 'workflow_assign_task') {
+    if (rawAccessLink) return rawAccessLink;
+    if (formId && submissionId && taskId)
+      return `${env.JOTFORM_HOST}/inbox/${formId}/${submissionId}?taskID=${taskId}`;
+    return '';
+  }
+
+  const shareMatch = rawAccessLink.match(/\/share\/([^?#]+)/);
   const accessToken = shareMatch ? shareMatch[1] : '';
   if (internalFormID && taskId && accessToken) {
     return `${env.JOTFORM_HOST}/approval-form/${internalFormID}/task/${taskId}/access-token/${encodeURIComponent(accessToken)}`;
+  }
+  if (formId && submissionId && taskId) {
+    return `${env.JOTFORM_HOST}/inbox/${formId}/${submissionId}?taskID=${taskId}`;
   }
   return rawAccessLink || '';
 }
@@ -95,15 +110,18 @@ async function processSubmission(raw, formId, formTitle) {
 }
 
 // ── Fetch workflow instance info for a pending submission ─────────────────────
-async function enrichWithWorkflow(submissionId, workflowInstanceId) {
+async function enrichWithWorkflow(submissionId, workflowInstanceId, formId, profileId) {
   try {
-    const instData = await jotformFetch(`workflow/instance/${workflowInstanceId}`, { keyType: POLLER_KEY_TYPE });
+    const instData = await jotformFetch(`workflow/instance/${workflowInstanceId}`, { keyType: profileId });
     const taskList = instData?.content?.taskList || [];
     // Flatten to the shape every reader expects (top-level assigneeEmail etc.) —
     // matches admin-sync. Raw JotForm tasks nest the assignee under
     // properties.assigneeEmail, which breaks visibility (isSubmissionVisible /
     // visibility.js both read workflow_tasks[].assigneeEmail at the top level).
     const flatTasks = taskList.map((t, idx) => extractTask(t, idx + 1));
+    // Resolve the real prefill (access) link for any active workflow_assign_form
+    // task — opens the target form pre-populated and submittable, per user.
+    await enrichTasksWithPrefill(flatTasks, submissionId, profileId);
 
     const activeTask = taskList.find(t => String(t.status || '').toUpperCase() === 'ACTIVE');
     if (!activeTask) return { pendingApproverName: '', pendingApproverEmail: '', approvalUrl: '', workflowTasks: flatTasks };
@@ -116,7 +134,12 @@ async function enrichWithWorkflow(submissionId, workflowInstanceId) {
     const pendingApproverName = String(assigneeUser.name || firstRecipient.name || '');
     const candidateEmail = String(props.assigneeEmail || assigneeUser.email || firstRecipient.email || '');
     const pendingApproverEmail = candidateEmail.includes('@') ? candidateEmail : '';
-    const approvalUrl = buildApprovalUrl(activeTask);
+    let approvalUrl = buildApprovalUrl(activeTask, formId, submissionId);
+    // For assign_form, prefer the resolved prefill link (set on the flat task above).
+    if (String((activeTask.element || {}).type) === 'workflow_assign_form') {
+      const activeFlat = flatTasks.find(t => t.taskId === String(activeTask.id || ''));
+      if (activeFlat?.accessLink) approvalUrl = activeFlat.accessLink;
+    }
 
     return { pendingApproverName, pendingApproverEmail, approvalUrl, workflowTasks: flatTasks };
   } catch (err) {
@@ -146,6 +169,7 @@ async function getFallbackApprover(formId, level) {
 // POLL_INTERVAL_MINUTES) still re-syncs everything.
 async function pollOnce(opts = {}) {
   const quick = !!opts.quick;
+  const profileId = opts.profileId || pollerProfileId();
   if (isRunning) {
     if (!quick) console.log('[poller] Previous poll still running — skipping');
     return;
@@ -156,7 +180,7 @@ async function pollOnce(opts = {}) {
 
   try {
     // 1. Fetch all enabled forms
-    const formsData = await jotformFetch('user/forms', { params: { limit: '1000', status: 'ENABLED' }, keyType: POLLER_KEY_TYPE });
+    const formsData = await jotformFetch('user/forms', { params: { limit: '1000', status: 'ENABLED' }, keyType: profileId });
     const forms = (formsData.content || []).filter(f => f.id);
 
     if (forms.length === 0) {
@@ -167,10 +191,10 @@ async function pollOnce(opts = {}) {
     // 2. Upsert form metadata into jf_forms (form creator via username field)
     for (const form of forms) {
       await pool.query(
-        `INSERT INTO jf_forms (form_id, title, creator_username, status, created_at_jf, updated_at_jf, last_synced)
-         VALUES ($1, $2, $3, $4, $5, $6, now())
+        `INSERT INTO jf_forms (form_id, title, creator_username, status, created_at_jf, updated_at_jf, last_synced, profile_id)
+         VALUES ($1, $2, $3, $4, $5, $6, now(), $7)
          ON CONFLICT (form_id) DO UPDATE SET
-           title=$2, creator_username=$3, status=$4, updated_at_jf=$6, last_synced=now()`,
+           title=$2, creator_username=$3, status=$4, updated_at_jf=$6, last_synced=now(), profile_id=$7`,
         [
           String(form.id),
           String(form.title || ''),
@@ -178,6 +202,7 @@ async function pollOnce(opts = {}) {
           String(form.status || ''),
           form.created_at ? new Date(form.created_at.replace(' ', 'T') + 'Z').toISOString() : null,
           form.updated_at ? new Date(form.updated_at.replace(' ', 'T') + 'Z').toISOString() : null,
+          profileId,
         ]
       ).catch(err => console.warn(`[poller] jf_forms upsert failed for ${form.id}:`, err.message));
     }
@@ -197,7 +222,7 @@ async function pollOnce(opts = {}) {
         detectedFields = cachedQ.detectedFields;
       } else {
         try {
-          const qData = await jotformFetch(`form/${formId}/questions`, { keyType: POLLER_KEY_TYPE });
+          const qData = await jotformFetch(`form/${formId}/questions`, { keyType: profileId });
           detectedFields = detectLevelFields(qData.content || {});
           questionsCache.set(formId, { detectedFields, at: Date.now() });
         } catch (err) {
@@ -212,7 +237,7 @@ async function pollOnce(opts = {}) {
       try {
         const subData = await jotformFetch(`form/${formId}/submissions`, {
           params: { limit: quick ? '100' : '1000', offset: '0', orderby: 'created_at', direction: 'DESC', addWorkflowStatus: '1' },
-          keyType: POLLER_KEY_TYPE,
+          keyType: profileId,
         });
         submissions = subData.content || [];
 
@@ -220,7 +245,7 @@ async function pollOnce(opts = {}) {
         if (!quick && submissions.length === 1000) {
           const subData2 = await jotformFetch(`form/${formId}/submissions`, {
             params: { limit: '1000', offset: '1000', orderby: 'created_at', direction: 'DESC', addWorkflowStatus: '1' },
-            keyType: POLLER_KEY_TYPE,
+            keyType: profileId,
           });
           submissions = submissions.concat(subData2.content || []);
         }
@@ -310,7 +335,7 @@ async function pollOnce(opts = {}) {
         // the upsert below preserves workflow_tasks/pending_approver when empty — so
         // a finished workflow synced earlier isn't blanked every cycle.
         if (p.workflowInstanceId && workflowIsActive(p.workflowStatus)) {
-          const enriched = await enrichWithWorkflow(p.submissionId, p.workflowInstanceId);
+          const enriched = await enrichWithWorkflow(p.submissionId, p.workflowInstanceId, formId, profileId);
           p.pendingApproverName = enriched.pendingApproverName;
           p.pendingApproverEmail = enriched.pendingApproverEmail;
           p.approvalUrl = enriched.approvalUrl;
@@ -373,9 +398,10 @@ async function pollOnce(opts = {}) {
               approver_name, approver_email, pending_approver_name, pending_approver_email,
               jotform_status, answers, workflow_tasks, level_history, edit_link,
               raw_data, created_at_jf, updated_at_jf, days_at_level, total_days,
-              last_synced, needs_sync, approval_url
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,now(),$29,$30)
+              last_synced, needs_sync, approval_url, profile_id
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,now(),$29,$30,$31)
             ON CONFLICT (jotform_submission_id) DO UPDATE SET
+              profile_id=$31,
               form_id=$2, form_title=$3, title=$4, description=$5,
               submitted_by=$6, submitter_name=$7, submitter_email=$8, department=$9,
               submission_date=$10, current_level=$11, status=$12, priority=$13, amount=$14,
@@ -387,7 +413,12 @@ async function pollOnce(opts = {}) {
               workflow_tasks = CASE WHEN $21::jsonb = '[]'::jsonb THEN jf_submissions.workflow_tasks ELSE ${mergeWorkflowTasksSql('$21')} END,
               level_history=$22, edit_link=$23,
               raw_data=$24, created_at_jf=$25, updated_at_jf=$26, days_at_level=$27, total_days=$28,
-              last_synced=now(), needs_sync=$29, approval_url=$30`,
+              last_synced=now(), needs_sync=$29,
+              approval_url = CASE
+                WHEN $30 IS NULL          THEN jf_submissions.approval_url
+                WHEN $30 LIKE '%/inbox/%' THEN COALESCE(jf_submissions.approval_url, $30)
+                ELSE $30
+              END`,
             [
               p.submissionId, formId, formTitle, p.title, p.description,
               p.submittedBy, p.submittedBy, p.email, p.department,
@@ -401,13 +432,20 @@ async function pollOnce(opts = {}) {
               JSON.stringify({ ...p.raw, _mapped: { levels: p.levels, email: p.email, amount: p.amount } }),
               p.submissionDate.toISOString(), p.updatedDate?.toISOString() || null,
               p.totalDays, p.totalDays,
-              false, p.approvalUrl || null,
+              false, p.approvalUrl || null, profileId,
             ]
           );
           totalUpserted++;
           // Log task assignments to email_logs
           if (p.workflowTasks.length > 0) {
-            await upsertEmailLogs(p.submissionId, formId, formTitle, p.workflowTasks);
+            await upsertEmailLogs(p.submissionId, formId, formTitle, p.workflowTasks, profileId);
+            // Generate magic-link tokens for ACTIVE assign_task steps
+            const { getOrCreateToken } = require('./task-token');
+            for (const t of p.workflowTasks) {
+              if (t.type === 'workflow_assign_task' && t.status === 'ACTIVE' && t.assigneeEmail && t.taskId) {
+                await getOrCreateToken(p.submissionId, t.taskId, t.assigneeEmail).catch(() => {});
+              }
+            }
           }
         } catch (err) {
           console.warn(`[poller] Failed to upsert submission ${p.submissionId}:`, err.message);
@@ -422,9 +460,48 @@ async function pollOnce(opts = {}) {
     if (!quick) {
       try {
         const { harvestEmailLinks } = require('./email-link-harvester');
-        await harvestEmailLinks();
+        await harvestEmailLinks({ profileId });
       } catch (err) {
         console.warn('[poller] email link harvest failed:', err.message);
+      }
+      try {
+        const { syncSystemLogs } = require('./system-log-sync');
+        await syncSystemLogs({ profileId });
+      } catch (err) {
+        console.warn('[poller] system-log sync failed:', err.message);
+      }
+      try {
+        const { syncEnterpriseHistory } = require('./history-sync');
+        await syncEnterpriseHistory({ profileId });
+      } catch (err) {
+        console.warn('[poller] enterprise-history sync failed:', err.message);
+      }
+      try {
+        const { syncAccountHistory } = require('./account-history-sync');
+        await syncAccountHistory({ profileId });
+      } catch (err) {
+        console.warn('[poller] account-history sync failed:', err.message);
+      }
+      try {
+        const { runEmailArchive } = require('./email-archiver');
+        await runEmailArchive({ profileId });
+      } catch (err) {
+        console.warn('[poller] email archive failed:', err.message);
+      }
+      if (env.MAIL_SENDER_ENABLED) {
+        try {
+          const { syncJotformMailSender } = require('./jotform-mail-sender');
+          const result = await syncJotformMailSender({ profileId });
+          if (result.synced > 0) console.log(`[poller] mail sender synced ${result.synced} sent email(s)`);
+        } catch (err) {
+          console.warn('[poller] mail sender sync failed:', err.message);
+        }
+      }
+      try {
+        const { runUserSync } = require('./user-sync');
+        await runUserSync({ profileId });
+      } catch (err) {
+        console.warn('[poller] user sync failed:', err.message);
       }
     }
 

@@ -2,6 +2,7 @@ const { Router } = require('express');
 const pool = require('../db/pool');
 const { validate } = require('../middleware/validate');
 const { requireAuth } = require('../middleware/auth');
+const { readKeyType } = require('../lib/key-type');
 const { syncToSupabaseBodySchema } = require('../schemas/submissions');
 
 const router = Router();
@@ -13,6 +14,7 @@ router.use(requireAuth);
 router.post('/sync-to-supabase', validate(syncToSupabaseBodySchema), async (req, res, next) => {
   try {
     const records = req.body.records;
+    const profileId = readKeyType(req);
 
     let upserted = 0;
     let errors = 0;
@@ -34,9 +36,10 @@ router.post('/sync-to-supabase', validate(syncToSupabaseBodySchema), async (req,
               submitted_by, submitter_name, submitter_email, department,
               submission_date, current_level, status, priority, jotform_status,
               pending_approver_name, pending_approver_email, approver_name,
-              approver_email, answers, level_history, raw_data, approval_url, last_synced
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,now())
+              approver_email, answers, level_history, raw_data, approval_url, last_synced, profile_id
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,now(),$23)
             ON CONFLICT (jotform_submission_id) DO UPDATE SET
+              profile_id=$23,
               form_id=$2, form_title=$3, title=$4, description=$5,
               submitted_by=$6, submitter_name=$7, submitter_email=$8, department=$9,
               submission_date=$10, current_level=$11, status=$12, priority=$13,
@@ -54,7 +57,7 @@ router.post('/sync-to-supabase', validate(syncToSupabaseBodySchema), async (req,
               JSON.stringify(r.answers || {}),
               JSON.stringify(r.approvalHistory || []),
               JSON.stringify({ _mapped: { levels: r.approvalHistory } }),
-              r.approvalUrl || null,
+              r.approvalUrl || null, profileId,
             ]
           );
           upserted++;

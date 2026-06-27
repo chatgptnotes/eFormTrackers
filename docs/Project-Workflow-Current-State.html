@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>JotFlow Project Workflow - Current State and Gaps</title>
+  <style>
+    @page { size: A4; margin: 18mm 16mm; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: #172033;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 12.5px;
+      line-height: 1.45;
+      background: #ffffff;
+    }
+    h1, h2, h3 { margin: 0; line-height: 1.2; color: #0f172a; }
+    h1 { font-size: 29px; letter-spacing: 0; }
+    h2 {
+      margin-top: 24px;
+      padding-bottom: 6px;
+      border-bottom: 2px solid #e2e8f0;
+      font-size: 18px;
+    }
+    h3 { margin-top: 16px; font-size: 14px; }
+    p { margin: 7px 0; }
+    ul, ol { margin: 7px 0 7px 18px; padding: 0; }
+    li { margin: 4px 0; }
+    table {
+      width: 100%;
+      margin: 10px 0 16px;
+      border-collapse: collapse;
+      page-break-inside: avoid;
+    }
+    th, td {
+      border: 1px solid #d7dde8;
+      padding: 7px 8px;
+      vertical-align: top;
+    }
+    th {
+      color: #0f172a;
+      background: #eef3f8;
+      text-align: left;
+      font-weight: 700;
+    }
+    code {
+      padding: 1px 4px;
+      border-radius: 4px;
+      background: #eef3f8;
+      color: #0f172a;
+      font-family: Menlo, Consolas, monospace;
+      font-size: 11.5px;
+    }
+    .cover {
+      padding: 24px;
+      border: 1px solid #d7dde8;
+      border-left: 6px solid #2563eb;
+      border-radius: 8px;
+      background: #f8fafc;
+      page-break-inside: avoid;
+    }
+    .meta {
+      margin-top: 14px;
+      color: #475569;
+      font-size: 12px;
+    }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 14px 0;
+    }
+    .metric {
+      padding: 11px;
+      border: 1px solid #d7dde8;
+      border-radius: 8px;
+      background: #ffffff;
+    }
+    .metric strong {
+      display: block;
+      font-size: 20px;
+      color: #0f172a;
+    }
+    .metric span { color: #64748b; font-size: 11.5px; }
+    .tag {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-size: 10.5px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .done { background: #dcfce7; color: #166534; }
+    .partial { background: #fef3c7; color: #92400e; }
+    .missing { background: #fee2e2; color: #991b1b; }
+    .planned { background: #dbeafe; color: #1d4ed8; }
+    .flow {
+      margin: 10px 0 16px;
+      padding: 14px;
+      border: 1px solid #d7dde8;
+      border-radius: 8px;
+      background: #f8fafc;
+      font-family: Menlo, Consolas, monospace;
+      font-size: 11px;
+      white-space: pre-wrap;
+    }
+    .note {
+      margin: 12px 0;
+      padding: 10px 12px;
+      border-left: 4px solid #2563eb;
+      background: #eff6ff;
+      page-break-inside: avoid;
+    }
+    .warn {
+      border-left-color: #f59e0b;
+      background: #fffbeb;
+    }
+    .page-break { page-break-before: always; }
+  </style>
+</head>
+<body>
+  <section class="cover">
+    <h1>JotFlow Project Workflow</h1>
+    <p><strong>Current build status, operating flow, and missing work</strong></p>
+    <p class="meta">Prepared from the local repository and local database on June 27, 2026.</p>
+    <p class="meta">Project stack: React/Vite frontend, Express backend, PostgreSQL database, JotForm Enterprise APIs, optional IMAP sender-mail sync, optional SMTP forwarding.</p>
+  </section>
+
+  <h2>Executive Summary</h2>
+  <p>
+    JotFlow is currently built as a workflow monitoring and action dashboard for JotForm approval workflows.
+    The backend syncs forms, submissions, workflow tasks, JotForm email records, user directory data, account history, and system logs into PostgreSQL.
+    The frontend gives authenticated users dashboards for pending work, completed work, workflow details, JotForm email history, and admin views.
+  </p>
+  <p>
+    The main workflow path is functional: JotForm data is pulled into PostgreSQL, workflow tasks are normalized, task links are harvested from JotForm emails, and users can open or complete workflow tasks from the app.
+    The email archive and forwarding path is also present. A separate sender-mail IMAP sync backend is present, but it is currently disabled in local config and the sender-mail table is empty.
+  </p>
+
+  <div class="summary-grid">
+    <div class="metric"><strong>7</strong><span>JotForm submissions in local DB</span></div>
+    <div class="metric"><strong>23</strong><span>Archived JotForm email records</span></div>
+    <div class="metric"><strong>0</strong><span>Sender mailbox records synced</span></div>
+    <div class="metric"><strong>8</strong><span>Workflow task email-log rows</span></div>
+    <div class="metric"><strong>5</strong><span>JotForm directory users</span></div>
+    <div class="metric"><strong>4</strong><span>Allowlist users from email recipients</span></div>
+  </div>
+
+  <h2>High-Level Workflow</h2>
+  <div class="flow">JotForm forms and workflows
+        |
+        v
+Backend poller or admin sync
+        |
+        +-- Sync forms and submissions into jf_forms and jf_submissions
+        +-- Flatten workflow tasks into workflow_tasks JSONB
+        +-- Upsert task assignment records into email_logs
+        +-- Sync system, enterprise, and account history logs
+        +-- Archive JotForm-sent emails into jf_email_archive
+        +-- Extract action links from email bodies
+        +-- Save email recipients into allowlist_user
+        +-- Optionally forward archived emails via SMTP
+        +-- Optionally sync sender mailbox Sent folder through IMAP
+        |
+        v
+React dashboard APIs
+        |
+        +-- User dashboard, pending queue, completed queue
+        +-- Director/admin dashboard and workflow details
+        +-- My Emails and All Emails views
+        +-- All Users directory view
+        |
+        v
+User opens JotForm task link or completes task through backend
+        |
+        v
+Backend calls JotForm API, updates PostgreSQL, emits realtime update</div>
+
+  <h2>What Is Built</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Area</th>
+        <th>Status</th>
+        <th>What exists now</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Authentication and sessions</td>
+        <td><span class="tag done">Built</span></td>
+        <td>Local login/signup, password reset, Microsoft OAuth route, session storage, role guards, CSRF origin checks, rate limiting, and secure headers.</td>
+      </tr>
+      <tr>
+        <td>PostgreSQL schema</td>
+        <td><span class="tag done">Built</span></td>
+        <td>Core tables for users, profiles, organizations, submissions, approvals, forms, email logs, email archive, JotForm users, history logs, task tokens, sender-mail sync, and allowlist users.</td>
+      </tr>
+      <tr>
+        <td>JotForm profile support</td>
+        <td><span class="tag done">Built</span></td>
+        <td>Backend profile registry supports multiple JotForm API profiles, with profile IDs stored across JotForm-sourced tables.</td>
+      </tr>
+      <tr>
+        <td>Submission sync</td>
+        <td><span class="tag done">Built</span></td>
+        <td>Poller and admin sync read JotForm forms/submissions, map submission fields, persist workflow tasks, and update current pending approver/status fields.</td>
+      </tr>
+      <tr>
+        <td>Workflow task handling</td>
+        <td><span class="tag done">Built</span></td>
+        <td>Workflow tasks are flattened for UI display, stored in <code>jf_submissions.workflow_tasks</code>, and task assignments are upserted into <code>email_logs</code>.</td>
+      </tr>
+      <tr>
+        <td>Task action links</td>
+        <td><span class="tag done">Built</span></td>
+        <td>The system resolves JotForm task links from stored DB values, JotForm API fallback, prefill URLs, and JotForm email bodies.</td>
+      </tr>
+      <tr>
+        <td>Workflow actions</td>
+        <td><span class="tag done">Built</span></td>
+        <td>Backend endpoints complete/approve/reject workflow tasks through JotForm, then update local submission state and approval history.</td>
+      </tr>
+      <tr>
+        <td>Dashboards</td>
+        <td><span class="tag done">Built</span></td>
+        <td>Modern dashboard, director dashboard, workflow tracker, pending-with view, completed view, analytics, kanban, task detail sidebar, and workflow detail modal are present.</td>
+      </tr>
+      <tr>
+        <td>Email archive</td>
+        <td><span class="tag done">Built</span></td>
+        <td>JotForm enterprise email events are pulled from system logs and <code>emailq/{id}</code>, stored in <code>jf_email_archive</code>, and shown in My Emails / All Emails views.</td>
+      </tr>
+      <tr>
+        <td>Email forwarding</td>
+        <td><span class="tag done">Built</span></td>
+        <td>Archived emails can be copied to a configured mailbox through SMTP and tracked in <code>jf_email_forward_log</code>. Local config shows forwarding enabled.</td>
+      </tr>
+      <tr>
+        <td>Allowlist users</td>
+        <td><span class="tag done">Built</span></td>
+        <td>The new <code>allowlist_user</code> table records usernames/mail IDs seen in JotForm-sent emails. Current local DB has 4 rows.</td>
+      </tr>
+      <tr>
+        <td>JotForm user directory</td>
+        <td><span class="tag done">Built</span></td>
+        <td>Admin route and sync job populate <code>jf_users</code>; frontend All Users view can search and display JotForm users.</td>
+      </tr>
+      <tr>
+        <td>Sender mailbox sync</td>
+        <td><span class="tag partial">Partially active</span></td>
+        <td>Backend table, IMAP sync library, CLI script, admin API, and poller toggle exist for syncing a sender mailbox Sent folder into <code>jotform_mail_sender</code>. Local config has it disabled and unpopulated.</td>
+      </tr>
+      <tr>
+        <td>Admin utilities</td>
+        <td><span class="tag done">Built</span></td>
+        <td>Admin routes exist for users, emails, forms, sync, cleanup, profile sync, support messages, signature proxy, uploads, and config.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Current Local State</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Item</th>
+        <th>Observed value</th>
+        <th>Meaning</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>ENABLE_POLLER</code></td>
+        <td><span class="tag done">true</span></td>
+        <td>Backend is configured to run the periodic JotForm sync when the server starts.</td>
+      </tr>
+      <tr>
+        <td><code>MAIL_SENDER_ENABLED</code></td>
+        <td><span class="tag missing">false</span></td>
+        <td>Sender mailbox Sent-folder sync will not run automatically right now.</td>
+      </tr>
+      <tr>
+        <td>Sender mailbox credential</td>
+        <td><span class="tag missing">not configured</span></td>
+        <td>The sender mailbox account is configured, but IMAP password/access token is missing locally.</td>
+      </tr>
+      <tr>
+        <td><code>EMAIL_FORWARD_ENABLED</code></td>
+        <td><span class="tag done">true</span></td>
+        <td>Backend-side forwarding of archived JotForm emails is enabled in local config.</td>
+      </tr>
+      <tr>
+        <td><code>jotform_mail_sender</code></td>
+        <td>0 rows</td>
+        <td>No actual sender mailbox email has been synced into the database yet.</td>
+      </tr>
+      <tr>
+        <td><code>jf_email_archive</code></td>
+        <td>23 rows</td>
+        <td>JotForm email archive has data from JotForm system logs/emailq.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="note warn">
+    <strong>Important distinction:</strong> JotForm email archive sync and sender mailbox Sent-folder sync are different.
+    <code>jf_email_archive</code> stores emails from JotForm's enterprise email log.
+    <code>jotform_mail_sender</code> stores messages read directly from a mailbox through IMAP.
+    The code for the mailbox path exists, but it is not enabled or populated in the current local setup.
+  </div>
+
+  <h2>What Is Missing or Incomplete</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Gap</th>
+        <th>Priority</th>
+        <th>Required work</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Sender mailbox sync not active</td>
+        <td><span class="tag missing">High</span></td>
+        <td>Set <code>MAIL_SENDER_ENABLED=1</code>, configure IMAP app password or OAuth access token, run <code>npm run sync:mail-sender</code>, and confirm rows appear in <code>jotform_mail_sender</code>.</td>
+      </tr>
+      <tr>
+        <td>Sender mailbox frontend view</td>
+        <td><span class="tag partial">Medium</span></td>
+        <td>Backend admin API exists, but no clear frontend page is wired for viewing <code>/api/admin/mail-sender</code>. Add an admin UI or connect it to the All Emails section.</td>
+      </tr>
+      <tr>
+        <td>Versioned migrations</td>
+        <td><span class="tag partial">Medium</span></td>
+        <td>The project applies a large idempotent <code>schema.sql</code>. Production would be safer with ordered migration files and a migration history table.</td>
+      </tr>
+      <tr>
+        <td>Automated test coverage</td>
+        <td><span class="tag partial">Medium</span></td>
+        <td>Some tests exist, but major flows need coverage: poller mapping, JotForm action calls, email archive ingestion, allowlist upsert, IMAP sender sync, and role-gated routes.</td>
+      </tr>
+      <tr>
+        <td>Operational monitoring</td>
+        <td><span class="tag partial">Medium</span></td>
+        <td>Add dashboard/alerts for poller health, last successful sync per profile, JotForm API failures, IMAP failures, SMTP forwarding failures, and stale email archive windows.</td>
+      </tr>
+      <tr>
+        <td>Retry/queue layer for background jobs</td>
+        <td><span class="tag partial">Medium</span></td>
+        <td>Background tasks currently run inside the Node process. A queue with job history would make retries and failure visibility stronger.</td>
+      </tr>
+      <tr>
+        <td>Webhook production hardening</td>
+        <td><span class="tag partial">Medium</span></td>
+        <td>Webhook registration code exists, but production depends on correct <code>PUBLIC_BASE_URL</code>, JotForm secret setup, and validation in the deployed environment.</td>
+      </tr>
+      <tr>
+        <td>Secrets and environment runbook</td>
+        <td><span class="tag partial">Low</span></td>
+        <td>Document required values for JotForm API keys, Microsoft OAuth, SMTP, IMAP, poller, and deployment. Include how to rotate keys safely.</td>
+      </tr>
+      <tr>
+        <td>Data cleanup and retention rules</td>
+        <td><span class="tag planned">Low</span></td>
+        <td>Define retention for archived email bodies, forwarded copies, mailbox messages, raw API payloads, support messages, and activity logs.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Recommended Next Steps</h2>
+  <ol>
+    <li><strong>Finish sender mailbox sync operationally.</strong> Configure IMAP credentials, enable <code>MAIL_SENDER_ENABLED</code>, run the CLI sync, and verify <code>jotform_mail_sender</code> receives messages.</li>
+    <li><strong>Add or wire the sender-mail admin UI.</strong> Reuse the existing <code>/api/admin/mail-sender</code> API so admins can inspect actual Sent-folder messages from the browser.</li>
+    <li><strong>Add tests for the new allowlist flow.</strong> Cover recipient normalization, duplicate upsert behavior, and enrichment from <code>jf_users</code>.</li>
+    <li><strong>Add background sync health reporting.</strong> Store last success/failure timestamps and show them in Settings/Admin.</li>
+    <li><strong>Move from one large schema file to migration files.</strong> Keep <code>schema.sql</code> as a baseline, but use versioned migrations for future deploys.</li>
+  </ol>
+
+  <h2>Short Answer on Sender Mail</h2>
+  <p>
+    The project does have backend code to sync the sender mailbox into the database through IMAP.
+    However, in the current local setup it is not running because <code>MAIL_SENDER_ENABLED</code> is false and no IMAP password/access token is configured.
+    The local <code>jotform_mail_sender</code> table currently has 0 rows.
+  </p>
+</body>
+</html>

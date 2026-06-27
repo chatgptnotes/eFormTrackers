@@ -5,11 +5,20 @@ import {
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useAuth } from '../contexts/AuthContext';
+import { apiFetch } from '../lib/api';
 import {
   JotformKeyType,
   getJotformKeyTypeFor,
   setJotformKeyType,
 } from '../lib/jotformKey';
+
+interface ApiProfile {
+  id: string;
+  label: string;
+  scope: string;
+  default: boolean;
+  configured: boolean;
+}
 
 interface SyncSummary {
   totalUpserted: number;
@@ -26,10 +35,20 @@ export default function Settings() {
     getJotformKeyTypeFor(user?.email)
   );
   const [switching, setSwitching] = useState(false);
+  const [profiles, setProfiles] = useState<ApiProfile[]>([]);
 
   useEffect(() => {
     setKeyTypeState(getJotformKeyTypeFor(user?.email));
   }, [user?.email]);
+
+  useEffect(() => {
+    apiFetch<{ profiles: ApiProfile[] }>('/api/profiles')
+      .then(d => setProfiles(d.profiles || []))
+      .catch(() => setProfiles([]));
+  }, []);
+
+  // Which profile id is effectively active (explicit choice, else the default).
+  const activeProfileId = keyType || profiles.find(p => p.default)?.id || '';
 
   const handleKeyTypeChange = async (next: JotformKeyType) => {
     if (next === keyType) return;
@@ -122,7 +141,7 @@ export default function Settings() {
         <p className="text-sm text-gray-500 mt-1">Manage the JotForm API source and approval automation.</p>
       </motion.div>
 
-      {/* API Source switch (Testing ↔ Production) */}
+      {/* API profile picker — choose which configured JotForm API to use */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -134,9 +153,9 @@ export default function Settings() {
             <RefreshCw className={`w-5 h-5 text-emerald-400 ${switching ? 'animate-spin' : ''}`} />
           </div>
           <div className="flex-1">
-            <h3 className="text-sm font-semibold text-white">JotForm API Source</h3>
+            <h3 className="text-sm font-semibold text-white">JotForm API Profile</h3>
             <p className="text-xs text-gray-500">
-              Switch between the Testing sandbox key and the Production (GDMO) key.
+              Choose which configured JotForm API the dashboard reads from.
               {user?.email && (
                 <> Choice is saved for <span className="text-gray-400">{user.email}</span>.</>
               )}
@@ -144,47 +163,29 @@ export default function Settings() {
           </div>
         </div>
 
-        <div className="flex flex-col items-center gap-2">
-          <button
-            type="button"
-            onClick={() => handleKeyTypeChange(keyType === 'default' ? 'gdmo' : 'default')}
-            disabled={switching}
-            aria-label={`Switch to ${keyType === 'default' ? 'Production' : 'Testing'}`}
-            className="relative inline-flex items-center gap-0 rounded-full border border-navy-light/30 bg-navy-dark/60 p-1 disabled:opacity-50 transition-colors"
-          >
-            <span
-              className={`px-5 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-                keyType === 'default'
-                  ? 'bg-gold/10 text-gold'
-                  : 'text-gray-500 hover:text-gray-300'
-              }`}
+        {profiles.length === 0 ? (
+          <p className="text-xs text-gray-500">No API profiles configured. Add them in <code>backend/config/jotform-profiles.json</code>.</p>
+        ) : (
+          <div className="flex items-center gap-3">
+            <select
+              value={activeProfileId}
+              onChange={e => handleKeyTypeChange(e.target.value)}
+              disabled={switching}
+              className="flex-1 px-3 py-2 rounded-xl bg-navy-dark border border-navy-light/30 text-white text-sm focus:border-gold/50 focus:outline-none disabled:opacity-50"
             >
-              Testing
-            </span>
-            <span
-              className={`px-5 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-                keyType === 'gdmo'
-                  ? 'bg-gold/10 text-gold'
-                  : 'text-gray-500 hover:text-gray-300'
-              }`}
-            >
-              Production
-            </span>
-            {switching && (
-              <span className="absolute inset-0 flex items-center justify-center rounded-full bg-navy-dark/60">
-                <Loader2 className="w-4 h-4 text-gold animate-spin" />
-              </span>
-            )}
-          </button>
-
-          <p
-            className={`text-xs ${
-              keyType === 'gdmo' ? 'text-amber-400' : 'text-gray-500'
-            }`}
-          >
-            {keyType === 'gdmo' ? 'Live data' : 'Sandbox data'}
-          </p>
-        </div>
+              {profiles.map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.label} [{p.scope}]{p.default ? ' • default' : ''}{p.configured ? '' : ' • no key'}
+                </option>
+              ))}
+            </select>
+            {switching && <Loader2 className="w-4 h-4 text-gold animate-spin" />}
+          </div>
+        )}
+        <p className="text-xs text-gray-500">
+          Switching changes only what you see — each API's data is stored separately. To pull a
+          new API's data the first time, an admin runs <code>node scripts/sync-profile.js &lt;id&gt;</code>.
+        </p>
       </motion.div>
 
       {/* Connection — managed by the backend poller */}

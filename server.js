@@ -26,6 +26,7 @@ const logger = require('./backend/config/logger');
 const { initRealtime } = require('./backend/lib/realtime');
 const { createApp } = require('./backend/app');
 const { installProcessGuards } = require('./backend/lib/process-guards');
+const { startPoller } = require('./backend/lib/poller');
 
 installProcessGuards(logger);
 
@@ -43,4 +44,9 @@ initRealtime(io);
 const port = process.env.PORT || env.PORT || 3001;
 server.listen(port, () => {
   logger.info({ port, env: env.NODE_ENV }, '[JotFlow] Server listening (IIS entry)');
+  if (process.env.ENABLE_POLLER === '1') {
+    startPoller();
+  } else {
+    logger.warn('[JotFlow] Poller disabled (set ENABLE_POLLER=1 to enable). jf_forms table must exist.');
+  }
 });

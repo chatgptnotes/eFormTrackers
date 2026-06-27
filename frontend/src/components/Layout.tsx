@@ -6,7 +6,7 @@ import {
   Users, FileText, CreditCard, HelpCircle, Building2, BarChart3, Kanban,
   FolderOpen, Folder, ChevronRight, ChevronDown, LayoutGrid, Package,
   DollarSign, Monitor, Scale, Briefcase, Megaphone, ShieldCheck, PlusCircle,
-  ClipboardList, Layers, Sun, Moon, ExternalLink, CheckCircle2, Mail,
+  ClipboardList, Layers, Sun, Moon, ExternalLink, CheckCircle2, Mail, Inbox,
 } from 'lucide-react';
 import { RefreshConfig, SidebarCategory } from '../types';
 import { JFFormMeta } from '../services/formDiscovery';
@@ -15,6 +15,7 @@ import { useApp } from '../contexts/AppContext';
 import { SIDEBAR_CATEGORIES } from '../services/mockData';
 import NotificationBell from './NotificationBell';
 import UserDropdown from './UserDropdown';
+import { JOTFORM_LOGO_URL, JOTFORM_WORKSPACE_URL } from '../config/jotform';
 
 const SHOW_SUBMIT_REQUEST_BUTTON = false;
 const SHOW_DASHBOARD_TAB = false;
@@ -123,6 +124,10 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
     ? "Pending With"
     : location.pathname === '/app/my-emails'
     ? "My Workflow Emails"
+    : location.pathname === '/app/admin-emails'
+    ? "All Emails"
+    : location.pathname === '/app/admin-users'
+    ? "All Users"
     : TOOL_NAV.find(i => i.path === location.pathname)?.label || 'Dashboard';
 
   return (
@@ -135,7 +140,7 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
             <div className="flex items-center gap-3">
               {/* FlowAccel logo mark — click 5x within 3s to toggle All Assets visibility */}
               <div onClick={handleLogoClick} className="w-9 h-9 flex items-center justify-center flex-shrink-0 cursor-pointer select-none">
-                <img src="https://eforms.mediaoffice.ae/enterprise/logo.png" alt="Eform Tracker logo" width={36} height={36} loading="eager" className="w-full h-full object-contain" draggable={false} />
+                <img src={JOTFORM_LOGO_URL} alt="Eform Tracker logo" width={36} height={36} loading="eager" className="w-full h-full object-contain" draggable={false} />
               </div>
               <div>
                 <div className="flex items-baseline gap-1">
@@ -241,6 +246,38 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
                 <Mail className="w-4.5 h-4.5" />
                 <span className="text-sm font-medium">My Emails</span>
               </Link>
+
+              {/* All Emails (admin) — workspace-wide email archive */}
+              {(orgRole === 'super_admin' || orgRole === 'admin') && (
+                <Link
+                  to="/app/admin-emails"
+                  onClick={() => { setActiveSidebarCategory(null); setSidebarOpen(false); }}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl mb-1 transition-all duration-200 ${
+                    location.pathname === '/app/admin-emails'
+                      ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                      : 'text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <Inbox className="w-4.5 h-4.5" />
+                  <span className="text-sm font-medium">All Emails</span>
+                </Link>
+              )}
+
+              {/* All Users (admin) — JotForm directory for the active API */}
+              {(orgRole === 'super_admin' || orgRole === 'admin') && (
+                <Link
+                  to="/app/admin-users"
+                  onClick={() => { setActiveSidebarCategory(null); setSidebarOpen(false); }}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl mb-1 transition-all duration-200 ${
+                    location.pathname === '/app/admin-users'
+                      ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                      : 'text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <Users className="w-4.5 h-4.5" />
+                  <span className="text-sm font-medium">All Users</span>
+                </Link>
+              )}
 
               {/* Category items */}
               {SIDEBAR_CATEGORIES.filter(cat => (cat.type === 'all' ? showAllAssetsTab : cat.filter?.departments && cat.filter.departments.some(d => activeDepartments.includes(d)))).map(cat => {
@@ -437,7 +474,7 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
             </div>
             <div className="flex items-center gap-3">
               <a
-                href="https://eforms.mediaoffice.ae/workspace/team/gdmo-bettroi"
+                href={JOTFORM_WORKSPACE_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-700/30 hover:bg-slate-700/50 text-gray-400 hover:text-gold transition-all text-sm font-semibold"

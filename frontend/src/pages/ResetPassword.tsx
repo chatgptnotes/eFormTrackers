@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Lock, ArrowLeft, Loader2, CheckCircle, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 import { humanizeError } from '../lib/errors';
+import { JOTFORM_LOGO_URL } from '../config/jotform';
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams();
@@ -52,7 +53,7 @@ export default function ResetPassword() {
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center justify-center gap-2 mb-6">
             <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-sky-500 p-2 shadow-xl flex items-center justify-center">
-              <img src="https://eforms.mediaoffice.ae/enterprise/logo.png" alt="Logo" className="w-full h-full object-contain" />
+              <img src={JOTFORM_LOGO_URL} alt="Logo" className="w-full h-full object-contain" />
             </div>
             <span className="text-2xl font-black text-slate-900">Eform <span className="text-blue-600">Tracker</span></span>
           </Link>

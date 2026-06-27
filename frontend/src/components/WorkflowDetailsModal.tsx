@@ -18,6 +18,7 @@ interface Props {
   onTaskReject?: (submissionId: string, reason: string) => void;
   onFetchSignature?: (submissionId: string, level: number, taskId: string) => void;
   onOpenTaskLink?: (task: WorkflowTask) => void;
+  onCompleteTask?: (task: WorkflowTask) => void;
   onSetTaskRejecting?: (taskId: string | null) => void;
   onSetTaskRejectReason?: (reason: string) => void;
   onSetTaskConfirmReject?: (taskId: string | null) => void;
@@ -49,6 +50,7 @@ export default function WorkflowDetailsModal({
   onTaskReject,
   onFetchSignature,
   onOpenTaskLink,
+  onCompleteTask,
   onSetTaskRejecting,
   onSetTaskRejectReason,
   onSetTaskConfirmReject,
@@ -270,11 +272,10 @@ export default function WorkflowDetailsModal({
                           ) : isActive && task.type === 'workflow_assign_task' ? (
                             emailMatch ? (
                               <button
-                                onClick={() => onOpenTaskLink?.(task)}
-                                disabled={!task.accessLink}
+                                onClick={() => onCompleteTask?.(task)}
                                 className="px-3.5 py-1.5 rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200 disabled:opacity-50 text-xs font-semibold flex items-center gap-1.5 border border-amber-200 transition-colors cursor-pointer"
                               >
-                                <ClipboardList className="w-3.5 h-3.5" /> View Task
+                                <ClipboardList className="w-3.5 h-3.5" /> Complete Task
                               </button>
                             ) : (
                               <span className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-semibold flex items-center gap-1.5 border border-slate-200">
@@ -285,7 +286,6 @@ export default function WorkflowDetailsModal({
                             emailMatch ? (
                               <button
                                 onClick={() => onOpenTaskLink?.(task)}
-                                disabled={!task.accessLink}
                                 className="px-3.5 py-1.5 rounded-lg bg-cyan-100 text-cyan-700 hover:bg-cyan-200 disabled:opacity-50 text-xs font-semibold flex items-center gap-1.5 border border-cyan-200 transition-colors cursor-pointer"
                               >
                                 <FileEdit className="w-3.5 h-3.5" /> Complete Form

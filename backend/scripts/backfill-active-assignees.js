@@ -22,7 +22,7 @@ const { Pool } = require('pg');
 
 const envtxt = fs.readFileSync(path.join(__dirname, '..', '.env'), 'utf8');
 const getEnv = (k) => (envtxt.match(new RegExp('^' + k + '=(.*)$', 'm')) || [])[1]?.trim().replace(/^["']|["']$/g, '');
-const BASE = getEnv('JOTFORM_BASE') || 'https://eforms.mediaoffice.ae/API';
+const BASE = getEnv('JOTFORM_BASE') || 'https://bettroi.jotform.com/API';
 const KEY = getEnv('JOTFORM_API_KEY_GDMO');
 const pool = new Pool({ connectionString: getEnv('DATABASE_URL') });
 

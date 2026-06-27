@@ -161,9 +161,9 @@ export default function CompletedPage({ data }: Props) {
     return data.allSubmissions.filter(s =>
       s.currentApprovalLevel === 'completed' &&
       (!activeWorkflowId || s.formId === activeWorkflowId) &&
-      isSubmissionVisible(s, user?.email, user?.role)
+      isSubmissionVisible(s, user?.email)
     );
-  }, [data.allSubmissions, activeWorkflowId, user?.email, user?.role]);
+  }, [data.allSubmissions, activeWorkflowId, user?.email]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();

@@ -2,6 +2,7 @@ const pool = require('../db/pool');
 const { jotformFetch } = require('./jotform');
 const { pMapLimit } = require('./concurrency');
 const { getDefaultProfile } = require('./profiles');
+const { normalizeTaskLink } = require('./jotform-link');
 
 // JotForm's workflow API only exposes a task's /share/{token} accessLink to
 // the API key's OWN account — other assignees' links exist only in the emails
@@ -47,6 +48,8 @@ async function harvestFromInboxThread(submissionId, tasksByAssignee, profileId) 
       // assign-form tasks must use the /prefill/ link (lib/prefill.js); a
       // /share/ link opens the form without pre-filled data. Never let it win.
       if (String(task.type) === 'workflow_assign_form' && !link.includes('/prefill/')) continue;
+      const normalized = normalizeTaskLink(link, task);
+      const accessLink = normalized.normalizedUrl || link;
       const { rowCount } = await pool.query(
         `UPDATE jf_submissions
          SET workflow_tasks = (
@@ -58,9 +61,21 @@ async function harvestFromInboxThread(submissionId, tasksByAssignee, profileId) 
          ),
          approval_url = $3
          WHERE jotform_submission_id = $1 AND profile_id = $4`,
-        [submissionId, String(task.taskId), link, profileId]
+        [submissionId, String(task.taskId), accessLink, profileId]
       );
-      if (rowCount > 0) { task.accessLink = link; updated++; }
+      if (rowCount > 0) {
+        await pool.query(
+          `UPDATE email_logs
+              SET access_link = $3, updated_at = now()
+            WHERE submission_id = $1
+              AND task_id = $2
+              AND profile_id = $4
+              AND COALESCE(access_link, '') <> $3`,
+          [submissionId, String(task.taskId), accessLink, profileId],
+        );
+        task.accessLink = accessLink;
+        updated++;
+      }
     }
   } catch { /* non-fatal — retry next run */ }
   return updated;
@@ -124,6 +139,8 @@ async function harvestEmailLinks(opts = {}) {
       // assign-form tasks must use the /prefill/ link (lib/prefill.js); a
       // /share/ link opens the form without pre-filled data. Never let it win.
       if (String(task.type) === 'workflow_assign_form' && !link.includes('/prefill/')) return;
+      const normalized = normalizeTaskLink(link, task);
+      const accessLink = normalized.normalizedUrl || link;
 
       const { rowCount } = await pool.query(
         `UPDATE jf_submissions
@@ -134,10 +151,19 @@ async function harvestEmailLinks(opts = {}) {
          ),
          approval_url = $3
          WHERE jotform_submission_id = $1 AND profile_id = $4`,
-        [submissionId, String(task.taskId), link, profileId]
+        [submissionId, String(task.taskId), accessLink, profileId]
       );
       if (rowCount > 0) {
-        task.accessLink = link; // keep in-memory copy current for this run
+        await pool.query(
+          `UPDATE email_logs
+              SET access_link = $3, updated_at = now()
+            WHERE submission_id = $1
+              AND task_id = $2
+              AND profile_id = $4
+              AND COALESCE(access_link, '') <> $3`,
+          [submissionId, String(task.taskId), accessLink, profileId],
+        );
+        task.accessLink = accessLink; // keep in-memory copy current for this run
         updated++;
       }
     } catch {

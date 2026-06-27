@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, CheckCircle2, XCircle, Clock, Eye, Lock, ClipboardList, FileEdit, Loader2 } from 'lucide-react';
+import { X, CheckCircle2, XCircle, Clock, Eye, Lock, ClipboardList, FileEdit, Loader2, Copy } from 'lucide-react';
 import { Submission, WorkflowTask } from '../types';
 
 interface Props {
@@ -21,6 +21,8 @@ interface Props {
   onTaskReject?: (submissionId: string, reason: string) => void;
   onFetchSignature?: (submissionId: string, level: number, taskId: string) => void;
   onOpenTaskLink?: (task: WorkflowTask) => void;
+  onCompleteTask?: (task: WorkflowTask) => void;
+  onCopyTaskLink?: (task: WorkflowTask) => void;
   onSetTaskRejecting?: (taskId: string | null) => void;
   onSetTaskRejectReason?: (reason: string) => void;
   onSetTaskConfirmReject?: (taskId: string | null) => void;
@@ -30,6 +32,27 @@ const LevelBadge = ({ level }: { level?: number | string }) => {
   if (!level) return <span className="text-xs text-gray-500">—</span>;
   return <span className="px-2 py-1 rounded text-xs font-medium bg-blue-500/15 text-blue-400">L{level}</span>;
 };
+
+function usernameFromEmail(email?: string) {
+  const prefix = String(email || '').split('@')[0].trim();
+  return prefix || '—';
+}
+
+function taskUserDetails(task: WorkflowTask, submission: Submission | null, isActive: boolean, isCompleted: boolean) {
+  const mailId = task.assigneeEmail
+    || (isActive ? submission?.pendingApproverEmail : '')
+    || (isCompleted ? task.submittedByEmail : '')
+    || '';
+  const username = task.assigneeName
+    || (isActive ? submission?.pendingApproverName : '')
+    || (isCompleted ? task.submittedBy : '')
+    || usernameFromEmail(mailId);
+
+  return {
+    username: username || '—',
+    mailId: mailId || '—',
+  };
+}
 
 export default function WorkflowDetailsSidebar({
   isOpen,
@@ -49,6 +72,8 @@ export default function WorkflowDetailsSidebar({
   onTaskReject,
   onFetchSignature,
   onOpenTaskLink,
+  onCompleteTask,
+  onCopyTaskLink,
   onSetTaskRejecting,
   onSetTaskRejectReason,
   onSetTaskConfirmReject,
@@ -152,6 +177,8 @@ export default function WorkflowDetailsSidebar({
                       const emailMatch = user?.email && task.assigneeEmail?.toLowerCase() === user.email.toLowerCase();
                       const typeBadge = task.type === 'workflow_approval' ? 'Approval' : task.type === 'workflow_assign_task' ? 'Task' : task.type === 'workflow_assign_form' ? 'Form' : task.type;
 
+                      const details = taskUserDetails(task, submission || null, isActive, isCompleted);
+
                       // Status badge colors (clean, light style)
                       const statusBadge = isCompleted ? 'bg-emerald-100 text-emerald-700' : isActive ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600';
                       const typeBadgeStyle = task.type === 'workflow_approval' ? 'bg-indigo-100 text-indigo-700' : task.type === 'workflow_assign_form' ? 'bg-cyan-100 text-cyan-700' : 'bg-amber-100 text-amber-700';
@@ -179,15 +206,16 @@ export default function WorkflowDetailsSidebar({
                                 </span>
                               </div>
 
-                              {/* Assignee: name→email fallback chain per status */}
-                              {(task.assigneeName || task.assigneeEmail || (isActive && submission?.pendingApproverName) || (isCompleted && (task.submittedBy || task.submittedByEmail))) && (
-                                <p className="text-xs text-slate-600 mb-2">
-                                  {task.assigneeName || (isActive ? submission?.pendingApproverName : task.submittedBy) || (isCompleted ? task.submittedByEmail : task.assigneeEmail)}
-                                  {(task.assigneeName || (isActive ? submission?.pendingApproverName : task.submittedBy)) && (task.assigneeEmail || (isActive && submission?.pendingApproverEmail) || (isCompleted && task.submittedByEmail)) && (
-                                    <span className="text-slate-500"> • {task.assigneeEmail || (isActive ? submission?.pendingApproverEmail : task.submittedByEmail)}</span>
-                                  )}
-                                </p>
-                              )}
+                              <div className="mb-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+                                <div className="flex items-start justify-between gap-3">
+                                  <span className="font-semibold text-slate-500">Username</span>
+                                  <span className="text-right font-semibold text-slate-800 break-all">{details.username}</span>
+                                </div>
+                                <div className="mt-1 flex items-start justify-between gap-3">
+                                  <span className="font-semibold text-slate-500">Mail ID</span>
+                                  <span className="text-right font-mono text-slate-700 break-all">{details.mailId}</span>
+                                </div>
+                              </div>
 
                               {/* Type Badge */}
                               <div className="flex items-center gap-2 mb-3">
@@ -250,18 +278,27 @@ export default function WorkflowDetailsSidebar({
                                     </span>
                                   )
                                 ) : isActive && task.type === 'workflow_assign_task' ? (
-                                  emailMatch ? (
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    {emailMatch ? (
+                                      <button
+                                        onClick={() => onCompleteTask?.(task)}
+                                        className="text-[11px] px-3 py-1.5 rounded-md bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors cursor-pointer font-medium"
+                                      >
+                                        <ClipboardList className="w-3.5 h-3.5 inline mr-1" /> Complete Task
+                                      </button>
+                                    ) : (
+                                      <span className="text-[11px] px-3 py-1.5 rounded-md bg-slate-100 text-slate-600 font-medium flex items-center gap-1">
+                                        <Lock className="w-3.5 h-3.5" /> Not Assigned
+                                      </span>
+                                    )}
                                     <button
-                                      onClick={() => onOpenTaskLink?.(task)}
-                                      className="text-[11px] px-3 py-1.5 rounded-md bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors cursor-pointer font-medium"
+                                      onClick={() => onCopyTaskLink?.(task)}
+                                      title="Copy magic link for assignee"
+                                      className="text-[11px] px-2.5 py-1.5 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer font-medium flex items-center gap-1"
                                     >
-                                      <ClipboardList className="w-3.5 h-3.5 inline mr-1" /> Open Task
+                                      <Copy className="w-3 h-3" /> Copy Link
                                     </button>
-                                  ) : (
-                                    <span className="text-[11px] px-3 py-1.5 rounded-md bg-slate-100 text-slate-600 font-medium flex items-center gap-1">
-                                      <Lock className="w-3.5 h-3.5" /> Not Assigned
-                                    </span>
-                                  )
+                                  </div>
                                 ) : isActive && task.type === 'workflow_assign_form' ? (
                                   emailMatch ? (
                                     <button
@@ -294,12 +331,13 @@ export default function WorkflowDetailsSidebar({
                   <div>
                     <h3 className="text-sm font-bold text-white mb-3 uppercase tracking-wide">Child Forms in Workflow</h3>
                     <div className="space-y-3">
-                      {childTasks.map((task, idx) => {
-                        const isCompleted = task.status === 'COMPLETED';
-                        const typeBadge = task.type === 'workflow_assign_task' ? 'Task' : 'Form';
-                        const emailMatch = user?.email && task.assigneeEmail?.toLowerCase() === user.email.toLowerCase();
-                        return (
-                          <div key={task.taskId || idx} className="bg-navy-dark/50 border border-navy-light/20 rounded-lg p-4">
+	                      {childTasks.map((task, idx) => {
+	                        const isCompleted = task.status === 'COMPLETED';
+	                        const typeBadge = task.type === 'workflow_assign_task' ? 'Task' : 'Form';
+	                        const emailMatch = user?.email && task.assigneeEmail?.toLowerCase() === user.email.toLowerCase();
+	                        const details = taskUserDetails(task, submission || null, task.status === 'ACTIVE', isCompleted);
+	                        return (
+	                          <div key={task.taskId || idx} className="bg-navy-dark/50 border border-navy-light/20 rounded-lg p-4">
                             <div className="space-y-2 text-sm">
                               <div className="flex justify-between items-start gap-2 pb-2 border-b border-navy-light/10">
                                 <div>
@@ -308,17 +346,15 @@ export default function WorkflowDetailsSidebar({
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium whitespace-nowrap ${typeBadge === 'Task' ? 'bg-orange-500/15 text-orange-400' : 'bg-blue-500/15 text-blue-400'}`}>{typeBadge}</span>
                               </div>
 
-                              <div className="space-y-1 text-xs">
-                                <div className="flex justify-between">
-                                  <span className="text-gray-500">Assigned To:</span>
-                                  <span className="text-gray-300">{task.assigneeName || '—'}</span>
-                                </div>
-                                {task.assigneeEmail && (
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-500">Email:</span>
-                                    <span className="text-gray-300 text-right">{task.assigneeEmail}</span>
-                                  </div>
-                                )}
+	                              <div className="space-y-1 text-xs">
+	                                <div className="flex justify-between">
+	                                  <span className="text-gray-500">Username:</span>
+	                                  <span className="text-gray-300 text-right break-all">{details.username}</span>
+	                                </div>
+	                                <div className="flex justify-between gap-4">
+	                                  <span className="text-gray-500">Mail ID:</span>
+	                                  <span className="text-gray-300 text-right break-all">{details.mailId}</span>
+	                                </div>
                                 <div className="flex justify-between">
                                   <span className="text-gray-500">Level:</span>
                                   <LevelBadge level={task.level} />

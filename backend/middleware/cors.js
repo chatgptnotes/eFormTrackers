@@ -8,5 +8,5 @@ module.exports = cors({
   origin: originValue,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-jotform-key-type'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-jotform-key-type', 'x-jotform-profile-id'],
 });

@@ -80,19 +80,23 @@ router.get('/workflow-tasks', async (req, res, next) => {
 // ── POST /api/workflow-action ──
 router.post('/workflow-action', validate(workflowActionBodySchema), async (req, res, next) => {
   try {
-    const keyType = 'default';
+    let keyType = readKeyType(req);
     if (!resolveApiKey(keyType)) return res.status(500).json({ error: `JotForm API key for "${keyType}" not set` });
 
-    const { submissionId, action, comment, signature } = req.body;
+    const { submissionId, taskId: requestedTaskId, action, comment, signature } = req.body;
 
     // Step 1: Get workflowInstanceID — read from DB first to avoid a JotForm
     // submission/{id} call that 401s on the Enterprise endpoint.
     const { rows: subRows } = await pool.query(
       `SELECT form_id,
+              profile_id,
               COALESCE(raw_data->>'workflowInstanceID', raw_data->>'workflow_instance_id') AS wid
        FROM jf_submissions WHERE jotform_submission_id = $1`,
       [submissionId]
     );
+    if (subRows[0]?.profile_id && resolveApiKey(subRows[0].profile_id)) {
+      keyType = subRows[0].profile_id;
+    }
     let instanceId = subRows[0]?.wid || null;
     let formIdForHistory = subRows[0]?.form_id || '';
 
@@ -122,10 +126,39 @@ router.post('/workflow-action', validate(workflowActionBodySchema), async (req, 
     const myEmail = String(req.session.email || '').toLowerCase();
     const activeTasks = taskList.filter(t => t.status === 'ACTIVE');
     if (activeTasks.length === 0) return res.status(400).json({ error: 'No active task — workflow may be completed' });
-    const activeTask = activeTasks.find(t => String(extractTask(t).assigneeEmail).toLowerCase() === myEmail);
+    let activeTask = null;
 
-    // Authorize: only an assigned approver for an active step may act. No role
-    // override — authorization is purely per-workflow (JotForm-derived).
+    if (requestedTaskId) {
+      const requestedTask = activeTasks.find(t => String(t.id || '') === String(requestedTaskId));
+      if (!requestedTask) return res.status(400).json({ error: 'Requested task is not active' });
+      const requestedAssignee = String(extractTask(requestedTask).assigneeEmail).toLowerCase();
+      if (requestedAssignee && requestedAssignee !== myEmail) {
+        return res.status(403).json({ error: 'You are not the assigned user for this task' });
+      }
+      activeTask = requestedTask;
+    }
+
+    if (!activeTask) {
+      activeTask = activeTasks.find(t => String(extractTask(t).assigneeEmail).toLowerCase() === myEmail);
+    }
+
+    // DB fallback: JotForm API may return different field layout than what the
+    // poller stores — use our authoritative workflow_tasks JSONB as a tie-breaker.
+    if (!activeTask && myEmail) {
+      const { rows: dbTasks } = await pool.query(
+        `SELECT t->>'taskId' as task_id
+         FROM jf_submissions, jsonb_array_elements(workflow_tasks) t
+         WHERE jotform_submission_id = $1
+           AND t->>'status' = 'ACTIVE'
+           AND lower(t->>'assigneeEmail') = $2`,
+        [submissionId, myEmail]
+      );
+      if (dbTasks.length > 0) {
+        const dbTaskId = String(dbTasks[0].task_id);
+        activeTask = activeTasks.find(t => String(t.id) === dbTaskId) || activeTasks[0];
+      }
+    }
+
     if (!activeTask) {
       return res.status(403).json({ error: 'You are not the assigned approver for this step' });
     }
@@ -152,7 +185,8 @@ router.post('/workflow-action', validate(workflowActionBodySchema), async (req, 
     }
 
     // Step 5: Complete the task
-    const body = { outcomeID };
+    const body = {};
+    if (outcomes.length > 0) body.outcomeID = outcomeID;
     if (comment) body.comment = comment;
     if (signature) body.signature = signature;
 

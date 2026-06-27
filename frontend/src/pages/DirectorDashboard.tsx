@@ -27,6 +27,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { apiFetch } from '../lib/api';
 import { humanizeError } from '../lib/errors';
 import { exportToExcel } from '../services/exportService';
+import { getUsableTaskAccessLink } from '../lib/jotformLinks';
+import { JOTFORM_HOST, jotformInboxUrl } from '../config/jotform';
 
 interface Props {
   data: ReturnType<typeof useSubmissions>;
@@ -259,12 +261,12 @@ export default function DirectorDashboard({ data }: Props) {
     }
   };
 
-  const handleTaskComplete = async (submissionId: string) => {
+  const handleTaskComplete = async (submissionId: string, taskId?: string) => {
     setTaskActionLoading(submissionId);
     try {
       await apiFetch('/api/workflow-action', {
         method: 'POST',
-        body: JSON.stringify({ submissionId, action: 'complete' }),
+        body: JSON.stringify({ submissionId, taskId, action: 'complete' }),
       });
       invalidateWorkflowCache(submissionId);
       await refreshExpandedTasks(submissionId);
@@ -307,7 +309,11 @@ export default function DirectorDashboard({ data }: Props) {
 
     if (sub) {
       try {
-        const json = await apiFetch<{ approvalUrl?: string }>(`/api/email-url?formId=${sub.formId}&submissionId=${sub.id}`, { throwOnError: false });
+        const taskParam = task.taskId ? `&taskId=${encodeURIComponent(task.taskId)}` : '';
+        const json = await apiFetch<{ approvalUrl?: string }>(
+          `/api/email-url?formId=${encodeURIComponent(sub.formId)}&submissionId=${encodeURIComponent(sub.id)}${taskParam}`,
+          { throwOnError: false },
+        );
         if (json?.approvalUrl) {
           window.open(json.approvalUrl, '_blank', 'noopener,noreferrer');
           return;
@@ -318,10 +324,11 @@ export default function DirectorDashboard({ data }: Props) {
     // Last-resort fallback for cases where we have no submission context.
     // These URLs will 404 without an access token but at least preserve
     // the previous behavior rather than failing silently.
-    if (task.accessLink) {
-      window.open(task.accessLink, '_blank', 'noopener,noreferrer');
+    const usableLink = getUsableTaskAccessLink(task);
+    if (usableLink) {
+      window.open(usableLink, '_blank', 'noopener,noreferrer');
     } else if (task.internalFormID && task.taskId) {
-      const host = 'https://eforms.mediaoffice.ae';
+      const host = JOTFORM_HOST;
       const qp = task.type === 'workflow_assign_form' ? 'workflowAssignFormTask'
         : task.type === 'workflow_assign_task' ? 'workflowAssignTask'
         : 'workflowApprovalTask';
@@ -335,7 +342,12 @@ export default function DirectorDashboard({ data }: Props) {
     setTaskUrlLoading(sub.id);
     try {
       // Use email-url endpoint which builds the correct workflow-aware URL with taskID
-      const data = await apiFetch<{ approvalUrl?: string }>(`/api/email-url?formId=${sub.formId}&submissionId=${sub.id}`, { throwOnError: false });
+      const activeTask = sub.workflowTasks?.find(t => t.status === 'ACTIVE' && t.type !== 'workflow_assign_form');
+      const taskParam = activeTask?.taskId ? `&taskId=${encodeURIComponent(activeTask.taskId)}` : '';
+      const data = await apiFetch<{ approvalUrl?: string }>(
+        `/api/email-url?formId=${encodeURIComponent(sub.formId)}&submissionId=${encodeURIComponent(sub.id)}${taskParam}`,
+        { throwOnError: false },
+      );
       const url = data.approvalUrl || sub.approvalUrl || sub.taskUrl;
       if (url) window.open(url, '_blank', 'noopener,noreferrer');
     } catch {
@@ -349,7 +361,12 @@ export default function DirectorDashboard({ data }: Props) {
     setFormUrlLoading(sub.id);
     try {
       // Use email-url endpoint which builds the correct workflow-aware URL with taskID
-      const data = await apiFetch<{ approvalUrl?: string }>(`/api/email-url?formId=${sub.formId}&submissionId=${sub.id}`, { throwOnError: false });
+      const activeTask = sub.workflowTasks?.find(t => t.status === 'ACTIVE' && t.type === 'workflow_assign_form');
+      const taskParam = activeTask?.taskId ? `&taskId=${encodeURIComponent(activeTask.taskId)}` : '';
+      const data = await apiFetch<{ approvalUrl?: string }>(
+        `/api/email-url?formId=${encodeURIComponent(sub.formId)}&submissionId=${encodeURIComponent(sub.id)}${taskParam}`,
+        { throwOnError: false },
+      );
       const url = data.approvalUrl || sub.approvalUrl || sub.formUrl || sub.editLink;
       if (url) window.open(url, '_blank', 'noopener,noreferrer');
     } catch {
@@ -995,7 +1012,7 @@ export default function DirectorDashboard({ data }: Props) {
                         </button> */}
                         <div>
                           <a
-                            href={`https://eforms.mediaoffice.ae/inbox/${sub.formId}/${sub.id}`}
+                            href={jotformInboxUrl(sub.formId, sub.id)}
                             target="_blank"
                             rel="noopener noreferrer"
                             onClick={(e) => e.stopPropagation()}
@@ -1299,9 +1316,7 @@ export default function DirectorDashboard({ data }: Props) {
                                           emailMatch ? (
                                             <button
                                               onClick={() => openTaskLink(task)}
-                                              disabled={!task.accessLink}
                                               className="px-2.5 py-1 rounded-md bg-gold/20 text-gold hover:bg-gold/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1 transition-colors"
-                                              title={!task.accessLink ? 'Link unavailable' : ''}
                                             >
                                               <ClipboardList className="w-3 h-3" /> View Task
                                             </button>
@@ -1314,9 +1329,7 @@ export default function DirectorDashboard({ data }: Props) {
                                           emailMatch ? (
                                             <button
                                               onClick={() => openTaskLink(task)}
-                                              disabled={!task.accessLink}
                                               className="px-2.5 py-1 rounded-md bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1 transition-colors"
-                                              title={!task.accessLink ? 'Link unavailable' : ''}
                                             >
                                               <FileEdit className="w-3 h-3" /> Complete Form
                                             </button>
@@ -1413,9 +1426,9 @@ export default function DirectorDashboard({ data }: Props) {
                                             </span>
                                           </td>
                                           <td className="px-3 py-2 text-center">
-                                            {isActive && emailMatch && task.accessLink ? (
+                                            {isActive && emailMatch && getUsableTaskAccessLink(task) ? (
                                               <a
-                                                href={task.accessLink}
+                                                href={getUsableTaskAccessLink(task)}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="text-xs text-gold hover:underline inline-flex items-center gap-1"
@@ -1513,7 +1526,7 @@ export default function DirectorDashboard({ data }: Props) {
                   {/* Title */}
                   <div>
                     <a
-                      href={`https://eforms.mediaoffice.ae/inbox/${sub.formId}/${sub.id}`}
+                      href={jotformInboxUrl(sub.formId, sub.id)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-sm text-white hover:text-gold hover:underline inline-flex items-center gap-1 group"
@@ -1727,6 +1740,7 @@ export default function DirectorDashboard({ data }: Props) {
             onTaskReject={(submissionId, reason) => handleTaskReject(submissionId, reason)}
             onFetchSignature={fetchAndShowSignature}
             onOpenTaskLink={openTaskLink}
+            onCompleteTask={(task) => { if (workflowModalSubmission) handleTaskComplete(workflowModalSubmission.id, task.taskId); }}
             onSetTaskRejecting={setTaskRejectingId}
             onSetTaskRejectReason={setTaskRejectReason}
             onSetTaskConfirmReject={setTaskConfirmRejectId}
@@ -1751,6 +1765,7 @@ export default function DirectorDashboard({ data }: Props) {
         onTaskReject={(submissionId, reason) => { if (workflowSidebarSubmission) { setRejectingId(workflowSidebarSubmission.id); openModal(workflowSidebarSubmission); } }}
         onFetchSignature={fetchAndShowSignature}
         onOpenTaskLink={openTaskLink}
+        onCompleteTask={(task) => { if (workflowSidebarSubmission) handleTaskComplete(workflowSidebarSubmission.id, task.taskId); }}
         onSetTaskRejecting={setTaskRejectingId}
         onSetTaskRejectReason={setTaskRejectReason}
         onSetTaskConfirmReject={setTaskConfirmRejectId}

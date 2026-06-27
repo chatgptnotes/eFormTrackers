@@ -3,12 +3,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Clock, Search, User, ChevronLeft, ChevronRight, Hourglass } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
-import { getMyWorkflowRole } from '../config/currentUser';
+import { getMyWorkflowRole, isSubmissionVisible } from '../config/currentUser';
 import { Submission, WorkflowTask } from '../types';
 import { SkeletonSubmissionCard } from '../components/Skeleton';
 import WorkflowDetailsSidebar from '../components/WorkflowDetailsSidebar';
 import SubmissionModal from '../components/SubmissionModal';
 import { apiFetch } from '../lib/api';
+import { getUsableTaskAccessLink } from '../lib/jotformLinks';
 
 interface Props {
   data: ReturnType<typeof import('../hooks/useSubmissions').useSubmissions>;
@@ -17,22 +18,6 @@ interface Props {
 function formatDate(iso: string) {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
-/**
- * True when the logged-in user is involved in this workflow in any capacity —
- * they submitted it, acted on a past step (appears in approvalHistory), or are
- * assigned a step (a workflow task, including a future one they haven't reached
- * yet). Mirrors the participation half of isSubmissionVisible without the
- * admin "see everything" bypass, so an admin only sees their own involvement.
- */
-function isInvolved(s: Submission, me: string): boolean {
-  return (
-    s.submittedBy.email?.toLowerCase() === me ||
-    (s.approvalHistory?.some(a => a.approverEmail?.toLowerCase() === me) ?? false) ||
-    (s.workflowTasks?.some(t => t.assigneeEmail?.toLowerCase() === me) ?? false) ||
-    (s.workflowTasks?.some(t => t.submittedByEmail?.toLowerCase() === me) ?? false)
-  );
 }
 
 interface CardProps {
@@ -141,8 +126,9 @@ export default function PendingWithPage({ data }: Props) {
     let reason = '';
     if (sub) {
       try {
+        const taskParam = task.taskId ? `&taskId=${encodeURIComponent(task.taskId)}` : '';
         const json = await apiFetch<{ approvalUrl?: string | null; reason?: string; error?: string }>(
-          `/api/email-url?formId=${sub.formId}&submissionId=${sub.id}`,
+          `/api/email-url?formId=${encodeURIComponent(sub.formId)}&submissionId=${encodeURIComponent(sub.id)}${taskParam}`,
           { throwOnError: false },
         );
         if (json?.approvalUrl) url = json.approvalUrl;
@@ -151,7 +137,7 @@ export default function PendingWithPage({ data }: Props) {
         reason = (e as Error)?.message || String(e);
       }
     }
-    if (!url && task.accessLink) url = task.accessLink;
+    if (!url) url = getUsableTaskAccessLink(task);
 
     if (!url) {
       if (pop && !pop.closed) pop.close();
@@ -174,19 +160,41 @@ export default function PendingWithPage({ data }: Props) {
     }
   }, [sidebarSubmission]);
 
-  // Workflows still in flight that involve me — whether they're pending with me
-  // (assigned to me now) or pending with someone else after I submitted/acted on
-  // them. Pending-with-me is matched directly so rows whose workflow_tasks aren't
-  // flattened still surface when I'm the current approver.
+  const completeTaskFromSidebar = useCallback(async (task: WorkflowTask) => {
+    const sub = sidebarSubmission;
+    if (!sub) return;
+    const taskId = task.taskId;
+    if (!taskId) {
+      alert('Could not find the active JotForm task ID for this submission.');
+      return;
+    }
+    try {
+      await apiFetch('/api/workflow-action', {
+        method: 'POST',
+        body: JSON.stringify({ submissionId: sub.id, taskId, action: 'complete' }),
+      });
+      setWorkflowCache(prev => {
+        const next = new Map(prev);
+        next.delete(sub.id);
+        return next;
+      });
+      setSidebarSubmission(null);
+      setExpandedTasks([]);
+      data.refresh?.({ force: true });
+      data.scheduleRefreshAfterAction?.();
+    } catch (e: unknown) {
+      alert(`Complete failed: ${(e as { message?: string })?.message || 'unknown error'}`);
+    }
+  }, [sidebarSubmission, data]);
+
+  // Workflows still in flight that involve the logged-in email. This page is a
+  // personal queue: admins do not get an all-workflows bypass here.
   const pendingWithSubmissions = useMemo(() => {
-    const me = user?.email?.toLowerCase();
-    if (!me) return [];
     return data.allSubmissions.filter(s =>
       s.currentApprovalLevel !== 'completed' &&
       s.currentApprovalLevel !== 'rejected' &&
-      !!s.pendingApproverEmail &&
       (!activeWorkflowId || s.formId === activeWorkflowId) &&
-      (isInvolved(s, me) || s.pendingApproverEmail.toLowerCase() === me)
+      isSubmissionVisible(s, user?.email)
     );
   }, [data.allSubmissions, activeWorkflowId, user?.email]);
 
@@ -320,6 +328,7 @@ export default function PendingWithPage({ data }: Props) {
         onTaskApprove={openApproveModal}
         onSetTaskRejecting={openApproveModal}
         onOpenTaskLink={openTaskLink}
+        onCompleteTask={completeTaskFromSidebar}
       />
 
       <AnimatePresence>

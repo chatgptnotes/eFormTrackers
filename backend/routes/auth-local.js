@@ -173,6 +173,9 @@ router.get('/session', async (req, res, next) => {
     }
 
     const user = rows[0];
+    req.session.email = user.email;
+    req.session.role = user.role || 'viewer';
+    req.session.fullName = user.full_name;
     res.json({
       user: {
         id: user.id,

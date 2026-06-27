@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Loader2, Search, AlertCircle, CheckCircle2, Clock, Zap, ExternalLink, User, Calendar,
   FileText, Briefcase, Download, ArrowUpDown, LayoutGrid, List, AlignJustify, Columns,
-  PanelRight, CalendarDays, ChevronLeft, ChevronDown, Building2, X, Filter,
+  PanelRight, CalendarDays, ChevronLeft, ChevronDown, Building2, X, Filter, CheckSquare,
 } from 'lucide-react';
 import SubmissionModal from '../components/SubmissionModal';
 import WorkflowDetailsModal from '../components/WorkflowDetailsModal';
@@ -15,6 +15,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import { exportToExcel } from '../services/exportService';
 import { apiFetch } from '../lib/api';
+import { getUsableTaskAccessLink } from '../lib/jotformLinks';
 
 interface Props {
   data: ReturnType<typeof import('../hooks/useSubmissions').useSubmissions>;
@@ -84,6 +85,7 @@ interface SubmissionCardProps {
   onViewDetails: (submission: Submission) => void;
   onOpenModal: (submission: Submission) => void;
   onOpenTask: (submission: Submission) => void;
+  onCompleteTask: (submission: Submission) => void;
 }
 
 interface StatCardProps {
@@ -121,7 +123,7 @@ const StatCard = memo(function StatCard({ label, value, trend, color, idx }: Sta
   );
 });
 
-const SubmissionCard = memo(function SubmissionCard({ submission, idx, user, onViewDetails, onOpenModal, onOpenTask }: SubmissionCardProps) {
+const SubmissionCard = memo(function SubmissionCard({ submission, idx, user, onViewDetails, onOpenModal, onOpenTask, onCompleteTask }: SubmissionCardProps) {
   const status = getSubmissionStatus(submission);
   const sc = statusConfig[status];
   const StatusIcon = sc.icon;
@@ -180,7 +182,7 @@ const SubmissionCard = memo(function SubmissionCard({ submission, idx, user, onV
               return <motion.button whileHover={{ scale: 1.02 }} onClick={(e) => { e.stopPropagation(); onOpenTask(submission); }} className={btnClass}><FileText className="w-4 h-4" /><span>Fill Form</span></motion.button>;
             }
             if (myAction === 'task') {
-              return <motion.button whileHover={{ scale: 1.02 }} onClick={(e) => { e.stopPropagation(); onOpenTask(submission); }} className={btnClass}><ExternalLink className="w-4 h-4" /><span>Open Task</span></motion.button>;
+              return <motion.button whileHover={{ scale: 1.02 }} onClick={(e) => { e.stopPropagation(); onCompleteTask(submission); }} className={btnClass}><CheckSquare className="w-4 h-4" /><span>Complete Task</span></motion.button>;
             }
             return <motion.button whileHover={{ x: 4 }} onClick={(e) => { e.stopPropagation(); onOpenModal(submission); }} className={`${btnClass} group/btn`}><span>View Details</span><span className="group-hover/btn:translate-x-1 transition-transform">→</span></motion.button>;
           })()}
@@ -195,13 +197,15 @@ export default function ModernDashboard({ data }: Props) {
   const { user } = useAuth();
   const { activeWorkflowId } = useApp();
 
-  // Personal action queue (no role bypass, same for every user): ONLY submissions
-  // awaiting MY action right now — the current pending approver or an ACTIVE task
-  // (incl. parallel-approval steps). Completed/rejected workflows do NOT appear
-  // here; they live on the dedicated Completed page. Drives stat cards + views.
+  // Personal action queue only: even admins see only tasks/forms assigned to
+  // the logged-in email here. Oversight stays in the director/admin views.
   const allSubmissions = useMemo(
     () => rawSubmissions.filter(s => isAwaitingMyAction(s, user?.email)),
     [rawSubmissions, user?.email],
+  );
+  const pendingSubmissions = useMemo(
+    () => allSubmissions.filter(s => getSubmissionStatus(s) === 'pending'),
+    [allSubmissions],
   );
 
   const [isPending, startTransition] = useTransition();
@@ -233,12 +237,12 @@ export default function ModernDashboard({ data }: Props) {
   const [filterSubmittedBy, setFilterSubmittedBy] = useState('');
 
   const uniqueDepartments = useMemo(
-    () => Array.from(new Set(allSubmissions.map(s => s.submittedBy.department).filter(Boolean) as string[])).sort(),
-    [allSubmissions],
+    () => Array.from(new Set(pendingSubmissions.map(s => s.submittedBy.department).filter(Boolean) as string[])).sort(),
+    [pendingSubmissions],
   );
   const uniqueSubmitters = useMemo(
-    () => Array.from(new Set(allSubmissions.map(s => s.submittedBy.name).filter(Boolean) as string[])).sort(),
-    [allSubmissions],
+    () => Array.from(new Set(pendingSubmissions.map(s => s.submittedBy.name).filter(Boolean) as string[])).sort(),
+    [pendingSubmissions],
   );
   const activeFilterCount = [filterDepartment, filterDateFrom, filterDateTo, filterSubmittedBy].filter(Boolean).length;
   const clearAllFilters = () => {
@@ -253,7 +257,7 @@ export default function ModernDashboard({ data }: Props) {
   const filteredAndSortedSubmissions = useMemo(() => {
     const dateFromTs = filterDateFrom ? new Date(filterDateFrom).getTime() : null;
     const dateToTs = filterDateTo ? new Date(filterDateTo).getTime() + 24 * 60 * 60 * 1000 - 1 : null;
-    let filtered = allSubmissions
+    let filtered = pendingSubmissions
       .filter(sub => !activeWorkflowId || sub.formId === activeWorkflowId)
       .filter(sub => !sub.formTitle.includes('Workflow Form'))
       .filter(sub => {
@@ -273,7 +277,7 @@ export default function ModernDashboard({ data }: Props) {
     else if (sortBy === 'oldest') filtered.sort((a, b) => new Date(a.submissionDate).getTime() - new Date(b.submissionDate).getTime());
     else if (sortBy === 'days') filtered.sort((a, b) => b.daysAtCurrentLevel - a.daysAtCurrentLevel);
     return filtered;
-  }, [allSubmissions, activeWorkflowId, deferredSearchQuery, filterStatus, sortBy, filterDepartment, filterDateFrom, filterDateTo, filterSubmittedBy]);
+  }, [pendingSubmissions, activeWorkflowId, deferredSearchQuery, filterStatus, sortBy, filterDepartment, filterDateFrom, filterDateTo, filterSubmittedBy]);
 
   const totalPages = Math.ceil(filteredAndSortedSubmissions.length / itemsPerPage);
   const paginatedSubmissions = filteredAndSortedSubmissions.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -310,22 +314,25 @@ export default function ModernDashboard({ data }: Props) {
     const pop = window.open('about:blank', '_blank');
     const me = user?.email?.toLowerCase();
     const tasks = submission.workflowTasks || [];
-    const myActive = tasks.find(t => t.status === 'ACTIVE' && t.assigneeEmail?.toLowerCase() === me && t.accessLink)
-      || tasks.find(t => t.status === 'ACTIVE' && t.accessLink);
-    let url = myActive?.accessLink || '';
+    // Resolve the link server-side FIRST (/api/email-url returns the actual
+    // /share/ link JotForm emailed this assignee); only fall back to the stored
+    // task link if the API can't resolve one.
+    const myActive = tasks.find(t => t.status === 'ACTIVE' && t.assigneeEmail?.toLowerCase() === me)
+      || tasks.find(t => t.status === 'ACTIVE');
+    let url = '';
     let reason = '';
-    if (!url) {
-      try {
-        const json = await apiFetch<{ approvalUrl?: string | null; reason?: string; error?: string }>(
-          `/api/email-url?formId=${submission.formId}&submissionId=${submission.id}`,
-          { throwOnError: false },
-        );
-        if (json?.approvalUrl) url = json.approvalUrl;
-        else reason = json?.reason || json?.error || 'no url returned';
-      } catch (e) {
-        reason = (e as Error)?.message || String(e);
-      }
+    try {
+      const taskParam = myActive?.taskId ? `&taskId=${encodeURIComponent(myActive.taskId)}` : '';
+      const json = await apiFetch<{ approvalUrl?: string | null; reason?: string; error?: string }>(
+        `/api/email-url?formId=${encodeURIComponent(submission.formId)}&submissionId=${encodeURIComponent(submission.id)}${taskParam}`,
+        { throwOnError: false },
+      );
+      if (json?.approvalUrl) url = json.approvalUrl;
+      else reason = json?.reason || json?.error || 'no url returned';
+    } catch (e) {
+      reason = (e as Error)?.message || String(e);
     }
+    if (!url) url = getUsableTaskAccessLink(myActive);
 
     if (!url) {
       if (pop && !pop.closed) pop.close();
@@ -359,8 +366,9 @@ export default function ModernDashboard({ data }: Props) {
     let reason = '';
     if (sub) {
       try {
+        const taskParam = task.taskId ? `&taskId=${encodeURIComponent(task.taskId)}` : '';
         const json = await apiFetch<{ approvalUrl?: string | null; reason?: string; error?: string }>(
-          `/api/email-url?formId=${sub.formId}&submissionId=${sub.id}`,
+          `/api/email-url?formId=${encodeURIComponent(sub.formId)}&submissionId=${encodeURIComponent(sub.id)}${taskParam}`,
           { throwOnError: false },
         );
         if (json?.approvalUrl) url = json.approvalUrl;
@@ -369,7 +377,7 @@ export default function ModernDashboard({ data }: Props) {
         reason = (e as Error)?.message || String(e);
       }
     }
-    if (!url && task.accessLink) url = task.accessLink;
+    if (!url) url = getUsableTaskAccessLink(task);
 
     if (!url) {
       if (pop && !pop.closed) pop.close();
@@ -393,6 +401,78 @@ export default function ModernDashboard({ data }: Props) {
       // Popup was blocked at the OS level. Open a fresh one anyway — most browsers
       // still honor user-initiated calls if the first one was suppressed.
       window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  }, [workflowSidebarSubmission]);
+
+  // Complete the assignee's active task directly via the documented JotForm
+  // workflow API (POST /workflow/task/{taskId}/complete, surfaced through our
+  // /api/workflow-action endpoint). No JotForm browser link is opened, so the
+  // assignee never hits the "request access" wall — the task is actioned in-app.
+  const completeWorkflowTask = useCallback(async (submission: Submission, task?: WorkflowTask) => {
+    const me = user?.email?.toLowerCase();
+    const targetTask = task
+      || submission.workflowTasks?.find(t =>
+        t.status === 'ACTIVE' &&
+        t.type === 'workflow_assign_task' &&
+        t.assigneeEmail?.toLowerCase() === me
+      )
+      || submission.workflowTasks?.find(t =>
+        t.status === 'ACTIVE' && t.assigneeEmail?.toLowerCase() === me
+      )
+      || submission.workflowTasks?.find(t => t.status === 'ACTIVE' && t.type === 'workflow_assign_task');
+
+    if (!targetTask?.taskId) {
+      alert('Could not find the active JotForm task for this submission.');
+      return;
+    }
+    if (!window.confirm(`Mark the task "${targetTask.name || 'Task'}" as complete? This advances the workflow in JotForm.`)) {
+      return;
+    }
+
+    try {
+      const res = await apiFetch<{ ok?: boolean; instanceCompleted?: boolean; error?: string }>('/api/workflow-action', {
+        method: 'POST',
+        body: JSON.stringify({ submissionId: submission.id, taskId: targetTask.taskId, action: 'complete' }),
+        throwOnError: false,
+      });
+      if (res?.ok) {
+        alert(res.instanceCompleted
+          ? 'Task completed — the workflow is now finished.'
+          : 'Task completed — moved to the next step.');
+        await data.refresh?.({ force: true });
+      } else {
+        alert(`Could not complete the task: ${res?.error || 'unknown error'}`);
+      }
+    } catch (e: unknown) {
+      alert(`Could not complete the task: ${(e as { message?: string })?.message || 'unknown error'}`);
+    }
+  }, [user?.email, data.refresh]);
+
+  const completeTaskFromSidebar = useCallback(async (task: WorkflowTask) => {
+    const sub = workflowSidebarSubmission;
+    if (!sub) return;
+    await completeWorkflowTask(sub, task);
+  }, [workflowSidebarSubmission, completeWorkflowTask]);
+
+  const copyTaskLinkFromSidebar = useCallback(async (task: WorkflowTask) => {
+    const sub = workflowSidebarSubmission;
+    if (!sub || !task.taskId) return;
+    try {
+      const resolved = await apiFetch<{ approvalUrl?: string | null }>(
+        `/api/email-url?formId=${encodeURIComponent(sub.formId)}&submissionId=${encodeURIComponent(sub.id)}&taskId=${encodeURIComponent(task.taskId)}`,
+        { throwOnError: false },
+      );
+      let url = resolved?.approvalUrl || getUsableTaskAccessLink(task);
+
+      if (!url) {
+        const result = await apiFetch(`/api/task-token?submissionId=${encodeURIComponent(sub.id)}&taskId=${encodeURIComponent(task.taskId)}`) as { url: string };
+        url = result.url;
+      }
+
+      await navigator.clipboard.writeText(url);
+      alert('Task link copied to clipboard.');
+    } catch (e: unknown) {
+      alert(`Failed to copy link: ${(e as { message?: string })?.message || 'unknown error'}`);
     }
   }, [workflowSidebarSubmission]);
 
@@ -516,7 +596,7 @@ export default function ModernDashboard({ data }: Props) {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ staggerChildren: 0.05 }} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
       <AnimatePresence>
         {paginatedSubmissions.length > 0 ? paginatedSubmissions.map((sub, idx) => (
-          <SubmissionCard key={sub.id} submission={sub} idx={idx} user={user} onViewDetails={handleViewDetails} onOpenModal={openSidebarWithTasks} onOpenTask={openCardTaskLink} />
+          <SubmissionCard key={sub.id} submission={sub} idx={idx} user={user} onViewDetails={handleViewDetails} onOpenModal={openSidebarWithTasks} onOpenTask={openCardTaskLink} onCompleteTask={completeWorkflowTask} />
         )) : renderEmpty()}
       </AnimatePresence>
     </motion.div>
@@ -788,19 +868,16 @@ export default function ModernDashboard({ data }: Props) {
     );
   }
 
-  const pendingCount = allSubmissions.filter(s => getSubmissionStatus(s) === 'pending').length;
-  const approvedCount = allSubmissions.filter(s => getSubmissionStatus(s) === 'approved').length;
-  const completedCount = allSubmissions.filter(s => getSubmissionStatus(s) === 'completed').length;
-  const rejectedCount = allSubmissions.filter(s => getSubmissionStatus(s) === 'rejected').length;
-  const criticalCount = allSubmissions.filter(s => s.daysAtCurrentLevel > 7).length;
-  const avgDays = allSubmissions.length > 0
-    ? Math.round(allSubmissions.reduce((sum, s) => sum + (s.daysAtCurrentLevel || 0), 0) / allSubmissions.length) : 0;
+  const pendingCount = pendingSubmissions.length;
+  const criticalCount = pendingSubmissions.filter(s => s.daysAtCurrentLevel > 7).length;
+  const avgDays = pendingSubmissions.length > 0
+    ? Math.round(pendingSubmissions.reduce((sum, s) => sum + (s.daysAtCurrentLevel || 0), 0) / pendingSubmissions.length) : 0;
 
   const stats = [
-    { label: 'Total Submissions', value: allSubmissions.length, color: 'from-blue-500 to-blue-600', trend: allSubmissions.length > 0 ? '+' + allSubmissions.length : '0' },
+    { label: 'Pending Submissions', value: pendingSubmissions.length, color: 'from-blue-500 to-blue-600', trend: pendingSubmissions.length > 0 ? '+' + pendingSubmissions.length : '0' },
     { label: 'Pending Review', value: pendingCount, color: 'from-cyan-400 to-sky-500', trend: criticalCount > 0 ? `${criticalCount} critical` : 'On track' },
-    { label: 'Approved', value: approvedCount, color: 'from-blue-400 to-blue-600', trend: completedCount + approvedCount > 0 ? '+' + (completedCount + approvedCount) : '0' },
-    { label: 'Avg Processing', value: `${avgDays}d`, color: 'from-indigo-400 to-blue-500', trend: avgDays > 0 ? avgDays + 'd' : '—' },
+    { label: 'Critical Pending', value: criticalCount, color: 'from-blue-400 to-blue-600', trend: criticalCount > 0 ? `${criticalCount} delayed` : 'Clear' },
+    { label: 'Avg Pending', value: `${avgDays}d`, color: 'from-indigo-400 to-blue-500', trend: avgDays > 0 ? avgDays + 'd' : '—' },
   ];
 
   return (
@@ -819,7 +896,7 @@ export default function ModernDashboard({ data }: Props) {
 
           <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
             <div className="flex gap-2 flex-wrap">
-              {['all', 'pending', 'approved', 'rejected'].map(status => {
+              {['all', 'pending'].map(status => {
                 const filterColors: Record<string, string> = {
                   all: 'from-blue-500 to-blue-600', pending: 'from-cyan-400 to-sky-400', approved: 'from-blue-400 to-blue-600', rejected: 'from-red-500 to-rose-600', completed: 'from-cyan-300 to-blue-400',
                 };
@@ -996,7 +1073,7 @@ export default function ModernDashboard({ data }: Props) {
         isOpen={!!workflowSidebarSubmission} submission={workflowSidebarSubmission} expandedTasks={expandedTasks}
         expandLoading={workflowLoading ? workflowSidebarSubmission?.id : undefined} user={user} showOverlay={false} isAbsolute={true}
         onClose={() => setWorkflowSidebarSubmission(null)} onFetchSignature={fetchAndShowSignature} sigLoading={sigLoading}
-        onTaskApprove={openSidebarApproveModal} onSetTaskRejecting={openSidebarApproveModal} onOpenTaskLink={openTaskLink}
+        onTaskApprove={openSidebarApproveModal} onSetTaskRejecting={openSidebarApproveModal} onOpenTaskLink={openTaskLink} onCompleteTask={completeTaskFromSidebar} onCopyTaskLink={copyTaskLinkFromSidebar}
       />
 
       <AnimatePresence>

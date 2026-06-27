@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Mail, ArrowLeft, Loader2, AlertCircle, CheckCircle, Copy, Check } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 import { humanizeError } from '../lib/errors';
+import { JOTFORM_LOGO_URL } from '../config/jotform';
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
@@ -43,7 +44,7 @@ export default function ForgotPassword() {
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center justify-center gap-2 mb-6">
             <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-sky-500 p-2 shadow-xl flex items-center justify-center">
-              <img src="https://eforms.mediaoffice.ae/enterprise/logo.png" alt="Logo" className="w-full h-full object-contain" />
+              <img src={JOTFORM_LOGO_URL} alt="Logo" className="w-full h-full object-contain" />
             </div>
             <span className="text-2xl font-black text-slate-900">Eform <span className="text-blue-600">Tracker</span></span>
           </Link>
@@ -94,7 +95,7 @@ export default function ForgotPassword() {
                   <input
                     type="email" required value={email} onChange={e => setEmail(e.target.value)}
                     className="w-full pl-12 pr-4 py-3.5 rounded-2xl bg-slate-50 border border-slate-300 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-medium"
-                    placeholder="you@mediaoffice.ae"
+                    placeholder="you@example.com"
                   />
                 </div>
               </div>

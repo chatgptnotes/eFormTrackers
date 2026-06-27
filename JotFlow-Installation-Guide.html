@@ -267,7 +267,7 @@
 <!-- ══════════════════════════════════ -->
 <h1 class="section-title" id="overview">1. System Overview &amp; Architecture</h1>
 
-<p>JotFlow is a workflow approval dashboard for the Government of Dubai Media Office. It connects to JotForm Enterprise (<code>eforms.mediaoffice.ae</code>) and provides a modern approval interface with real-time updates.</p>
+<p>JotFlow is a workflow approval dashboard for the Government of Dubai Media Office. It connects to JotForm Enterprise (<code>bettroi.jotform.com</code>) and provides a modern approval interface with real-time updates.</p>
 
 <table>
   <tr><th>Component</th><th>Role</th><th>Port</th></tr>
@@ -610,8 +610,8 @@ Enable-WindowsOptionalFeature -Online -FeatureName IIS-ManagementConsole -NoRest
 <p>The backend needs a JotForm API key to sync submissions. Edit <code>C:\inetpub\flowaccel_backend\backend\.env</code> (or wherever the backend was deployed — check <code>2_APP\backend\.env</code>) and set:</p>
 <pre>JOTFORM_API_KEY=<span class="string">your-api-key-here</span>
 JOTFORM_TEAM_ID=<span class="string">260541093809054</span>
-JOTFORM_BASE=<span class="string">https://eforms.mediaoffice.ae/API</span>
-JOTFORM_HOST=<span class="string">https://eforms.mediaoffice.ae</span>
+JOTFORM_BASE=<span class="string">https://bettroi.jotform.com/API</span>
+JOTFORM_HOST=<span class="string">https://bettroi.jotform.com</span>
 ENABLE_POLLER=<span class="string">1</span>
 POLL_INTERVAL_MINUTES=<span class="string">5</span></pre>
 <p>After editing, restart the backend: <code>pm2 restart jotflow-backend</code></p>
@@ -882,8 +882,8 @@ node db/seed-admin.js</pre>
     <p><span class="fix-label">FIX</span> Verify the key works against the GDMO endpoint:</p>
     <pre><span class="comment"># Test in PowerShell:</span>
 $headers = @{ "APIKEY" = "your-api-key-here" }
-Invoke-RestMethod "https://eforms.mediaoffice.ae/API/user" -Headers $headers</pre>
-    <p>If this returns <code>responseCode: 200</code>, the key is valid. Ensure <code>JOTFORM_BASE=https://eforms.mediaoffice.ae/API</code> in <code>.env</code>.</p>
+Invoke-RestMethod "https://bettroi.jotform.com/API/user" -Headers $headers</pre>
+    <p>If this returns <code>responseCode: 200</code>, the key is valid. Ensure <code>JOTFORM_BASE=https://bettroi.jotform.com/API</code> in <code>.env</code>.</p>
   </div>
 </div>
 

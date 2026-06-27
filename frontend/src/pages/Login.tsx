@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, ArrowRight, Loader2, Eye, EyeOff, AlertCircle, ShieldCheck, BookOpen } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { humanizeError } from '../lib/errors';
+import { JOTFORM_LOGO_URL } from '../config/jotform';
 
 export default function Login() {
   const { signIn, signInWithMicrosoft } = useAuth();
@@ -77,7 +78,7 @@ export default function Login() {
         <div className="text-center mb-10">
           <Link to="/" className="inline-flex items-center justify-center gap-2 mb-8">
             <div className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 bg-gradient-to-br from-blue-600 to-sky-500 p-2 shadow-xl">
-              <img src="https://eforms.mediaoffice.ae/enterprise/logo.png" alt="FlowAccel Logo" className="w-full h-full object-contain" />
+              <img src={JOTFORM_LOGO_URL} alt="FlowAccel Logo" className="w-full h-full object-contain" />
             </div>
             <span className="text-3xl font-black text-slate-900">Eform <span className="text-blue-600">Tracker</span></span>
           </Link>

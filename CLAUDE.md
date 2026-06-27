@@ -1,7 +1,7 @@
 # JotFlow — Claude Code Instructions
 
 ## Project Overview
-JotFlow is a workflow approval dashboard for the **Government of Dubai Media Office** that wraps the JotForm Enterprise workflow engine (`eforms.mediaoffice.ae`). The frontend is React + TypeScript + Vite; the backend is an Express server with self-hosted PostgreSQL. Primary deploy target is **Windows IIS** (with a Vercel option for the frontend only).
+JotFlow is a workflow approval dashboard for the **Government of Dubai Media Office** that wraps the JotForm Enterprise workflow engine (`bettroi.jotform.com`). The frontend is React + TypeScript + Vite; the backend is an Express server with self-hosted PostgreSQL. Primary deploy target is **Windows IIS** (with a Vercel option for the frontend only).
 
 > Historical note: the project originally ran as Vercel serverless functions + Supabase. As of 2026-05-23 it was migrated to Express + Postgres + IIS (see `CHANGES-2026-05-23.md`). Older Supabase wording in `skill.md` refers to logic, not the live stack.
 
