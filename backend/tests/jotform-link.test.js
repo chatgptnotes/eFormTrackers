@@ -60,6 +60,20 @@ async function t(name, fn) {
     );
   });
 
+  await t('rebuilds stale approval-form links with task internalFormID', () => {
+    const normalized = normalizeTaskLink(
+      'https://bettroi.jotform.com/approval-form/261771528652968/task/18271261771501201930/access-token/ABC123',
+      {
+        internalFormID: '261771850840965',
+        taskId: '18271261771501201930',
+      },
+    );
+    assert.strictEqual(
+      normalized.normalizedUrl,
+      'https://bettroi.jotform.com/approval-form/261771850840965/task/18271261771501201930/access-token/ABC123',
+    );
+  });
+
   await t('parses inbox fallback URLs', () => {
     const parsed = parseJotformTaskLink('https://bettroi.jotform.com/inbox/2601/9999?taskID=T1');
     assert.strictEqual(parsed.linkType, 'inbox');

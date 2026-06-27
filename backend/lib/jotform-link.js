@@ -93,12 +93,25 @@ function normalizeTaskLink(rawUrl, task = {}) {
   const parsed = parseJotformTaskLink(rawUrl);
   if (!parsed.normalizedUrl) return parsed;
 
-  const taskFormId = parsed.taskFormId || String(task.internalFormID || task.formId || '');
+  const contextTaskFormId = String(task.internalFormID || task.formId || '');
+  let taskFormId = parsed.taskFormId || contextTaskFormId;
   const taskId = parsed.taskId || String(task.taskId || '');
   let normalizedUrl = parsed.normalizedUrl;
 
   if (parsed.linkType === 'share' && taskFormId && taskId && parsed.shareToken) {
     normalizedUrl = buildApprovalFormUrl({ taskFormId, taskId, token: parsed.shareToken });
+  }
+
+  if (
+    parsed.linkType === 'approval-form' &&
+    contextTaskFormId &&
+    parsed.taskFormId &&
+    contextTaskFormId !== parsed.taskFormId &&
+    taskId &&
+    parsed.accessToken
+  ) {
+    taskFormId = contextTaskFormId;
+    normalizedUrl = buildApprovalFormUrl({ taskFormId, taskId, token: parsed.accessToken });
   }
 
   return {
