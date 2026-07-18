@@ -48,8 +48,7 @@ async function getPrefills(formId, profileId) {
   return prefills;
 }
 
-// Returns the full prefill URL, or '' when no prefill matches (callers keep
-// their existing bare-URL / inbox fallback). Never throws.
+// Returns the full prefill URL, or '' when no prefill matches. Never throws.
 async function resolvePrefillUrl({ formId, submissionId, taskId, profileId }) {
   if (!formId || !submissionId) return '';
   try {
@@ -91,7 +90,7 @@ async function enrichTasksWithPrefill(flatTasks, submissionId, profileId) {
       profileId,
     });
     if (url) task.accessLink = url;
-    else if (currentLink.includes('/share/')) task.accessLink = '';
+    else if (currentLink && !currentLink.includes('/prefill/')) task.accessLink = '';
   }
   return flatTasks;
 }

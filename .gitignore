@@ -28,3 +28,5 @@ backend/scripts/exports/
 
 # Aider tool cache
 .aider.*
+
+.firecrawl/

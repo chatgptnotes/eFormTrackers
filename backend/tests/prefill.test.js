@@ -140,6 +140,16 @@ async function t(name, fn) {
     assert.strictEqual(tasks[0].accessLink, '');
   });
 
+  await t('clears a bare assigned-form URL instead of preserving it', async () => {
+    const tasks = [{
+      type: 'workflow_assign_form', status: 'ACTIVE',
+      accessLink: `https://workspace.example.test/${FORM}?workflowAssignFormTask=1&taskID=T123`,
+      internalFormID: FORM, taskId: 'T123', assigneeEmail: 'a@gdmo.ae',
+    }];
+    await enrichTasksWithPrefill(tasks, 'NO_SUCH_SUB', 'gdmo');
+    assert.strictEqual(tasks[0].accessLink, '');
+  });
+
   await t('ignores non-assign_form and non-ACTIVE tasks', async () => {
     const tasks = [
       { type: 'workflow_approval', status: 'ACTIVE', accessLink: '', internalFormID: FORM, taskId: 'T', assigneeEmail: 'a@gdmo.ae' },

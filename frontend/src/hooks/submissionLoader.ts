@@ -179,11 +179,9 @@ async function enrichWithWorkflowTasks(mapped: Submission[]): Promise<void> {
       if (usableAccessLink) {
         if (taskType === 'workflow_assign_form') sub.formUrl = usableAccessLink;
         else sub.approvalUrl = usableAccessLink;
-      } else if (taskType !== 'workflow_assign_task' && activeTask.taskId && activeTask.internalFormID) {
+      } else if (taskType === 'workflow_approval' && activeTask.taskId && activeTask.internalFormID) {
         const host = JOTFORM_HOST;
-        const qp = taskType === 'workflow_assign_form' ? 'workflowAssignFormTask'
-          : 'workflowApprovalTask';
-        sub.approvalUrl = `${host}/${activeTask.internalFormID}?${qp}=1&taskID=${activeTask.taskId}`;
+        sub.approvalUrl = `${host}/${activeTask.internalFormID}?workflowApprovalTask=1&taskID=${activeTask.taskId}`;
       }
 
       // Rebuild approval history from workflow tasks
