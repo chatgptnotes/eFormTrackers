@@ -14,7 +14,7 @@ import { useToast } from '../components/ToastNotification';
 import { useAuth } from '../contexts/AuthContext';
 
 // ─── Workspace version — bump when switching teams to force full cache clear ──
-const WORKSPACE_VERSION = 'gdmo-bettroi-v4'; // bumped: new API key — force cache clear
+const WORKSPACE_VERSION = 'gdmo-bettroi-v5'; // prefill links are now resolved server-side
 const WS_VERSION_KEY = 'jotflow_workspace_version';
 
 function checkAndClearWorkspaceCaches() {
@@ -62,6 +62,10 @@ export function useSubmissions() {
   const [activeForms, setActiveForms] = useState<JFFormMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cloudSyncing, setCloudSyncing] = useState(false);
+  const [cloudSyncMessage, setCloudSyncMessage] = useState('Fetching workflows from cloud...');
+  const [cloudSyncPercent, setCloudSyncPercent] = useState(0);
+  const cloudSyncingRef = useRef(false);
   const [refreshConfig, setRefreshConfig] = useState<RefreshConfig>({
     autoRefresh: true,
     intervalMinutes: 1,
@@ -94,10 +98,10 @@ export function useSubmissions() {
   // against the previous set and surface a toast. prevSubsRef starts null so the
   // first (initial) load primes the baseline without firing a burst of toasts.
   const { addToast } = useToast();
-  const prevSubsRef = useRef<Map<string, string> | null>(null);
+  const prevSubsRef = useRef<Map<string, { level: string; title: string }> | null>(null);
   const notifyChanges = useCallback((next: Submission[]) => {
     const prev = prevSubsRef.current;
-    const nextMap = new Map(next.map(s => [s.id, String(s.currentApprovalLevel)]));
+    const nextMap = new Map(next.map(s => [s.id, { level: String(s.currentApprovalLevel), title: s.formTitle || 'Form' }]));
     if (prev) {
       let shown = 0;
       for (const s of next) {
@@ -105,10 +109,17 @@ export function useSubmissions() {
         if (!prev.has(s.id)) {
           addToast({ type: 'submission', title: 'New submission', message: `${s.formTitle || 'Form'} — ${s.submittedBy.name}` });
           shown++;
-        } else if (prev.get(s.id) !== String(s.currentApprovalLevel)) {
+        } else if (prev.get(s.id)?.level !== String(s.currentApprovalLevel)) {
           const lvl = s.currentApprovalLevel;
           const statusMsg = lvl === 'completed' ? 'completed' : lvl === 'rejected' ? 'rejected' : `at level ${lvl}`;
           addToast({ type: 'approval_needed', title: 'Status updated', message: `${s.formTitle || 'Form'} is now ${statusMsg}` });
+          shown++;
+        }
+      }
+      for (const [id, old] of prev) {
+        if (shown >= 3) break;
+        if (!nextMap.has(id)) {
+          addToast({ type: 'approval_needed', title: 'Queue updated', message: `${old.title} moved out of your pending list` });
           shown++;
         }
       }
@@ -203,6 +214,10 @@ export function useSubmissions() {
   // has access to a smaller form set.
   const loadFromSupabase = useCallback(async (opts?: { force?: boolean }) => {
     if (!opts?.force && Date.now() < actionCooldownUntil.current) return;
+    if (!opts?.force && cloudSyncingRef.current) return;
+    const profileId = getJotformKeyType();
+    const profileHeaders = profileId ? { 'x-jotform-profile-id': profileId } : undefined;
+    const isStale = () => getJotformKeyType() !== profileId;
     // Clear any stale error from a previous failed load so a recovered read
     // doesn't keep showing the old error banner.
     setError(null);
@@ -213,8 +228,9 @@ export function useSubmissions() {
     let scopeForms: JFFormMeta[] = [];
     try {
       const scope = await apiFetch<{ forms?: Array<{ id: string; title: string; count: number; updatedAt: string }> }>(
-        '/api/active-form-ids'
+        '/api/active-form-ids', { headers: profileHeaders }
       );
+      if (isStale()) return;
       scopeForms = (scope.forms || []).map(f => ({
         id: f.id, title: f.title, status: 'ENABLED', count: f.count, updatedAt: f.updatedAt,
       }));
@@ -222,15 +238,68 @@ export function useSubmissions() {
       // Persist scope so other code that reads jotflow_active_form_ids works.
       try { localStorage.setItem('jotflow_active_form_ids', JSON.stringify(scopeForms.map(f => f.id))); } catch {}
     } catch (e) {
+      if (isStale()) return;
       console.warn('[useSubmissions] active-form-ids fetch failed:', e);
     }
 
     const activeFormIds = scopeForms.map(f => f.id);
+    const runCloudSync = () => new Promise<void>((resolve) => {
+      cloudSyncingRef.current = true;
+      setCloudSyncing(true);
+      setCloudSyncPercent(3);
+      setCloudSyncMessage('Connecting to cloud workspace...');
+      const sync = new EventSource(`/api/admin/sync-all-stream?keyType=${encodeURIComponent(profileId)}`);
+      const done = () => {
+        sync.close();
+        setCloudSyncPercent(100);
+        setCloudSyncMessage('Saving synced workflows to database...');
+        setTimeout(resolve, 250);
+      };
+      sync.addEventListener('start', (event) => {
+        const d = JSON.parse((event as MessageEvent).data);
+        setCloudSyncPercent(5);
+        setCloudSyncMessage(`Downloading all ${d.formCount || 0} workflows at once...`);
+      });
+      sync.addEventListener('form-start', () => {
+        setCloudSyncMessage('Recognizing forms and workflow steps in parallel...');
+      });
+      sync.addEventListener('form-done', (event) => {
+        const d = JSON.parse((event as MessageEvent).data);
+        const completed = Number(d.progress?.completed || 0);
+        const total = Math.max(1, Number(d.progress?.total || 1));
+        setCloudSyncPercent(Math.min(99, Math.round((completed / total) * 100)));
+        setCloudSyncMessage(`Saving synced data to database (${completed}/${total})...`);
+      });
+      sync.addEventListener('form-error', (event) => {
+        const d = JSON.parse((event as MessageEvent).data);
+        const completed = Number(d.progress?.completed || 0);
+        const total = Math.max(1, Number(d.progress?.total || 1));
+        setCloudSyncPercent(Math.min(99, Math.round((completed / total) * 100)));
+        setCloudSyncMessage(`Continuing bulk sync (${completed}/${total})...`);
+      });
+      sync.addEventListener('done', done);
+      sync.addEventListener('error', done);
+    });
+
     if (activeFormIds.length === 0) {
-      // No forms in scope for the active key — show an explicit empty state, never
-      // an indefinite skeleton or a silent blank.
+      if (isStale()) return;
+      if (isAdmin && !cloudSyncingRef.current) {
+        setError(null);
+        try {
+          await runCloudSync();
+          setCloudSyncMessage('Loading synced data from database...');
+          await loadFromSupabase({ force: true });
+        } catch (err) {
+          console.warn('[useSubmissions] cloud sync failed:', err);
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
       setAllSubmissions([]);
-      setError('No workflows are available for the active key. Try switching the API source in Settings.');
+      setError(null);
+      cloudSyncingRef.current = false;
+      setCloudSyncing(false);
       setLoading(false);
       return;
     }
@@ -239,10 +308,14 @@ export function useSubmissions() {
     try {
       setLoading(prev => allSubmissions.length === 0 ? true : prev);
       const data = await apiFetch<Record<string, unknown>[]>(
-        `/api/submissions?form_ids=${activeFormIds.join(',')}&limit=20000&order=desc`
+        `/api/submissions?form_ids=${activeFormIds.join(',')}&order=desc`,
+        { headers: profileHeaders }
       );
+      if (isStale()) return;
       if (!data || data.length === 0) {
         setAllSubmissions([]);
+        cloudSyncingRef.current = false;
+        setCloudSyncing(false);
         notifyChanges([]); // keep the toast baseline in sync (fires nothing)
         setLoading(false);
         return;
@@ -262,15 +335,20 @@ export function useSubmissions() {
       }
       if (skipped > 0) console.warn(`[useSubmissions] skipped ${skipped} malformed row(s) of ${data.length}`);
       setAllSubmissions(mapped);
+      cloudSyncingRef.current = false;
+      setCloudSyncing(false);
       notifyChanges(mapped); // fire live toasts for new arrivals / status changes
       setRefreshConfig(prev => ({ ...prev, lastUpdated: new Date().toISOString() }));
     } catch (err) {
+      if (isStale()) return;
       console.warn('[useSubmissions] DB read failed:', err);
       setError(humanizeError(err, 'Failed to load submissions'));
+      cloudSyncingRef.current = false;
+      setCloudSyncing(false);
     } finally {
-      setLoading(false);
+      if (!isStale()) setLoading(false);
     }
-  }, [allSubmissions.length, notifyChanges]);
+  }, [allSubmissions.length, notifyChanges, isAdmin]);
 
   // ─── On mount: read from DB ────────────────────────────────────────────────
   // Frontend is DB-only — all JotForm API calls happen server-side (poller +
@@ -288,11 +366,8 @@ export function useSubmissions() {
   // exists for the new key (first-time switch).
   useEffect(() => {
     const onKeyTypeChanged = () => {
-      // Block the table behind the loading state until the new key's data lands,
-      // so no stale approver names / cross-key rows flash.
       setLoading(true);
       setError(null);
-      // Clear stale display so the old key's rows never paint under the new key.
       setAllSubmissions([]);
       setActiveForms([]);
       // Hard-clear EVERY keyType-scoped cache namespace — both keys' submission
@@ -349,6 +424,32 @@ export function useSubmissions() {
     socket.on('submissions:updated', () => {
       loadFromSupabase();
     });
+    socket.on('sync:progress', (payload: {
+      event?: string;
+      keyType?: string;
+      formCount?: number;
+      progress?: { completed?: number; total?: number };
+    }) => {
+      if (!payload || payload.keyType !== getJotformKeyType()) return;
+      if (payload.event === 'start') {
+        cloudSyncingRef.current = true;
+        setCloudSyncing(true);
+        setCloudSyncPercent(5);
+        setCloudSyncMessage(`Downloading all ${payload.formCount || 0} workflows at once...`);
+        return;
+      }
+      if (payload.event === 'form-done' || payload.event === 'form-error') {
+        const completed = Number(payload.progress?.completed || 0);
+        const total = Math.max(1, Number(payload.progress?.total || 1));
+        setCloudSyncPercent(Math.min(99, Math.round((completed / total) * 100)));
+        setCloudSyncMessage(`Saving synced data to database (${completed}/${total})...`);
+        return;
+      }
+      if (payload.event === 'done') {
+        setCloudSyncPercent(100);
+        setCloudSyncMessage('Loading synced data from database...');
+      }
+    });
 
     return () => {
       socket.disconnect();
@@ -356,10 +457,10 @@ export function useSubmissions() {
     };
   }, [loadFromSupabase]);
 
-  // Polling fallback — replaces Supabase realtime channel (30s).
-  // Runs alongside Socket.IO so a missed event still catches up.
+  // Polling fallback — Socket.IO normally delivers changes immediately. This
+  // slower DB read catches missed events without creating overlapping requests.
   useEffect(() => {
-    const interval = setInterval(loadFromSupabase, 15_000);
+    const interval = setInterval(loadFromSupabase, 5000);
     return () => clearInterval(interval);
   }, [loadFromSupabase]);
 
@@ -483,7 +584,7 @@ export function useSubmissions() {
   return {
     allSubmissions, filteredSubmissions, paginatedSubmissions,
     activeForms,
-    loading, error,
+    loading, error, cloudSyncing, cloudSyncMessage, cloudSyncPercent,
     stats, approvalStats, departmentStats, trendData, bottleneckData, heatmapData,
     filters, setFilters: wrappedSetFilters,
     sort, setSort,

@@ -21,13 +21,21 @@ const env = require('../config/env');
  */
 
 const CONFIG_PATH = path.resolve(__dirname, '..', 'config', 'jotform-profiles.json');
+const TEAM_PROFILE_MARKER = '__team_';
+const NO_TEAM_PROFILE_MARKER = '__all';
 
 let cache = null;
 
 function resolveKey(p) {
   if (p.apiKey) return String(p.apiKey);
-  if (p.apiKeyEnv) return String(process.env[p.apiKeyEnv] || '');
+  if (p.apiKeyEnv) return String(process.env[p.apiKeyEnv] || process.env.JOTFORM_API_KEY || '');
   return '';
+}
+
+function envOrValue(envName, value, fallback) {
+  if (envName && process.env[envName]) return String(process.env[envName]);
+  if (value) return String(value);
+  return fallback;
 }
 
 function normalize(p) {
@@ -36,10 +44,10 @@ function normalize(p) {
     id: String(p.id),
     label: String(p.label || p.id),
     apiKey: resolveKey(p),
-    baseUrl: String(p.baseUrl || env.JOTFORM_BASE).replace(/\/$/, ''),
-    host: String(p.host || env.JOTFORM_HOST).replace(/\/$/, ''),
+    baseUrl: envOrValue(p.baseUrlEnv, p.baseUrl, env.JOTFORM_BASE).replace(/\/$/, ''),
+    host: envOrValue(p.hostEnv, p.host, env.JOTFORM_HOST).replace(/\/$/, ''),
     scope,
-    teamId: String(p.teamId || ''),
+    teamId: envOrValue(p.teamIdEnv, p.teamId, env.JOTFORM_TEAM_ID),
     default: !!p.default,
   };
 }
@@ -86,7 +94,44 @@ function listProfiles() {
   return load();
 }
 
+function parseTeamProfileId(id) {
+  const raw = String(id || '');
+  const marker = raw.indexOf(TEAM_PROFILE_MARKER);
+  if (marker < 0) return null;
+  const baseId = raw.slice(0, marker);
+  const teamId = raw.slice(marker + TEAM_PROFILE_MARKER.length);
+  return baseId && teamId ? { baseId, teamId } : null;
+}
+
+function makeTeamProfileId(baseId, teamId) {
+  return `${baseId}${TEAM_PROFILE_MARKER}${teamId}`;
+}
+
+function parseNoTeamProfileId(id) {
+  const raw = String(id || '');
+  return raw.endsWith(NO_TEAM_PROFILE_MARKER) ? raw.slice(0, -NO_TEAM_PROFILE_MARKER.length) : null;
+}
+
+function makeNoTeamProfileId(baseId) {
+  return `${baseId}${NO_TEAM_PROFILE_MARKER}`;
+}
+
+function storageProfileId(id) {
+  const noTeamBaseId = parseNoTeamProfileId(id);
+  return noTeamBaseId || String(id || getDefaultProfile().id);
+}
+
 function getProfile(id) {
+  const noTeamBaseId = parseNoTeamProfileId(id);
+  if (noTeamBaseId) {
+    const base = load().find(p => p.id === noTeamBaseId) || getDefaultProfile();
+    return { ...base, id: String(id), teamId: '' };
+  }
+  const team = parseTeamProfileId(id);
+  if (team) {
+    const base = load().find(p => p.id === team.baseId) || getDefaultProfile();
+    return { ...base, id: String(id), teamId: team.teamId };
+  }
   const all = load();
   return all.find(p => p.id === id) || getDefaultProfile();
 }
@@ -97,7 +142,11 @@ function getDefaultProfile() {
 }
 
 function hasProfile(id) {
+  const noTeamBaseId = parseNoTeamProfileId(id);
+  if (noTeamBaseId) return load().some(p => p.id === noTeamBaseId);
+  const team = parseTeamProfileId(id);
+  if (team) return load().some(p => p.id === team.baseId);
   return load().some(p => p.id === id);
 }
 
-module.exports = { listProfiles, getProfile, getDefaultProfile, hasProfile };
+module.exports = { listProfiles, getProfile, getDefaultProfile, hasProfile, makeTeamProfileId, makeNoTeamProfileId, storageProfileId };

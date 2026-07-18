@@ -3,30 +3,30 @@
  *
  * One-off migration. Fills the prefill (access) link on existing jf_submissions
  * rows whose workflow_tasks contain a non-completed `workflow_assign_form` task
- * with an empty accessLink. Going forward the poller / webhook / admin-sync set
- * this automatically — this script repairs the ~14k historical rows once.
+ * with an empty or stale /share accessLink. Going forward the poller / webhook /
+ * admin-sync set this automatically — this script repairs historical rows once.
  *
  * For each affected submission it runs lib/prefill.enrichTasksWithPrefill, which
  * matches the JotForm Prefills API (GET /form/{formID}/prefills) by parent
- * submission id + assignee email and writes the real
- *   {host}/{formID}/prefill/{prefillID}?workflowAssignFormTask=1&taskID={taskID}
- * URL. The per-form prefill list is cached, so this is ~1 API call per unique
- * target form regardless of how many submissions reference it.
+ * submission id and writes the real
+ *   {JOTFORM_PREFILL_HOST}/{formID}/prefill/{prefillID}?workflowAssignFormTask=1&taskID={taskID}
+ * URL. Rows are grouped by target formID so the prefill cache is warmed once
+ * per form before processing that form's submissions.
  *
- * Idempotent and non-destructive: only fills empty accessLink fields, never
- * deletes. Safe to re-run. Reads DB + JotForm creds from backend/.env (via
+ * Idempotent and non-destructive: only replaces missing /share accessLink fields,
+ * never deletes. Safe to re-run. Reads DB + JotForm creds from backend/.env (via
  * config/env and the profile registry).
  *
  * Run from the backend dir:   node scripts/backfill-prefill-urls.js
  */
 const pool = require('../db/pool');
-const { enrichTasksWithPrefill } = require('../lib/prefill');
+const { enrichTasksWithPrefill, getPrefills } = require('../lib/prefill');
 
 function hasOpenFormTaskWithoutLink(tasks) {
   return Array.isArray(tasks) && tasks.some(t =>
     String(t.type) === 'workflow_assign_form' &&
     ['ACTIVE', 'PENDING'].includes(String(t.status).toUpperCase()) &&
-    !t.accessLink,
+    (!t.accessLink || /\/share\//.test(String(t.accessLink))),
   );
 }
 
@@ -39,33 +39,59 @@ function hasOpenFormTaskWithoutLink(tasks) {
           SELECT 1 FROM jsonb_array_elements(workflow_tasks) t
           WHERE t->>'type' = 'workflow_assign_form'
             AND t->>'status' IN ('ACTIVE', 'PENDING')
-            AND COALESCE(t->>'accessLink', '') = ''
+            AND (COALESCE(t->>'accessLink', '') = '' OR t->>'accessLink' LIKE '%/share/%')
         )`,
   );
 
   console.log(`[backfill-prefill] candidate submissions: ${rows.length}`);
   let matched = 0, unmatched = 0, updatedRows = 0;
+  const byForm = new Map();
 
   for (const r of rows) {
-    const submissionId = String(r.jotform_submission_id);
-    const profileId = r.profile_id || 'gdmo';
     const tasks = Array.isArray(r.workflow_tasks) ? r.workflow_tasks : [];
+    for (const t of tasks) {
+      if (
+        String(t.type) === 'workflow_assign_form' &&
+        ['ACTIVE', 'PENDING'].includes(String(t.status).toUpperCase()) &&
+        (!t.accessLink || /\/share\//.test(String(t.accessLink))) &&
+        t.internalFormID
+      ) {
+        const key = `${r.profile_id || 'gdmo'}:${t.internalFormID}`;
+        if (!byForm.has(key)) byForm.set(key, []);
+        byForm.get(key).push(r);
+      }
+    }
+  }
 
-    await enrichTasksWithPrefill(tasks, submissionId, profileId);
+  const seen = new Set();
+  for (const [key, group] of byForm.entries()) {
+    const [profileId, formId] = key.split(':');
+    await getPrefills(formId, profileId).catch(e => {
+      console.warn(`[backfill-prefill] prefill cache warm failed for form ${formId}: ${e.message}`);
+    });
+    for (const r of group) {
+      const submissionId = String(r.jotform_submission_id);
+      if (seen.has(submissionId)) continue;
+      seen.add(submissionId);
+      const rowProfileId = r.profile_id || 'gdmo';
+      const tasks = Array.isArray(r.workflow_tasks) ? r.workflow_tasks : [];
 
-    if (hasOpenFormTaskWithoutLink(tasks)) unmatched++; else matched++;
+      await enrichTasksWithPrefill(tasks, submissionId, rowProfileId);
 
-    // Persist only when at least one assign_form task now carries a link.
-    const gotLink = tasks.some(t =>
-      String(t.type) === 'workflow_assign_form' && /\/prefill\//.test(String(t.accessLink || '')),
-    );
-    if (gotLink) {
-      const res = await pool.query(
-        `UPDATE jf_submissions SET workflow_tasks = $2::jsonb, last_synced = now()
-          WHERE jotform_submission_id = $1`,
-        [submissionId, JSON.stringify(tasks)],
+      if (hasOpenFormTaskWithoutLink(tasks)) unmatched++; else matched++;
+
+      // Persist only when at least one assign_form task now carries a link.
+      const gotLink = tasks.some(t =>
+        String(t.type) === 'workflow_assign_form' && /\/prefill\//.test(String(t.accessLink || '')),
       );
-      updatedRows += res.rowCount;
+      if (gotLink) {
+        const res = await pool.query(
+          `UPDATE jf_submissions SET workflow_tasks = $2::jsonb, last_synced = now()
+            WHERE jotform_submission_id = $1`,
+          [submissionId, JSON.stringify(tasks)],
+        );
+        updatedRows += res.rowCount;
+      }
     }
   }
 

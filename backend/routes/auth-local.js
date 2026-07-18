@@ -36,20 +36,33 @@ router.post('/signup', validate(signupBodySchema), async (req, res, next) => {
     }
 
     // Check existing
-    const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
-    if (existing.rows.length > 0) {
+    const existing = await pool.query(
+      `SELECT u.id, u.password_hash, p.user_id AS profile_user_id
+         FROM users u
+         LEFT JOIN profiles p ON p.user_id = u.id
+        WHERE u.email = $1`,
+      [email.toLowerCase()]
+    );
+    const existingUser = existing.rows[0];
+    const canClaimMicrosoftUser = existingUser?.password_hash === '__microsoft_oauth__' && !existingUser.profile_user_id;
+    if (existingUser && !canClaimMicrosoftUser) {
       return res.status(409).json({ error: 'Email already registered' });
     }
 
     const hash = await bcrypt.hash(password, SALT_ROUNDS);
     const name = fullName || email.split('@')[0];
 
-    const { rows } = await pool.query(
-      `INSERT INTO users (email, password_hash, full_name)
-       VALUES ($1, $2, $3) RETURNING id, email, full_name, created_at`,
-      [email.toLowerCase(), hash, name]
-    );
-    const user = rows[0];
+    const user = existingUser
+      ? (await pool.query(
+          `UPDATE users SET password_hash = $1, full_name = $2, updated_at = now()
+            WHERE id = $3 RETURNING id, email, full_name, created_at`,
+          [hash, name, existingUser.id]
+        )).rows[0]
+      : (await pool.query(
+          `INSERT INTO users (email, password_hash, full_name)
+           VALUES ($1, $2, $3) RETURNING id, email, full_name, created_at`,
+          [email.toLowerCase(), hash, name]
+        )).rows[0];
 
     // Create profile
     await pool.query(
@@ -80,7 +93,7 @@ router.post('/signup', validate(signupBodySchema), async (req, res, next) => {
 // ── POST /api/auth/login ──
 router.post('/login', validate(loginBodySchema), async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, adminLogin } = req.body;
 
     const { rows } = await pool.query(
       `SELECT u.id, u.email, u.password_hash, u.full_name,
@@ -96,6 +109,11 @@ router.post('/login', validate(loginBodySchema), async (req, res, next) => {
     }
 
     const user = rows[0];
+    const isConfiguredAdmin = env.ADMIN_EMAIL && user.email.toLowerCase() === env.ADMIN_EMAIL;
+    if (isConfiguredAdmin && !adminLogin) {
+      return res.status(403).json({ error: 'admin_login_required' });
+    }
+
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
       return res.status(401).json({ error: 'Invalid credentials' });
@@ -120,12 +138,14 @@ router.post('/login', validate(loginBodySchema), async (req, res, next) => {
     // Set session
     req.session.userId = user.id;
     req.session.email = user.email;
-    req.session.role = user.role || 'viewer';
+    const role = isConfiguredAdmin ? 'super_admin' : (user.role || 'viewer');
+    req.session.role = role;
     req.session.fullName = user.full_name;
 
-    // Trigger a background sync so the dashboard has fresh data immediately.
-    // pollOnce() is guarded by isRunning so concurrent logins don't stack up.
-    pollOnce().catch(err => req.log.warn({ err }, '[login] background sync error'));
+    // Keep manual DB resets clean: only sync on login when polling is enabled.
+    if (process.env.ENABLE_POLLER === '1') {
+      pollOnce().catch(err => req.log.warn({ err }, '[login] background sync error'));
+    }
 
     res.json({
       ok: true,
@@ -133,7 +153,7 @@ router.post('/login', validate(loginBodySchema), async (req, res, next) => {
         id: user.id,
         email: user.email,
         fullName: user.full_name,
-        role: user.role || 'viewer',
+        role,
         department: user.department || '',
         avatarUrl: user.avatar_url || '',
         preferences: user.preferences || {},
@@ -174,14 +194,17 @@ router.get('/session', async (req, res, next) => {
 
     const user = rows[0];
     req.session.email = user.email;
-    req.session.role = user.role || 'viewer';
+    const role = env.ADMIN_EMAIL && user.email.toLowerCase() === env.ADMIN_EMAIL
+      ? 'super_admin'
+      : (user.role || 'viewer');
+    req.session.role = role;
     req.session.fullName = user.full_name;
     res.json({
       user: {
         id: user.id,
         email: user.email,
         fullName: user.full_name,
-        role: user.role || 'viewer',
+        role,
         department: user.department || '',
         avatarUrl: user.avatar_url || '',
         preferences: user.preferences || {},

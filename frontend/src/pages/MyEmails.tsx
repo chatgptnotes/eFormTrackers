@@ -154,9 +154,9 @@ export default function MyEmails() {
   const pendingCount = emails.filter(e => e.actionLinks.length > 0).length;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="app-page max-w-3xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <Inbox className="w-6 h-6 text-blue-600" />
@@ -179,7 +179,7 @@ export default function MyEmails() {
 
       {/* Stats */}
       {!loading && !error && (
-        <div className="flex gap-4">
+        <div className="responsive-panel-grid">
           <div className="flex-1 bg-white border border-gray-200 rounded-xl p-4 text-center shadow-sm">
             <p className="text-2xl font-bold text-gray-900">{emails.length}</p>
             <p className="text-xs text-gray-500 mt-0.5">Total Emails</p>

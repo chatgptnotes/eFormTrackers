@@ -8,18 +8,25 @@ import {
 import SubmissionModal from '../components/SubmissionModal';
 import WorkflowDetailsModal from '../components/WorkflowDetailsModal';
 import WorkflowDetailsSidebar from '../components/WorkflowDetailsSidebar';
+import TeamProfilePicker from '../components/TeamProfilePicker';
 import { Skeleton, SkeletonStatCard, SkeletonSubmissionCard } from '../components/Skeleton';
 import { Submission, WorkflowTask } from '../types';
-import { getMyWorkflowRole, isAwaitingMyAction, getMyActionType } from '../config/currentUser';
+import { getMyWorkflowRole, isApprovalReview, isAwaitingMyAction, getMyActionType, isOpenSubmission, isSubmissionVisible } from '../config/currentUser';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import { exportToExcel } from '../services/exportService';
 import { apiFetch } from '../lib/api';
 import { getUsableTaskAccessLink } from '../lib/jotformLinks';
+import WorkflowPicker from '../components/WorkflowPicker';
+import CloudSyncLoader from '../components/CloudSyncLoader';
 
 interface Props {
   data: ReturnType<typeof import('../hooks/useSubmissions').useSubmissions>;
 }
+
+type QueueScope = 'all' | 'mine';
+const DELAYED_REVIEW_DAYS = 7;
+const CRITICAL_REVIEW_DAYS = 14;
 
 const statusConfig = {
   pending: { color: 'from-cyan-400 to-sky-400', icon: Clock, label: 'Pending', text: 'text-white', bgLight: 'bg-cyan-400/20', iconColor: 'text-cyan-300' },
@@ -171,8 +178,9 @@ const SubmissionCard = memo(function SubmissionCard({ submission, idx, user, onV
         <div className="pt-2 border-t border-gray-200 space-y-2">
           {(() => {
             // CTA reflects MY actual active task type — not a blanket "Review &
-            // Approve". Approval opens the signature modal; Task/Form open the
-            // workflow sidebar where the correct external link lives.
+            // Approve". Approval opens the signature modal, assigned forms use
+            // their prefill URL; task forms open externally, while text-only
+            // tasks complete inside JotFlow.
             const btnClass = `w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-gradient-to-r ${sc.color} text-white font-semibold text-sm transition-all hover:shadow-lg border border-transparent`;
             const myAction = getMyActionType(submission, user?.email);
             if (myAction === 'approval') {
@@ -182,7 +190,7 @@ const SubmissionCard = memo(function SubmissionCard({ submission, idx, user, onV
               return <motion.button whileHover={{ scale: 1.02 }} onClick={(e) => { e.stopPropagation(); onOpenTask(submission); }} className={btnClass}><FileText className="w-4 h-4" /><span>Fill Form</span></motion.button>;
             }
             if (myAction === 'task') {
-              return <motion.button whileHover={{ scale: 1.02 }} onClick={(e) => { e.stopPropagation(); onCompleteTask(submission); }} className={btnClass}><CheckSquare className="w-4 h-4" /><span>Complete Task</span></motion.button>;
+              return <motion.button whileHover={{ scale: 1.02 }} onClick={(e) => { e.stopPropagation(); onOpenTask(submission); }} className={btnClass}><CheckSquare className="w-4 h-4" /><span>Open Task</span></motion.button>;
             }
             return <motion.button whileHover={{ x: 4 }} onClick={(e) => { e.stopPropagation(); onOpenModal(submission); }} className={`${btnClass} group/btn`}><span>View Details</span><span className="group-hover/btn:translate-x-1 transition-transform">→</span></motion.button>;
           })()}
@@ -193,20 +201,33 @@ const SubmissionCard = memo(function SubmissionCard({ submission, idx, user, onV
 });
 
 export default function ModernDashboard({ data }: Props) {
-  const { allSubmissions: rawSubmissions, loading, error } = data;
-  const { user } = useAuth();
-  const { activeWorkflowId } = useApp();
+  const { activeForms, allSubmissions: rawSubmissions, loading, error } = data;
+  const { user, orgRole } = useAuth();
+  const { activeWorkflowId, setActiveWorkflowId } = useApp();
+  const [queueScope, setQueueScope] = useState<QueueScope>('all');
+  const canUseQueueScope = orgRole === 'super_admin';
 
-  // Personal action queue only: even admins see only tasks/forms assigned to
-  // the logged-in email here. Oversight stays in the director/admin views.
+  // Super admins get oversight here; everyone else keeps the personal action queue.
   const allSubmissions = useMemo(
-    () => rawSubmissions.filter(s => isAwaitingMyAction(s, user?.email)),
-    [rawSubmissions, user?.email],
+    () => rawSubmissions.filter(s => {
+      if (!isOpenSubmission(s)) return false;
+      if (!canUseQueueScope) return isAwaitingMyAction(s, user?.email);
+      return queueScope === 'mine'
+        ? isAwaitingMyAction(s, user?.email)
+        : isSubmissionVisible(s, user?.email, orgRole);
+    }),
+    [rawSubmissions, user?.email, orgRole, canUseQueueScope, queueScope],
   );
   const pendingSubmissions = useMemo(
-    () => allSubmissions.filter(s => getSubmissionStatus(s) === 'pending'),
+    () => allSubmissions.filter(isOpenSubmission),
     [allSubmissions],
   );
+  const workflowOptions = useMemo(() => {
+    return activeForms
+      .filter(f => !f.title.includes('Workflow Form'))
+      .map(f => ({ id: f.id, title: f.title || f.id }))
+      .sort((a, b) => a.title.localeCompare(b.title));
+  }, [activeForms]);
 
   const [isPending, startTransition] = useTransition();
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
@@ -218,7 +239,6 @@ export default function ModernDashboard({ data }: Props) {
   const [viewSignature, setViewSignature] = useState<{ url: string; approver: string; level: number; allUrls: string[]; submissionId: string } | null>(null);
   const [sigLoading, setSigLoading] = useState<string | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'latest' | 'oldest' | 'days'>('latest');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 12;
@@ -264,32 +284,26 @@ export default function ModernDashboard({ data }: Props) {
         const matchesSearch = sub.id.toLowerCase().includes(deferredSearchQuery.toLowerCase()) ||
           sub.submittedBy.name.toLowerCase().includes(deferredSearchQuery.toLowerCase()) ||
           sub.formTitle.toLowerCase().includes(deferredSearchQuery.toLowerCase());
-        const status = getSubmissionStatus(sub);
-        const matchesStatus = filterStatus === 'all' || status === filterStatus;
         const matchesDept = !filterDepartment || sub.submittedBy.department === filterDepartment;
         const matchesSubmitter = !filterSubmittedBy || sub.submittedBy.name === filterSubmittedBy;
         const submittedTs = sub.submissionDate ? new Date(sub.submissionDate).getTime() : 0;
         const matchesDateFrom = dateFromTs === null || submittedTs >= dateFromTs;
         const matchesDateTo = dateToTs === null || submittedTs <= dateToTs;
-        return matchesSearch && matchesStatus && matchesDept && matchesSubmitter && matchesDateFrom && matchesDateTo;
+        return matchesSearch && matchesDept && matchesSubmitter && matchesDateFrom && matchesDateTo;
       });
     if (sortBy === 'latest') filtered.sort((a, b) => new Date(b.submissionDate).getTime() - new Date(a.submissionDate).getTime());
     else if (sortBy === 'oldest') filtered.sort((a, b) => new Date(a.submissionDate).getTime() - new Date(b.submissionDate).getTime());
     else if (sortBy === 'days') filtered.sort((a, b) => b.daysAtCurrentLevel - a.daysAtCurrentLevel);
     return filtered;
-  }, [pendingSubmissions, activeWorkflowId, deferredSearchQuery, filterStatus, sortBy, filterDepartment, filterDateFrom, filterDateTo, filterSubmittedBy]);
+  }, [pendingSubmissions, activeWorkflowId, deferredSearchQuery, sortBy, filterDepartment, filterDateFrom, filterDateTo, filterSubmittedBy]);
 
   const totalPages = Math.ceil(filteredAndSortedSubmissions.length / itemsPerPage);
   const paginatedSubmissions = filteredAndSortedSubmissions.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-  const handleExport = useCallback(() => { exportToExcel(filteredAndSortedSubmissions, 'Modern Dashboard Data'); }, [filteredAndSortedSubmissions]);
+  const handleExport = useCallback(() => { exportToExcel(filteredAndSortedSubmissions, 'Dashboard Data'); }, [filteredAndSortedSubmissions]);
 
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     startTransition(() => { setSearchQuery(e.target.value); setCurrentPage(1); });
-  }, []);
-
-  const handleStatusFilter = useCallback((status: string) => {
-    startTransition(() => { setFilterStatus(status); setCurrentPage(1); });
   }, []);
 
   const handleSortChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -298,27 +312,20 @@ export default function ModernDashboard({ data }: Props) {
 
   const handleViewDetails = useCallback((submission: Submission) => { setSelectedSubmission(submission); }, []);
 
-  // Right-sidebar Approve/Reject route through the same approve-&-sign modal the
-  // cards use. Open Task / Fill Form resolves the access-token URL server-side.
+  // Right-sidebar actions route through the same confirmation modal the cards use.
   const openSidebarApproveModal = useCallback(() => {
     if (workflowSidebarSubmission) setSelectedSubmission(workflowSidebarSubmission);
   }, [workflowSidebarSubmission]);
 
-  // Card "Fill Form" / "Open Task": open the SAME direct link JotForm sends in
-  // the assignment email (the /share/{token} access link). Fast path: the link
-  // is already synced on submission.workflowTasks; otherwise resolve it
-  // server-side via /api/email-url.
+  // Assigned forms are the only external action; plain tasks complete in-app.
   const openCardTaskLink = useCallback(async (submission: Submission) => {
-    // Synchronous open keeps the click as a "user gesture" so popup blockers
-    // don't suppress the new tab (same trick as openTaskLink below).
-    const pop = window.open('about:blank', '_blank');
     const me = user?.email?.toLowerCase();
     const tasks = submission.workflowTasks || [];
-    // Resolve the link server-side FIRST (/api/email-url returns the actual
-    // /share/ link JotForm emailed this assignee); only fall back to the stored
-    // task link if the API can't resolve one.
-    const myActive = tasks.find(t => t.status === 'ACTIVE' && t.assigneeEmail?.toLowerCase() === me)
-      || tasks.find(t => t.status === 'ACTIVE');
+    const expectedType = getMyActionType(submission, user?.email) === 'form'
+      ? 'workflow_assign_form'
+      : 'workflow_assign_task';
+    const myActive = tasks.find(t => t.status === 'ACTIVE' && t.type === expectedType && t.assigneeEmail?.toLowerCase() === me)
+      || tasks.find(t => t.status === 'ACTIVE' && t.type === expectedType);
     let url = '';
     let reason = '';
     try {
@@ -335,33 +342,18 @@ export default function ModernDashboard({ data }: Props) {
     if (!url) url = getUsableTaskAccessLink(myActive);
 
     if (!url) {
-      if (pop && !pop.closed) pop.close();
       // eslint-disable-next-line no-console
       console.warn('[openCardTaskLink] no URL resolved:', { reason, submissionId: submission.id });
-      alert(`Couldn't open the JotForm task: ${reason || 'this step has no accessible link'}`);
+      alert(`Couldn't open the JotForm action: ${reason || 'no authenticated link was returned'}`);
       return;
     }
 
-    if (pop && !pop.closed) {
-      try {
-        pop.location.href = url;
-        try { pop.opener = null; } catch { /* cross-origin once navigated */ }
-      } catch {
-        pop.close();
-        window.open(url, '_blank', 'noopener,noreferrer');
-      }
-    } else {
-      window.open(url, '_blank', 'noopener,noreferrer');
-    }
+    window.open(url, '_blank', 'noopener,noreferrer');
   }, [user?.email]);
 
   const openTaskLink = useCallback(async (task: WorkflowTask) => {
-    // Synchronous open keeps the click as a "user gesture" so popup blockers
-    // don't suppress the new tab. CRITICAL: do NOT pass 'noopener'/'noreferrer'
-    // here — they force window.open to return null, leaving the placeholder
-    // tab stuck at about:blank. We sever pop.opener AFTER navigation instead.
-    const pop = window.open('about:blank', '_blank');
     const sub = workflowSidebarSubmission;
+    if (task.type === 'workflow_assign_task') return sub ? openCardTaskLink(sub) : undefined;
     let url = '';
     let reason = '';
     if (sub) {
@@ -380,101 +372,18 @@ export default function ModernDashboard({ data }: Props) {
     if (!url) url = getUsableTaskAccessLink(task);
 
     if (!url) {
-      if (pop && !pop.closed) pop.close();
       // eslint-disable-next-line no-console
       console.warn('[openTaskLink] no URL resolved:', { reason, taskId: task.taskId, type: task.type });
       alert(`Couldn't open the JotForm task: ${reason || 'this step has no accessible link'}`);
       return;
     }
 
-    if (pop && !pop.closed) {
-      try {
-        pop.location.href = url;
-        // Sever opener now that we've redirected — same security as noopener
-        // would have given us up front, but compatible with the sync-open trick.
-        try { pop.opener = null; } catch { /* cross-origin once navigated */ }
-      } catch {
-        pop.close();
-        window.open(url, '_blank', 'noopener,noreferrer');
-      }
-    } else {
-      // Popup was blocked at the OS level. Open a fresh one anyway — most browsers
-      // still honor user-initiated calls if the first one was suppressed.
-      window.open(url, '_blank', 'noopener,noreferrer');
-    }
+    window.open(url, '_blank', 'noopener,noreferrer');
   }, [workflowSidebarSubmission]);
 
-  // Complete the assignee's active task directly via the documented JotForm
-  // workflow API (POST /workflow/task/{taskId}/complete, surfaced through our
-  // /api/workflow-action endpoint). No JotForm browser link is opened, so the
-  // assignee never hits the "request access" wall — the task is actioned in-app.
-  const completeWorkflowTask = useCallback(async (submission: Submission, task?: WorkflowTask) => {
-    const me = user?.email?.toLowerCase();
-    const targetTask = task
-      || submission.workflowTasks?.find(t =>
-        t.status === 'ACTIVE' &&
-        t.type === 'workflow_assign_task' &&
-        t.assigneeEmail?.toLowerCase() === me
-      )
-      || submission.workflowTasks?.find(t =>
-        t.status === 'ACTIVE' && t.assigneeEmail?.toLowerCase() === me
-      )
-      || submission.workflowTasks?.find(t => t.status === 'ACTIVE' && t.type === 'workflow_assign_task');
-
-    if (!targetTask?.taskId) {
-      alert('Could not find the active JotForm task for this submission.');
-      return;
-    }
-    if (!window.confirm(`Mark the task "${targetTask.name || 'Task'}" as complete? This advances the workflow in JotForm.`)) {
-      return;
-    }
-
-    try {
-      const res = await apiFetch<{ ok?: boolean; instanceCompleted?: boolean; error?: string }>('/api/workflow-action', {
-        method: 'POST',
-        body: JSON.stringify({ submissionId: submission.id, taskId: targetTask.taskId, action: 'complete' }),
-        throwOnError: false,
-      });
-      if (res?.ok) {
-        alert(res.instanceCompleted
-          ? 'Task completed — the workflow is now finished.'
-          : 'Task completed — moved to the next step.');
-        await data.refresh?.({ force: true });
-      } else {
-        alert(`Could not complete the task: ${res?.error || 'unknown error'}`);
-      }
-    } catch (e: unknown) {
-      alert(`Could not complete the task: ${(e as { message?: string })?.message || 'unknown error'}`);
-    }
-  }, [user?.email, data.refresh]);
-
-  const completeTaskFromSidebar = useCallback(async (task: WorkflowTask) => {
-    const sub = workflowSidebarSubmission;
-    if (!sub) return;
-    await completeWorkflowTask(sub, task);
-  }, [workflowSidebarSubmission, completeWorkflowTask]);
-
-  const copyTaskLinkFromSidebar = useCallback(async (task: WorkflowTask) => {
-    const sub = workflowSidebarSubmission;
-    if (!sub || !task.taskId) return;
-    try {
-      const resolved = await apiFetch<{ approvalUrl?: string | null }>(
-        `/api/email-url?formId=${encodeURIComponent(sub.formId)}&submissionId=${encodeURIComponent(sub.id)}&taskId=${encodeURIComponent(task.taskId)}`,
-        { throwOnError: false },
-      );
-      let url = resolved?.approvalUrl || getUsableTaskAccessLink(task);
-
-      if (!url) {
-        const result = await apiFetch(`/api/task-token?submissionId=${encodeURIComponent(sub.id)}&taskId=${encodeURIComponent(task.taskId)}`) as { url: string };
-        url = result.url;
-      }
-
-      await navigator.clipboard.writeText(url);
-      alert('Task link copied to clipboard.');
-    } catch (e: unknown) {
-      alert(`Failed to copy link: ${(e as { message?: string })?.message || 'unknown error'}`);
-    }
-  }, [workflowSidebarSubmission]);
+  const handleCardTask = useCallback((submission: Submission) => {
+    setSelectedSubmission(submission);
+  }, []);
 
   const fetchAndShowSignature = useCallback(async (submissionId: string, level: number, taskId: string) => {
     setSigLoading(taskId);
@@ -560,7 +469,15 @@ export default function ModernDashboard({ data }: Props) {
   // on-demand when the user opens a submission's detail (openSidebarWithTasks).
   // For data fully populated server-side, run Settings → "Sync All Submissions".
 
-  useEffect(() => { setCurrentPage(1); }, [filterDepartment, filterDateFrom, filterDateTo, filterSubmittedBy]);
+  useEffect(() => { setCurrentPage(1); }, [filterDepartment, filterDateFrom, filterDateTo, filterSubmittedBy, activeWorkflowId, queueScope]);
+
+  useEffect(() => {
+    if (workflowSidebarSubmission && !allSubmissions.some(s => s.id === workflowSidebarSubmission.id)) {
+      setWorkflowSidebarSubmission(null);
+      setSplitSelected(null);
+      setExpandedTasks([]);
+    }
+  }, [allSubmissions, workflowSidebarSubmission]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => { if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setDropdownOpen(false); };
@@ -593,10 +510,10 @@ export default function ModernDashboard({ data }: Props) {
   );
 
   const renderGrid = () => (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ staggerChildren: 0.05 }} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ staggerChildren: 0.05 }} className="responsive-card-grid">
       <AnimatePresence>
         {paginatedSubmissions.length > 0 ? paginatedSubmissions.map((sub, idx) => (
-          <SubmissionCard key={sub.id} submission={sub} idx={idx} user={user} onViewDetails={handleViewDetails} onOpenModal={openSidebarWithTasks} onOpenTask={openCardTaskLink} onCompleteTask={completeWorkflowTask} />
+          <SubmissionCard key={sub.id} submission={sub} idx={idx} user={user} onViewDetails={handleViewDetails} onOpenModal={openSidebarWithTasks} onOpenTask={openCardTaskLink} onCompleteTask={handleCardTask} />
         )) : renderEmpty()}
       </AnimatePresence>
     </motion.div>
@@ -604,8 +521,8 @@ export default function ModernDashboard({ data }: Props) {
 
   const renderList = () => (
     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-      <div className="overflow-x-auto">
-        <table className="w-full">
+      <div className="responsive-table">
+        <table className="w-full min-w-[900px]">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50">
               <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest w-12">#</th>
@@ -643,8 +560,8 @@ export default function ModernDashboard({ data }: Props) {
 
   const renderCompact = () => (
     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-      <div className="overflow-x-auto">
-        <table className="w-full">
+      <div className="responsive-table">
+        <table className="w-full min-w-[760px]">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50">
               <th className="px-2 py-1.5 text-left text-[9px] font-bold text-gray-400 uppercase tracking-wider w-8">#</th>
@@ -765,8 +682,8 @@ export default function ModernDashboard({ data }: Props) {
   const renderSplit = () => {
     const selected = splitSelected || paginatedSubmissions[0];
     return (
-      <div className="flex gap-4 h-[calc(100vh-220px)] min-h-[500px]">
-        <div className="w-72 flex-shrink-0 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
+      <div className="flex flex-col gap-4 min-h-[500px] lg:h-[calc(100dvh-220px)] lg:flex-row">
+        <div className="w-full bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col lg:w-72 lg:flex-shrink-0">
           <div className="px-3 py-2 border-b border-gray-100 bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-wider">{filteredAndSortedSubmissions.length} submissions</div>
           <div className="flex-1 overflow-y-auto">
             {paginatedSubmissions.map(sub => {
@@ -785,7 +702,7 @@ export default function ModernDashboard({ data }: Props) {
           </div>
         </div>
         {selected && (
-          <div className="flex-1 bg-white rounded-2xl border border-gray-200 shadow-sm p-6 overflow-y-auto">
+          <div className="min-w-0 flex-1 bg-white rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6 overflow-y-auto">
             <div className="flex items-center gap-2 mb-4">
               <span className={`inline-block text-xs font-bold px-2.5 py-1 rounded-lg text-white bg-gradient-to-r ${statusConfig[getSubmissionStatus(selected)].color}`}>{statusConfig[getSubmissionStatus(selected)].label}</span>
               <p className="text-xs text-gray-400 font-mono">{selected.id.slice(0, 8).toUpperCase()}</p>
@@ -795,7 +712,7 @@ export default function ModernDashboard({ data }: Props) {
               })()}
             </div>
             <h2 className="text-lg font-bold text-gray-900 mb-4">{selected.formTitle || 'Form Submission'}</h2>
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="responsive-panel-grid text-sm">
               <div><p className="text-xs text-gray-400 uppercase mb-0.5">Submitted By</p><p className="font-semibold text-gray-800">{selected.submittedBy.name}</p><p className="text-xs text-gray-500">{selected.submittedBy.email}</p></div>
               <div><p className="text-xs text-gray-400 uppercase mb-0.5">Department</p><p className="font-semibold text-gray-800">{selected.submittedBy.department || '—'}</p></div>
               <div><p className="text-xs text-gray-400 uppercase mb-0.5">Pending With</p><p className="font-semibold text-gray-800">{displayApproverName(selected.pendingApproverName)}</p>{selected.pendingApproverEmail && <p className="text-xs text-gray-500">{selected.pendingApproverEmail}</p>}</div>
@@ -828,14 +745,14 @@ export default function ModernDashboard({ data }: Props) {
     }
   })();
 
-  if (loading) {
+  if (loading && !data.cloudSyncing && rawSubmissions.length > 0) {
     return (
-      <div className="space-y-8 w-full px-4">
+      <div className="app-page space-y-8 w-full px-4">
         <div className="space-y-2">
           <Skeleton className="h-10 w-72" />
-          <Skeleton className="h-4 w-96" />
+          <Skeleton className="h-4 w-full max-w-sm" />
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="responsive-card-grid">
           {Array.from({ length: 4 }).map((_, i) => <SkeletonStatCard key={i} />)}
         </div>
         <div className="space-y-4">
@@ -849,7 +766,7 @@ export default function ModernDashboard({ data }: Props) {
             </div>
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="responsive-card-grid">
           {Array.from({ length: 6 }).map((_, i) => <SkeletonSubmissionCard key={i} />)}
         </div>
       </div>
@@ -858,7 +775,7 @@ export default function ModernDashboard({ data }: Props) {
 
   // Explicit error state — only when there's nothing to show. If we already have
   // rows (a transient refresh error), keep showing them rather than blanking.
-  if (error && allSubmissions.length === 0) {
+  if (error && allSubmissions.length === 0 && !data.cloudSyncing) {
     return (
       <div className="flex flex-col items-center justify-center py-24 px-4 text-center">
         <AlertCircle className="w-10 h-10 text-indigo-400 mb-3" />
@@ -868,45 +785,42 @@ export default function ModernDashboard({ data }: Props) {
     );
   }
 
-  const pendingCount = pendingSubmissions.length;
-  const criticalCount = pendingSubmissions.filter(s => s.daysAtCurrentLevel > 7).length;
+  const pendingReviewSubmissions = pendingSubmissions.filter(isApprovalReview);
+  const pendingCount = pendingReviewSubmissions.length;
+  const delayedCount = pendingReviewSubmissions.filter(s => s.daysAtCurrentLevel > DELAYED_REVIEW_DAYS).length;
+  const criticalCount = pendingReviewSubmissions.filter(s => s.daysAtCurrentLevel > CRITICAL_REVIEW_DAYS).length;
   const avgDays = pendingSubmissions.length > 0
     ? Math.round(pendingSubmissions.reduce((sum, s) => sum + (s.daysAtCurrentLevel || 0), 0) / pendingSubmissions.length) : 0;
 
   const stats = [
-    { label: 'Pending Submissions', value: pendingSubmissions.length, color: 'from-blue-500 to-blue-600', trend: pendingSubmissions.length > 0 ? '+' + pendingSubmissions.length : '0' },
-    { label: 'Pending Review', value: pendingCount, color: 'from-cyan-400 to-sky-500', trend: criticalCount > 0 ? `${criticalCount} critical` : 'On track' },
-    { label: 'Critical Pending', value: criticalCount, color: 'from-blue-400 to-blue-600', trend: criticalCount > 0 ? `${criticalCount} delayed` : 'Clear' },
+    { label: 'Pending Submissions', value: pendingSubmissions.length, color: 'from-blue-500 to-blue-600', trend: pendingSubmissions.length > 0 ? `${pendingSubmissions.length} open` : '0' },
+    { label: 'Pending Review', value: pendingCount, color: 'from-cyan-400 to-sky-500', trend: delayedCount > 0 ? `${delayedCount} >7d` : 'On track' },
+    { label: 'Critical Review', value: criticalCount, color: 'from-blue-400 to-blue-600', trend: criticalCount > 0 ? `>${CRITICAL_REVIEW_DAYS}d` : 'Clear' },
     { label: 'Avg Pending', value: `${avgDays}d`, color: 'from-indigo-400 to-blue-500', trend: avgDays > 0 ? avgDays + 'd' : '—' },
   ];
 
   return (
-    <div className="relative w-full min-h-screen">
-      <div className={`space-y-8 w-full px-4 transition-all duration-300 ${workflowSidebarSubmission ? 'md:pr-[620px]' : ''}`}>
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ staggerChildren: 0.1 }} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="app-page relative">
+      <div className={`space-y-8 w-full px-4 transition-all duration-300 ${workflowSidebarSubmission ? '2xl:pr-[500px]' : ''}`}>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ staggerChildren: 0.1 }} className="responsive-card-grid">
           {stats.map((stat, idx) => (<StatCard key={idx} idx={idx} label={stat.label} value={stat.value} trend={stat.trend} color={stat.color} />))}
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="space-y-4">
-          <div className="flex-1 relative w-full">
-            <Search className="absolute left-4 top-3.5 w-5 h-5 text-gray-500" />
-            <input type="text" placeholder="Search by ID, name, or form title..." value={searchQuery} onChange={handleSearchChange}
-              className="w-full pl-12 pr-4 py-3 rounded-xl bg-white border border-gray-300 text-black placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200" />
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-            <div className="flex gap-2 flex-wrap">
-              {['all', 'pending'].map(status => {
-                const filterColors: Record<string, string> = {
-                  all: 'from-blue-500 to-blue-600', pending: 'from-cyan-400 to-sky-400', approved: 'from-blue-400 to-blue-600', rejected: 'from-red-500 to-rose-600', completed: 'from-cyan-300 to-blue-400',
-                };
-                return (
-                  <motion.button key={status} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => handleStatusFilter(status)}
-                    className={`px-3 py-2 rounded-lg font-semibold text-sm transition-all duration-200 border ${filterStatus === status ? `bg-gradient-to-r ${filterColors[status]} text-white shadow-lg border-transparent` : 'bg-white text-gray-700 border-gray-300 hover:border-gray-400'}`}>
-                    {status.charAt(0).toUpperCase() + status.slice(1)}
-                  </motion.button>
-                );
-              })}
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex w-full flex-col gap-3 sm:flex-row xl:max-w-4xl">
+              <TeamProfilePicker />
+              <WorkflowPicker
+                value={activeWorkflowId}
+                options={workflowOptions}
+                onChange={id => { setActiveWorkflowId(id); setCurrentPage(1); }}
+                accent="blue"
+              />
+              <div className="relative w-full sm:max-w-md">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+                <input type="text" placeholder="Search ID, name, or form title" value={searchQuery} onChange={handleSearchChange}
+                  className="w-full rounded-xl border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm text-black placeholder-gray-500 transition-all duration-200 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+              </div>
             </div>
 
             <div className="flex gap-2 items-center flex-wrap">
@@ -983,7 +897,7 @@ export default function ModernDashboard({ data }: Props) {
                       </button>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="responsive-panel-grid">
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">Department</label>
                       <select
@@ -1032,10 +946,15 @@ export default function ModernDashboard({ data }: Props) {
         </motion.div>
 
         {/* Main Content Area */}
-        {mainContent || (
+        {(data.cloudSyncing || loading) && filteredAndSortedSubmissions.length === 0 ? (
+          <CloudSyncLoader
+            message={data.cloudSyncing ? data.cloudSyncMessage : 'Loading workspace data from database...'}
+            percent={data.cloudSyncing ? data.cloudSyncPercent : 35}
+          />
+        ) : mainContent || (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center py-16">
             <AlertCircle className="w-12 h-12 text-gray-500 mb-4" />
-            <p className="text-gray-600 text-sm">No submissions found</p>
+            <p className="text-gray-600 text-sm">{activeForms.length > 0 ? 'No pending submissions found' : 'No submissions found'}</p>
           </motion.div>
         )}
 
@@ -1073,7 +992,7 @@ export default function ModernDashboard({ data }: Props) {
         isOpen={!!workflowSidebarSubmission} submission={workflowSidebarSubmission} expandedTasks={expandedTasks}
         expandLoading={workflowLoading ? workflowSidebarSubmission?.id : undefined} user={user} showOverlay={false} isAbsolute={true}
         onClose={() => setWorkflowSidebarSubmission(null)} onFetchSignature={fetchAndShowSignature} sigLoading={sigLoading}
-        onTaskApprove={openSidebarApproveModal} onSetTaskRejecting={openSidebarApproveModal} onOpenTaskLink={openTaskLink} onCompleteTask={completeTaskFromSidebar} onCopyTaskLink={copyTaskLinkFromSidebar}
+        onTaskApprove={openSidebarApproveModal} onSetTaskRejecting={openSidebarApproveModal} onOpenTaskLink={openTaskLink}
       />
 
       <AnimatePresence>

@@ -117,19 +117,19 @@ export default function Dashboard({ data }: Props) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="app-page space-y-6">
       {/* Director Identity Banner */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         className="glass-card p-5 border border-purple-500/20"
       >
-        <div className="flex items-center gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
           <div className="w-14 h-14 rounded-2xl bg-purple-500/20 flex items-center justify-center border border-purple-500/30">
             <Shield className="w-7 h-7 text-purple-400" />
           </div>
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-xl font-bold text-white">{DIRECTOR.name}</h2>
               <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30">
                 Director · Level 3 Approver
@@ -209,9 +209,9 @@ export default function Dashboard({ data }: Props) {
                   transition={{ delay: i * 0.04, duration: 0.3 }}
                   className="glass-card p-5"
                 >
-                  <div className="flex items-start gap-4">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
                     {/* Priority indicator */}
-                    <div className="w-1 self-stretch rounded-full flex-shrink-0" style={{
+                    <div className="h-1 w-full rounded-full flex-shrink-0 lg:h-auto lg:w-1 lg:self-stretch" style={{
                       background: sub.daysAtCurrentLevel > 14 ? '#EF4444' : sub.daysAtCurrentLevel > 7 ? '#F59E0B' : '#8B5CF6'
                     }} />
 
@@ -253,7 +253,7 @@ export default function Dashboard({ data }: Props) {
                     </div>
 
                     {/* Approve / Reject */}
-                    <div className="flex flex-col sm:flex-row items-center gap-2 flex-shrink-0">
+                    <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center lg:flex-shrink-0">
                       {isActioning ? (
                         <Loader2 className="w-5 h-5 text-gold animate-spin" />
                       ) : (

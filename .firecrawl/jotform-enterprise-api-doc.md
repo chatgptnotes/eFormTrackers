@@ -2,7 +2,7 @@
 
 > Transcribed from `1773631580795-Jotform-Enterprise-API-Document-for-Government-of-Dubai-Media-Office (2).pdf` (51 pages, provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025).
 > NOTE: the non-`(2)` copy of this PDF is corrupted (UTF-8 replacement bytes in binary streams) — always use the `(2)` copy.
-> Base URL: `https://your-jotform-enterprise-domain.com/API` (i.e. `https://eforms.mediaoffice.ae/API`). Supplements the public Jotform API.
+> Base URL: `https://your-jotform-enterprise-domain.com/API`. Supplements the public Jotform API.
 
 ## 1. Jotform Sign
 - **Get sign document IDs:** `GET API/listings/sign`

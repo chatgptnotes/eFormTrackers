@@ -3,8 +3,9 @@ const pool = require('../db/pool');
 const { validate } = require('../middleware/validate');
 const { buildUpdateQuery } = require('../db/queryBuilder');
 const { requireAuth } = require('../middleware/auth');
-const { isRowVisible, filterVisibleRows } = require('../lib/visibility');
+const { isRowVisible, filterVisibleRows, isAdminRole } = require('../lib/visibility');
 const { readKeyType } = require('../lib/key-type');
+const { storageProfileId } = require('../lib/profiles');
 const { submissionsPutBodySchema } = require('../schemas/data');
 
 const router = Router();
@@ -39,20 +40,43 @@ router.get('/submissions', async (req, res, next) => {
     const conditions = [];
     const params = [];
     let idx = 1;
+    const adminView = isAdminRole(req.session.role);
+    const profileId = storageProfileId(readKeyType(req));
+    const allTeamWorkspaces = String(req.session.role || '').toLowerCase() === 'super_admin' &&
+      !String(readKeyType(req)).includes('__team_');
 
-    // Scope every read to the active profile so different APIs' data never mix.
-    conditions.push(`profile_id = $${idx++}`);
-    params.push(readKeyType(req));
+    if (adminView) {
+      // Admins browse one selected workspace. Normal users browse "my work"
+      // across all team workspaces, then the visibility gate below enforces it.
+      const profileParam = idx++;
+      conditions.push(allTeamWorkspaces
+        ? `(profile_id = $${profileParam} OR profile_id LIKE $${profileParam} || '__team_%')`
+        : `profile_id = $${profileParam}`);
+      params.push(profileId);
 
-    if (req.query.form_ids) {
-      const ids = req.query.form_ids.split(',').map(s => s.trim()).filter(Boolean);
-      if (ids.length > 0) {
-        conditions.push(`form_id = ANY($${idx++})`);
-        params.push(ids);
+      if (req.query.form_ids) {
+        const ids = req.query.form_ids.split(',').map(s => s.trim()).filter(Boolean);
+        if (ids.length > 0) {
+          conditions.push(`form_id = ANY($${idx++})`);
+          params.push(ids);
+        }
+      } else if (req.query.form_id) {
+        conditions.push(`form_id = $${idx++}`);
+        params.push(req.query.form_id);
       }
-    } else if (req.query.form_id) {
-      conditions.push(`form_id = $${idx++}`);
-      params.push(req.query.form_id);
+    } else {
+      const email = String(req.session.email || '').toLowerCase();
+      // Normal users see "my work" across every synced workspace; the email
+      // participation filter below is the access boundary.
+      conditions.push(`(
+        lower(coalesce(submitter_email, '')) = $${idx}
+        OR lower(coalesce(pending_approver_email, '')) = $${idx}
+        OR lower(coalesce(approver_email, '')) = $${idx}
+        OR lower(workflow_tasks::text) LIKE $${idx + 1}
+        OR lower(level_history::text) LIKE $${idx + 1}
+      )`);
+      params.push(email, `%${email}%`);
+      idx += 2;
     }
     if (req.query.status) {
       conditions.push(`status = $${idx++}`);
@@ -65,7 +89,7 @@ router.get('/submissions', async (req, res, next) => {
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     const order = req.query.order === 'asc' ? 'ASC' : 'DESC';
-    const limit = Math.min(parseInt(req.query.limit || '200', 10) || 200, 20000);
+    const limit = Math.min(parseInt(req.query.limit || '20000', 10) || 20000, 20000);
     const offset = parseInt(req.query.offset || '0', 10) || 0;
 
     const { rows } = await pool.query(

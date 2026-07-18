@@ -1,13 +1,15 @@
 const pool = require('../db/pool');
 const env = require('../config/env');
-const { jotformFetch } = require('./jotform');
+const { jotformFetch, resolveApiKey } = require('./jotform');
 const { detectLevelFields } = require('./detect-fields');
 const { emitToAll } = require('./realtime');
 const { pMapLimit } = require('./concurrency');
-const { extractTask, deriveWorkflowStatus, mergeWorkflowTasksSql } = require('./workflow-task');
+const { extractTask, taskListFromResponse, deriveWorkflowStatus, mergeWorkflowTasksSql } = require('./workflow-task');
 const { enrichTasksWithPrefill } = require('./prefill');
 const { upsertEmailLogs } = require('./email-log');
-const { getDefaultProfile, hasProfile } = require('./profiles');
+const { getDefaultProfile, hasProfile, listProfiles, makeTeamProfileId } = require('./profiles');
+const { upsertWorkspaceForm, upsertWorkspaceLinks } = require('./workspace-links');
+const { applyResourceShareLinks, buildWorkflowTaskUrl } = require('./jotform-link');
 
 function parseEmailFromActionText(text) {
   if (!text || typeof text !== 'string') return '';
@@ -19,7 +21,7 @@ function parseEmailFromActionText(text) {
 // avoid burst-firing the JotForm API fast enough to trigger their 429 limit.
 const POLL_ENRICH_CONCURRENCY = 4;
 
-// Delay between processing each form (ms). Spreads the API burst across time.
+// Delay between processing each form (ms). Spreads the full-sync API burst across time.
 const INTER_FORM_DELAY_MS = 500;
 
 // Which JotForm profile the background poller authenticates with. It has no HTTP
@@ -28,6 +30,54 @@ const INTER_FORM_DELAY_MS = 500;
 function pollerProfileId() {
   const id = env.POLLER_KEY_TYPE;
   return id && hasProfile(id) ? id : getDefaultProfile().id;
+}
+
+function field(obj, ...keys) {
+  for (const k of keys) {
+    if (obj && obj[k] != null && String(obj[k]).trim()) return String(obj[k]);
+  }
+  return '';
+}
+
+async function pollerProfileIds() {
+  const raw = String(env.POLLER_KEY_TYPE || '').trim();
+  if (raw && raw !== 'all') {
+    const ids = raw.split(',').map(s => s.trim()).filter(hasProfile);
+    return ids.length ? ids : [getDefaultProfile().id];
+  }
+
+  const ids = new Set();
+  const seenAuth = new Set();
+  const bases = listProfiles().filter(p => p.apiKey).filter((p) => {
+    const key = `${p.apiKey}|${p.baseUrl}|${p.host}|${p.scope}|${p.teamId || ''}`;
+    if (seenAuth.has(key)) return false;
+    seenAuth.add(key);
+    return true;
+  });
+  bases.forEach(p => ids.add(p.id));
+  try {
+    const { rows } = await pool.query(`
+      SELECT profile_id FROM jf_forms
+      UNION
+      SELECT profile_id FROM jf_submissions
+    `);
+    rows.forEach(r => { if (r.profile_id && hasProfile(r.profile_id)) ids.add(r.profile_id); });
+  } catch (err) {
+    console.warn('[poller] DB profile discovery failed:', err.message);
+  }
+  for (const base of bases.filter(p => p.scope === 'user')) {
+    try {
+      const data = await jotformFetch('team/user/me', { keyType: base.id });
+      const teams = Array.isArray(data?.content) ? data.content : data?.content ? [data.content] : [];
+      for (const team of teams) {
+        const teamId = field(team, 'id', 'team_id', 'teamId', 'teamID');
+        if (teamId) ids.add(makeTeamProfileId(base.id, teamId));
+      }
+    } catch (err) {
+      console.warn(`[poller] team discovery failed for ${base.id}:`, err.message);
+    }
+  }
+  return [...ids];
 }
 
 // Workflow states that need no (more) enrichment: not yet started (no instance)
@@ -39,7 +89,7 @@ function workflowIsActive(status) {
   return !FINISHED_WF.has(String(status || '').toUpperCase());
 }
 
-let isRunning = false;
+const runningProfiles = new Set();
 let pollTimer = null;
 let quickTimer = null;
 
@@ -47,6 +97,45 @@ let quickTimer = null;
 // the structure detected by the last full poll instead of refetching it.
 const questionsCache = new Map(); // formId → { detectedFields, at }
 const QUESTIONS_TTL_MS = 10 * 60 * 1000;
+const formsCache = new Map(); // profileId → { forms, at }
+const FORMS_TTL_MS = 30 * 1000;
+const PAGE_LIMIT = 1000;
+
+async function fetchAllPages(path, profileId, params = {}) {
+  const all = [];
+  for (let offset = 0; ; offset += PAGE_LIMIT) {
+    const data = await jotformFetch(path, {
+      params: { ...params, limit: PAGE_LIMIT, offset },
+      keyType: profileId,
+    });
+    const rows = Array.isArray(data?.content) ? data.content : [];
+    all.push(...rows);
+    if (rows.length < PAGE_LIMIT) return all;
+  }
+}
+
+async function fetchEnabledForms(profileId, quick) {
+  const hit = formsCache.get(profileId);
+  if (hit && Date.now() - hit.at < FORMS_TTL_MS) return hit.forms;
+
+  // Bootstrap quickly from PostgreSQL, then refresh from JotForm after the TTL
+  // so forms created after startup are discovered by incremental polls.
+  if (quick && !hit) {
+    const { rows } = await pool.query(
+      `SELECT form_id AS id, title, status FROM jf_forms WHERE profile_id = $1 AND status = 'ENABLED' ORDER BY updated_at_jf DESC NULLS LAST`,
+      [profileId]
+    );
+    if (rows.length > 0) {
+      const forms = rows.map(r => ({ id: String(r.id), title: String(r.title || ''), status: String(r.status || '') }));
+      formsCache.set(profileId, { forms, at: Date.now() });
+      return forms;
+    }
+  }
+
+  const forms = (await fetchAllPages('user/forms', profileId, { status: 'ENABLED' })).filter(f => f.id);
+  formsCache.set(profileId, { forms, at: Date.now() });
+  return forms;
+}
 
 // ── Text extractor (mirrors webhook handler) ──────────────────────────────────
 function extractText(answer) {
@@ -62,38 +151,6 @@ function extractText(answer) {
     return Object.values(answer).filter(v => v && typeof v === 'string').join(' ');
   }
   return '';
-}
-
-// ── Build approval URL from active task ──────────────────────────────────────
-function buildApprovalUrl(activeTask, formId, submissionId) {
-  const element = activeTask.element || {};
-  const props = activeTask.properties || {};
-  const taskType = String(element.type || '');
-  const taskId = String(activeTask.id || '');
-  const internalFormID = element.internalFormID || element.resourceID || element.formID || props.formID || formId;
-
-  if (taskType === 'workflow_assign_form') {
-    return internalFormID ? `${env.JOTFORM_HOST}/${internalFormID}?workflowAssignFormTask=1&taskID=${taskId}` : '';
-  }
-
-  const rawAccessLink = String(activeTask.accessLink || props.accessLink || '');
-
-  if (taskType === 'workflow_assign_task') {
-    if (rawAccessLink) return rawAccessLink;
-    if (formId && submissionId && taskId)
-      return `${env.JOTFORM_HOST}/inbox/${formId}/${submissionId}?taskID=${taskId}`;
-    return '';
-  }
-
-  const shareMatch = rawAccessLink.match(/\/share\/([^?#]+)/);
-  const accessToken = shareMatch ? shareMatch[1] : '';
-  if (internalFormID && taskId && accessToken) {
-    return `${env.JOTFORM_HOST}/approval-form/${internalFormID}/task/${taskId}/access-token/${encodeURIComponent(accessToken)}`;
-  }
-  if (formId && submissionId && taskId) {
-    return `${env.JOTFORM_HOST}/inbox/${formId}/${submissionId}?taskID=${taskId}`;
-  }
-  return rawAccessLink || '';
 }
 
 // ── Process one submission and upsert to DB ───────────────────────────────────
@@ -112,8 +169,19 @@ async function processSubmission(raw, formId, formTitle) {
 // ── Fetch workflow instance info for a pending submission ─────────────────────
 async function enrichWithWorkflow(submissionId, workflowInstanceId, formId, profileId) {
   try {
-    const instData = await jotformFetch(`workflow/instance/${workflowInstanceId}`, { keyType: profileId });
-    const taskList = instData?.content?.taskList || [];
+    let taskList = [];
+    let resourceShares = [];
+    try {
+      const taskData = await jotformFetch(`workflow/submission/${submissionId}/tasks`, { keyType: profileId });
+      taskList = taskListFromResponse(taskData);
+    } catch (err) {
+      console.warn(`[poller] workflow/submission tasks failed for ${submissionId}:`, err.message);
+    }
+    if (workflowInstanceId) {
+      const instData = await jotformFetch(`workflow/instance/${workflowInstanceId}`, { keyType: profileId });
+      if (taskList.length === 0) taskList = instData?.content?.taskList || [];
+      resourceShares = instData?.content?.resourceShares || [];
+    }
     // Flatten to the shape every reader expects (top-level assigneeEmail etc.) —
     // matches admin-sync. Raw JotForm tasks nest the assignee under
     // properties.assigneeEmail, which breaks visibility (isSubmissionVisible /
@@ -122,8 +190,15 @@ async function enrichWithWorkflow(submissionId, workflowInstanceId, formId, prof
     // Resolve the real prefill (access) link for any active workflow_assign_form
     // task — opens the target form pre-populated and submittable, per user.
     await enrichTasksWithPrefill(flatTasks, submissionId, profileId);
+    applyResourceShareLinks(flatTasks, resourceShares, formId);
+    for (const task of flatTasks) {
+      if (task.taskId) task.accessLink = buildWorkflowTaskUrl(task, formId);
+    }
 
-    const activeTask = taskList.find(t => String(t.status || '').toUpperCase() === 'ACTIVE');
+    const activeFlat = flatTasks.find(t => t.status === 'ACTIVE' && t.assigneeEmail)
+      || flatTasks.find(t => t.status === 'ACTIVE');
+    const activeTask = taskList.find(t => String(t.id || '') === String(activeFlat?.taskId || ''))
+      || taskList.find(t => String(t.status || '').toUpperCase() === 'ACTIVE');
     if (!activeTask) return { pendingApproverName: '', pendingApproverEmail: '', approvalUrl: '', workflowTasks: flatTasks };
 
     const props = activeTask.properties || {};
@@ -131,15 +206,10 @@ async function enrichWithWorkflow(submissionId, workflowInstanceId, formId, prof
     const recipients = Array.isArray(props.recipients) ? props.recipients : [];
     const firstRecipient = recipients[0] || {};
 
-    const pendingApproverName = String(assigneeUser.name || firstRecipient.name || '');
-    const candidateEmail = String(props.assigneeEmail || assigneeUser.email || firstRecipient.email || '');
+    const pendingApproverName = String(activeFlat?.assigneeName || assigneeUser.name || firstRecipient.name || '');
+    const candidateEmail = String(activeFlat?.assigneeEmail || props.assigneeEmail || assigneeUser.email || firstRecipient.email || '');
     const pendingApproverEmail = candidateEmail.includes('@') ? candidateEmail : '';
-    let approvalUrl = buildApprovalUrl(activeTask, formId, submissionId);
-    // For assign_form, prefer the resolved prefill link (set on the flat task above).
-    if (String((activeTask.element || {}).type) === 'workflow_assign_form') {
-      const activeFlat = flatTasks.find(t => t.taskId === String(activeTask.id || ''));
-      if (activeFlat?.accessLink) approvalUrl = activeFlat.accessLink;
-    }
+    const approvalUrl = buildWorkflowTaskUrl(activeFlat, formId);
 
     return { pendingApproverName, pendingApproverEmail, approvalUrl, workflowTasks: flatTasks };
   } catch (err) {
@@ -170,18 +240,17 @@ async function getFallbackApprover(formId, level) {
 async function pollOnce(opts = {}) {
   const quick = !!opts.quick;
   const profileId = opts.profileId || pollerProfileId();
-  if (isRunning) {
-    if (!quick) console.log('[poller] Previous poll still running — skipping');
+  if (runningProfiles.has(profileId)) {
+    if (!quick) console.log(`[poller] Previous poll still running for ${profileId} — skipping`);
     return;
   }
-  isRunning = true;
+  runningProfiles.add(profileId);
   const start = Date.now();
-  if (!quick) console.log('[poller] Poll started');
+  if (!quick) console.log(`[poller] Poll started for ${profileId}`);
 
   try {
     // 1. Fetch all enabled forms
-    const formsData = await jotformFetch('user/forms', { params: { limit: '1000', status: 'ENABLED' }, keyType: profileId });
-    const forms = (formsData.content || []).filter(f => f.id);
+    const forms = await fetchEnabledForms(profileId, quick);
 
     if (forms.length === 0) {
       console.log('[poller] No forms found');
@@ -205,6 +274,8 @@ async function pollOnce(opts = {}) {
           profileId,
         ]
       ).catch(err => console.warn(`[poller] jf_forms upsert failed for ${form.id}:`, err.message));
+      await upsertWorkspaceForm(profileId, form)
+        .catch(err => console.warn(`[poller] team form upsert failed for ${form.id}:`, err.message));
     }
 
     let totalUpserted = 0;
@@ -232,22 +303,19 @@ async function pollOnce(opts = {}) {
       }
 
       // Fetch submissions — quick polls grab only the latest page (new
-      // submissions + recent updates), full polls re-pull up to 2000.
+      // submissions + recent updates), full polls page until JotForm is done.
       let submissions = [];
       try {
-        const subData = await jotformFetch(`form/${formId}/submissions`, {
-          params: { limit: quick ? '100' : '1000', offset: '0', orderby: 'created_at', direction: 'DESC', addWorkflowStatus: '1' },
-          keyType: profileId,
-        });
-        submissions = subData.content || [];
-
-        // Fetch second page if full
-        if (!quick && submissions.length === 1000) {
-          const subData2 = await jotformFetch(`form/${formId}/submissions`, {
-            params: { limit: '1000', offset: '1000', orderby: 'created_at', direction: 'DESC', addWorkflowStatus: '1' },
+        if (quick) {
+          const subData = await jotformFetch(`form/${formId}/submissions`, {
+            params: { limit: '10', offset: '0', orderby: 'created_at', direction: 'DESC', addWorkflowStatus: '1' },
             keyType: profileId,
           });
-          submissions = submissions.concat(subData2.content || []);
+          submissions = subData.content || [];
+        } else {
+          submissions = await fetchAllPages(`form/${formId}/submissions`, profileId, {
+            orderby: 'created_at', direction: 'DESC', addWorkflowStatus: '1',
+          });
         }
       } catch (err) {
         console.warn(`[poller] Could not fetch submissions for form ${formId}:`, err.message);
@@ -264,6 +332,7 @@ async function pollOnce(opts = {}) {
           const answers = raw.answers || {};
           const get = (id) => id ? extractText(answers[id]?.answer) : '';
 
+          const hasStatusSignal = detectedFields.levelFields.length > 0 || !!detectedFields.overallStatusFieldId;
           const levels = detectedFields.levelFields.map(lf => ({
             id: lf.level,
             status: get(lf.statusFieldId),
@@ -289,6 +358,10 @@ async function pollOnce(opts = {}) {
             } else {
               currentLevel = lvl.id; status = 'pending'; break;
             }
+          }
+          if (!hasStatusSignal && !raw.workflowStatus && !raw.workflowInstanceID && !raw.workflow_instance_id) {
+            status = 'completed';
+            currentLevel = maxLevel;
           }
 
           const submittedBy = get(detectedFields.nameFieldId);
@@ -334,7 +407,7 @@ async function pollOnce(opts = {}) {
         // isn't finished/not-started). Rows we skip keep their existing enrichment —
         // the upsert below preserves workflow_tasks/pending_approver when empty — so
         // a finished workflow synced earlier isn't blanked every cycle.
-        if (p.workflowInstanceId && workflowIsActive(p.workflowStatus)) {
+        if ((p.workflowInstanceId || p.workflowStatus) && workflowIsActive(p.workflowStatus)) {
           const enriched = await enrichWithWorkflow(p.submissionId, p.workflowInstanceId, formId, profileId);
           p.pendingApproverName = enriched.pendingApproverName;
           p.pendingApproverEmail = enriched.pendingApproverEmail;
@@ -365,7 +438,7 @@ async function pollOnce(opts = {}) {
 
       // Small pause before moving to the next form — prevents burst API calls
       // across many forms from triggering JotForm's own rate limiter.
-      await new Promise(r => setTimeout(r, quick ? 100 : INTER_FORM_DELAY_MS));
+      if (!quick) await new Promise(r => setTimeout(r, INTER_FORM_DELAY_MS));
 
       // 6. Upsert each prepared submission.
       for (const p of prepared) {
@@ -415,9 +488,20 @@ async function pollOnce(opts = {}) {
               raw_data=$24, created_at_jf=$25, updated_at_jf=$26, days_at_level=$27, total_days=$28,
               last_synced=now(), needs_sync=$29,
               approval_url = CASE
-                WHEN $30 IS NULL          THEN jf_submissions.approval_url
-                WHEN $30 LIKE '%/inbox/%' THEN COALESCE(jf_submissions.approval_url, $30)
-                ELSE $30
+                WHEN EXISTS (
+                  SELECT 1 FROM jsonb_array_elements($21::jsonb) t
+                  WHERE t->>'status' = 'ACTIVE' AND t->>'type' = 'workflow_assign_task'
+                    AND COALESCE(t->>'internalFormID','') = ''
+                ) THEN NULL
+                WHEN EXISTS (
+                  SELECT 1 FROM jsonb_array_elements($21::jsonb) t
+                  WHERE t->>'status' = 'ACTIVE' AND t->>'type' = 'workflow_assign_task'
+                ) THEN CASE
+                  WHEN $30 LIKE '%/share/%' OR $30 LIKE '%/approval-form/%' THEN $30
+                  WHEN jf_submissions.approval_url LIKE '%/share/%' OR jf_submissions.approval_url LIKE '%/approval-form/%' THEN jf_submissions.approval_url
+                  ELSE NULL
+                END
+                ELSE COALESCE($30, jf_submissions.approval_url)
               END`,
             [
               p.submissionId, formId, formTitle, p.title, p.description,
@@ -436,6 +520,13 @@ async function pollOnce(opts = {}) {
             ]
           );
           totalUpserted++;
+          await upsertWorkspaceLinks({
+            profileId,
+            submissionId: p.submissionId,
+            formId,
+            workflowTasks: p.workflowTasks,
+            approvalUrl: p.approvalUrl,
+          }).catch(err => console.warn(`[poller] workspace URL upsert failed for ${p.submissionId}:`, err.message));
           // Log task assignments to email_logs
           if (p.workflowTasks.length > 0) {
             await upsertEmailLogs(p.submissionId, formId, formTitle, p.workflowTasks, profileId);
@@ -453,7 +544,7 @@ async function pollOnce(opts = {}) {
       }
     }
 
-    // 6. Harvest /share/{token} links from sent emails for tasks whose
+    // 6. Harvest /share/{token} links from sent emails for non-assign-form tasks whose
     // accessLink the workflow API doesn't expose (any assignee other than the
     // API key's own account). Throttled internally; never fails the poll.
     // Skipped on quick polls to keep them fast.
@@ -513,7 +604,7 @@ async function pollOnce(opts = {}) {
   } catch (err) {
     console.error('[poller] Poll failed:', err.message);
   } finally {
-    isRunning = false;
+    runningProfiles.delete(profileId);
   }
 }
 
@@ -524,19 +615,31 @@ function startPoller() {
   console.log(`[poller] Starting — full poll every ${env.POLL_INTERVAL_MINUTES || 2} min` +
     (quickMs ? `, quick poll every ${env.POLL_QUICK_SECONDS}s` : ''));
 
-  // Run immediately on startup
-  pollOnce().catch(err => console.error('[poller] Initial poll error:', err.message));
+  const run = async (quick = false) => {
+    const profileIds = await pollerProfileIds();
+    for (const profileId of profileIds) {
+      if (!resolveApiKey(profileId)) {
+        console.warn(`[poller] Skipping "${profileId}" — JotForm API key is not set`);
+        continue;
+      }
+      await pollOnce({ quick, profileId });
+    }
+  };
+
+  // Run a quick pass immediately so recent assigned tasks land before the
+  // heavier full sweep starts blocking the poller.
+  run(true).catch(err => console.error('[poller] Initial poll error:', err.message));
 
   // Then on interval
   pollTimer = setInterval(() => {
-    pollOnce().catch(err => console.error('[poller] Interval poll error:', err.message));
+    run(false).catch(err => console.error('[poller] Interval poll error:', err.message));
   }, intervalMs);
 
-  // Lightweight incremental syncs between full polls (skipped automatically
-  // while a full poll is running via the shared isRunning guard).
+  // Lightweight incremental syncs between full polls. Each profile has its own
+  // lock, so one large workspace does not block quick refresh for another.
   if (quickMs > 0) {
     quickTimer = setInterval(() => {
-      pollOnce({ quick: true }).catch(err => console.error('[poller] Quick poll error:', err.message));
+      run(true).catch(err => console.error('[poller] Quick poll error:', err.message));
     }, quickMs);
   }
 }

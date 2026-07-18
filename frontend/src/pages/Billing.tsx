@@ -40,7 +40,7 @@ export default function Billing() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="app-page space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-3">
           <CreditCard className="w-7 h-7 text-gold" /> Billing & Subscription
@@ -50,7 +50,7 @@ export default function Billing() {
 
       {/* Current plan */}
       <div className="glass-card p-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <span className="text-sm text-gray-400">Current Plan</span>
             <h3 className="text-xl font-bold text-white capitalize">{currentPlan}</h3>
@@ -62,7 +62,7 @@ export default function Billing() {
       {/* Usage */}
       <div className="glass-card p-6">
         <h3 className="text-lg font-semibold text-white mb-4">Usage This Month</h3>
-        <div className="grid grid-cols-2 gap-6">
+        <div className="responsive-panel-grid">
           <div>
             <div className="flex justify-between text-sm mb-1">
               <span className="text-gray-400">Forms</span>
@@ -85,7 +85,7 @@ export default function Billing() {
       </div>
 
       {/* Plans */}
-      <div className="grid md:grid-cols-3 gap-6">
+      <div className="responsive-card-grid">
         {PLANS.map(plan => {
           const isCurrent = plan.id === currentPlan;
           return (

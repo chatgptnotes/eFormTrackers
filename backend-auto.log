@@ -1,0 +1,61 @@
+[poller] Starting — full poll every 5 min, quick poll every 20s
+[poller] Poll started
+[11:56:11.983] [32mINFO[39m: [36m[JotFlow] Backend listening[39m
+    [35mport[39m: 3000
+    [35menv[39m: "development"
+[11:56:12.489] [32mINFO[39m: [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 1,
+      "method": "GET",
+      "url": "/assets/Skeleton-D3QMDBXb.js",
+      "query": {},
+      "params": {},
+      "headers": {
+        "host": "localhost:3000",
+        "connection": "keep-alive",
+        "origin": "http://localhost:3000",
+        "sec-ch-ua-platform": "\"macOS\"",
+        "if-none-match": "W/\"769-19f6ebb845d\"",
+        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\", \"Google Chrome\";v=\"150\"",
+        "if-modified-since": "Fri, 17 Jul 2026 06:20:10 GMT",
+        "sec-ch-ua-mobile": "?0",
+        "accept": "*/*",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-dest": "script",
+        "accept-encoding": "gzip, deflate, br, zstd",
+        "accept-language": "en-GB,en-US;q=0.9,en;q=0.8,hi;q=0.7",
+        "cookie": "connect.sid=s%3AMxGmtbtTCGQzdTgH3zTHiH1VpSS13bSR.5vGK4SyITp5ujS1x7VlZj%2Fgdu%2BHzhsW00yjDABoZ89g"
+      },
+      "remoteAddress": "::1",
+      "remotePort": 57627
+    }
+    [35mres[39m: {
+      "statusCode": 200,
+      "headers": {
+        "cross-origin-resource-policy": "same-origin",
+        "origin-agent-cluster": "?1",
+        "referrer-policy": "no-referrer",
+        "x-content-type-options": "nosniff",
+        "x-dns-prefetch-control": "off",
+        "x-download-options": "noopen",
+        "x-frame-options": "DENY",
+        "x-permitted-cross-domain-policies": "none",
+        "x-xss-protection": "0",
+        "ratelimit-policy": "5000;w=900",
+        "ratelimit-limit": "5000",
+        "ratelimit-remaining": "4999",
+        "ratelimit-reset": "900",
+        "access-control-allow-origin": "http://localhost:3000",
+        "vary": "Origin",
+        "access-control-allow-credentials": "true",
+        "accept-ranges": "bytes",
+        "cache-control": "public, max-age=0",
+        "last-modified": "Fri, 17 Jul 2026 06:26:02 GMT",
+        "etag": "W/\"769-19f6ec0e241\"",
+        "content-type": "application/javascript; charset=UTF-8",
+        "content-length": 1897
+      }
+    }
+    [35mresponseTime[39m: 32

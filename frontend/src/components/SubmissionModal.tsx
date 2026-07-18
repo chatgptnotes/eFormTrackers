@@ -7,7 +7,7 @@ import {
 import { Submission } from '../types';
 import jotformApi from '../services/jotformApi';
 import SignaturePad from './SignaturePad';
-import { getUserConfig } from '../config/currentUser';
+import { getMyActionType, getUserConfig } from '../config/currentUser';
 import { useAuth } from '../contexts/AuthContext';
 import { apiFetch } from '../lib/api';
 import { humanizeError, messageFromStatus } from '../lib/errors';
@@ -71,6 +71,7 @@ async function ensureFields(formId: string): Promise<{
 export default function SubmissionModal({ submission, onClose, onUpdate }: Props) {
   const { user } = useAuth();
   const currentUser = getUserConfig(user?.email);
+  const actionType = submission ? (getMyActionType(submission, user?.email) || submission.actionType) : 'approval';
 
   const [approving, setApproving] = useState(false);
   const [rejecting, setRejecting] = useState(false);
@@ -116,7 +117,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
 
   const handleApproval = async (action: 'approve' | 'reject') => {
     if (!submission || typeof submission.currentApprovalLevel !== 'number') return;
-    if (action === 'approve' && signatureRequired && !signature) return;
+    if (actionType !== 'task' && action === 'approve' && signatureRequired && !signature) return;
 
     action === 'approve' ? setApproving(true) : setRejecting(true);
     setPushResult(null);
@@ -130,7 +131,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
     }
     // If no form fields found, we still proceed — workflow-action API doesn't need them
 
-    const actionLabel = action === 'approve' ? 'Approved' : 'Rejected';
+    const actionLabel = actionType === 'task' ? 'Completed' : action === 'approve' ? 'Approved' : 'Rejected';
     const timestamp = new Date().toLocaleString('en-AE', { timeZone: 'Asia/Dubai', hour12: true });
 
     // Upload signature to Supabase Storage and get a public URL
@@ -197,7 +198,10 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
     let result: { success: boolean; message: string };
     let instanceCompleted = false;
     try {
-      const wfAction = action === 'approve' ? 'approve' : 'reject';
+      const wfAction = actionType === 'task' ? 'complete' : action === 'approve' ? 'approve' : 'reject';
+      const activeTaskId = submission.workflowTasks?.find(t =>
+        t.status === 'ACTIVE' && (t.type === 'workflow_assign_task' || !t.internalFormID)
+      )?.taskId;
       // throwOnError:true so a 403 (non-assignee) / 4xx surfaces as an ApiError with
       // the real status — humanizeError turns 403 into "You don't have permission…".
       // Never report false success on a failed action.
@@ -205,6 +209,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
         method: 'POST',
         body: JSON.stringify({
           submissionId: submission.id,
+          taskId: activeTaskId,
           action: wfAction,
           comment: comment.trim() || approverNote,
           signature: signature || undefined,
@@ -287,19 +292,8 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
     }
   };
 
-  const openTaskUrl = () => {
-    if (!submission?.taskUrl) return;
-    // Link to main form's inbox for this submission — the native JotForm
-    // "View Task" button on that page leads to the actual task completion URL.
-    // (JotForm does not expose the approval-form task URL via API.)
-    window.open(submission.taskUrl, '_blank', 'noopener,noreferrer');
-  };
-
   const openFormUrl = async () => {
     if (!submission) return;
-    // Open the popup synchronously (inside the click) so it isn't blocked, then
-    // navigate once the URL resolves.
-    const pop = window.open('about:blank', '_blank');
     const me = user?.email?.toLowerCase();
     const tasks = submission.workflowTasks || [];
 
@@ -307,7 +301,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
     const myActive = tasks.find(
       t => t.status === 'ACTIVE' && t.type === 'workflow_assign_form'
         && t.assigneeEmail?.toLowerCase() === me && getUsableTaskAccessLink(t),
-    ) || tasks.find(t => t.status === 'ACTIVE' && getUsableTaskAccessLink(t));
+    ) || tasks.find(t => t.status === 'ACTIVE' && t.type === 'workflow_assign_form' && getUsableTaskAccessLink(t));
     let url = getUsableTaskAccessLink(myActive);
 
     // 2. Fall back to the backend resolver (live prefill / email token).
@@ -322,16 +316,8 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
       } catch { /* fall through to inbox */ }
     }
 
-    // 3. Last resort: the submission inbox URL.
-    if (!url) url = submission.formUrl || '';
-    if (!url) { if (pop && !pop.closed) pop.close(); return; }
-
-    if (pop && !pop.closed) {
-      try { pop.location.href = url; try { pop.opener = null; } catch { /* ignore */ } }
-      catch { pop.close(); window.open(url, '_blank', 'noopener,noreferrer'); }
-    } else {
-      window.open(url, '_blank', 'noopener,noreferrer');
-    }
+    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+    else alert('Could not resolve the assigned form prefill URL.');
   };
 
   // Reset form when submission changes; cancel any in-flight upload
@@ -484,17 +470,17 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                     <span className="w-7 h-7 rounded-lg bg-teal-100 flex items-center justify-center">
                       <Send className="w-3.5 h-3.5 text-teal-700" />
                     </span>
-                    {submission.actionType === 'task' ? 'Task Action' :
-                     submission.actionType === 'form' ? 'Complete Form' :
+                    {actionType === 'task' ? 'Task Action' :
+                     actionType === 'form' ? 'Complete Form' :
                      `Take Action — Level ${submission.currentApprovalLevel}`}
                   </h4>
                   <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold whitespace-nowrap">
-                    {submission.actionType === 'approval' ? 'JotForm Enterprise' : 'Opens in JotForm'}
+                    {actionType === 'approval' ? 'JotForm Enterprise' : actionType === 'form' ? 'Opens in JotForm' : 'JotFlow'}
                   </span>
                 </div>
 
                 {/* ── TASK step ── */}
-                {submission.actionType === 'task' && (
+                {actionType === 'task' && (
                   <div className="space-y-3">
                     {/* Show who needs to act */}
                     {!isDesignatedApprover && designatedApproverEmail && (
@@ -521,20 +507,39 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                         {pushResult.message}
                       </div>
                     )}
-                    <button
-                      onClick={() => setConfirmPending('approve')}
-                      disabled={!isDesignatedApprover || isSubmitting}
-                      title={!isDesignatedApprover ? `Only ${designatedApproverEmail} can complete this task` : ''}
-                      className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-teal-600 hover:bg-teal-500 disabled:opacity-30 disabled:cursor-not-allowed text-white rounded-xl font-semibold text-sm border border-teal-600 transition-all"
-                    >
-                      {approving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}
-                      {approving ? 'Marking Complete...' : 'Mark Task Complete'}
-                    </button>
+                    {confirmPending ? (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+                        <p className="text-sm font-semibold text-amber-900">Confirm Task Completion</p>
+                        <p className="text-xs text-amber-700">This action cannot be undone.</p>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => { setConfirmPending(null); handleApproval('approve'); }}
+                            disabled={isSubmitting}
+                            className="flex-1 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm disabled:opacity-40"
+                          >
+                            {isSubmitting ? 'Completing...' : 'Yes, Mark Complete'}
+                          </button>
+                          <button type="button" onClick={() => setConfirmPending(null)} disabled={isSubmitting} className="px-4 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-700 font-semibold text-sm">
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmPending('approve')}
+                        disabled={!isDesignatedApprover || isSubmitting}
+                        title={!isDesignatedApprover ? `Only ${designatedApproverEmail} can complete this task` : ''}
+                        className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-teal-600 hover:bg-teal-500 disabled:opacity-30 disabled:cursor-not-allowed text-white rounded-xl font-semibold text-sm border border-teal-600 transition-all"
+                      >
+                        <ClipboardList className="w-4 h-4" /> Mark Task Complete
+                      </button>
+                    )}
                   </div>
                 )}
 
                 {/* ── FORM step ── */}
-                {submission.actionType === 'form' && (
+                {actionType === 'form' && (
                   <div className="space-y-3">
                     <p className="text-sm text-gray-400">
                       This step requires filling out or completing a form in JotForm. Click below to open it.
@@ -551,7 +556,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                 )}
 
                 {/* ── APPROVAL step ── (existing full flow) */}
-                {submission.actionType === 'approval' && (<>
+                {actionType === 'approval' && (<>
 
                 {/* Steps indicator — elegant progress pills */}
                 <div className="flex items-center gap-1.5 text-xs">
@@ -630,7 +635,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                     <div className="flex items-start gap-2">
                       <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
                       <p className="text-sm text-amber-900 font-semibold">
-                        Confirm {(submission as Submission)?.actionType === 'task' ? 'Task Completion' : confirmPending === 'approve' ? 'Approval' : 'Rejection'}
+                        Confirm {confirmPending === 'approve' ? 'Approval' : 'Rejection'}
                         <span className="block text-xs text-amber-700 font-normal mt-0.5">This action cannot be undone.</span>
                       </p>
                     </div>
@@ -646,7 +651,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                         }`}
                       >
                         {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : confirmPending === 'approve' ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
-                        {uploadingSignature ? 'Saving signature...' : approving || rejecting ? 'Submitting...' : (submission as Submission)?.actionType === 'task' ? 'Yes, Mark Complete' : `Yes, ${confirmPending === 'approve' ? 'Approve' : 'Reject'}`}
+                        {uploadingSignature ? 'Saving signature...' : approving || rejecting ? 'Submitting...' : `Yes, ${confirmPending === 'approve' ? 'Approve' : 'Reject'}`}
                       </button>
                       <button
                         type="button"

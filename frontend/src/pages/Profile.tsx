@@ -93,7 +93,7 @@ export default function Profile() {
   const labelCls = 'block text-xs font-semibold text-jf-text-secondary uppercase tracking-wide mb-1.5';
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6 pb-12">
+    <div className="app-page max-w-2xl mx-auto space-y-6 pb-12">
       {/* Page header */}
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
@@ -110,7 +110,7 @@ export default function Profile() {
           <h3 className="text-sm font-semibold text-white uppercase tracking-wide">Personal Information</h3>
 
           {/* Avatar section */}
-          <div className="flex items-center gap-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-5">
             <div className="relative flex-shrink-0">
               {/* Avatar circle */}
               <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-jf-border bg-jf-blue-light flex items-center justify-center">
@@ -141,7 +141,7 @@ export default function Profile() {
               />
             </div>
 
-            <div className="flex-1 space-y-1">
+            <div className="min-w-0 flex-1 space-y-1 text-center sm:text-left">
               <p className="text-sm font-semibold text-white">{fullName || 'Your Name'}</p>
               <p className="text-xs text-gray-500">{user?.email}</p>
               <button
@@ -198,7 +198,7 @@ export default function Profile() {
           <h3 className="text-sm font-semibold text-white uppercase tracking-wide">Preferences</h3>
 
           {/* Theme toggle */}
-          <div className="flex items-center justify-between py-1">
+          <div className="flex items-start justify-between gap-3 py-1">
             <div className="flex items-center gap-3">
               {themeMode === 'dark'
                 ? <Moon className="w-4 h-4 text-gold" />
@@ -220,7 +220,7 @@ export default function Profile() {
           </div>
 
           {/* Language */}
-          <div className="flex items-center justify-between py-1">
+          <div className="flex flex-col gap-3 py-1 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
               <Globe className="w-4 h-4 text-gold" />
               <div>
@@ -239,7 +239,7 @@ export default function Profile() {
           </div>
 
           {/* Email notifications */}
-          <div className="flex items-center justify-between py-1">
+          <div className="flex items-start justify-between gap-3 py-1">
             <div className="flex items-center gap-3">
               <Bell className="w-4 h-4 text-gold" />
               <div>
@@ -259,7 +259,7 @@ export default function Profile() {
           </div>
 
           {/* Default view */}
-          <div className="flex items-center justify-between py-1">
+          <div className="flex flex-col gap-3 py-1 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
               <Layers className="w-4 h-4 text-gold" />
               <div>
@@ -280,7 +280,7 @@ export default function Profile() {
         </div>
 
         {/* Save button */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <button
             type="submit"
             disabled={saving}

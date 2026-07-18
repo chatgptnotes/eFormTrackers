@@ -26,10 +26,10 @@ const STATS = [
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-navy-dark">
+    <div className="app-page bg-navy-dark">
       {/* Nav */}
       <nav className="border-b border-navy-light/20 bg-navy-dark/80 backdrop-blur-xl sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl gold-gradient flex items-center justify-center">
               <Zap className="w-5 h-5 text-navy-dark" />
@@ -46,21 +46,21 @@ export default function LandingPage() {
       </nav>
 
       {/* Hero */}
-      <section className="max-w-7xl mx-auto px-6 py-24 text-center">
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 py-16 sm:py-24 text-center">
         <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gold/10 border border-gold/20 mb-8">
             <Star className="w-4 h-4 text-gold" />
             <span className="text-sm text-gold font-medium">Trusted by 150+ Government Entities</span>
           </div>
-          <h1 className="text-5xl md:text-7xl font-bold text-white mb-6 leading-tight">
+          <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold text-white mb-6 leading-tight">
             See Where Every<br />
             <span className="text-gold">Approval Is Stuck</span>
           </h1>
-          <p className="text-xl text-gray-400 max-w-2xl mx-auto mb-10">
+          <p className="text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto mb-10">
             Transform your JotForm workflows into a real-time approval tracking dashboard.
             Identify bottlenecks, ensure compliance, and accelerate decisions.
           </p>
-          <div className="flex items-center justify-center gap-4">
+          <div className="flex flex-col items-stretch justify-center gap-4 sm:flex-row sm:items-center">
             <Link to="/signup" className="btn-gold text-lg px-8 py-3 flex items-center gap-2">
               Start Free <ArrowRight className="w-5 h-5" />
             </Link>
@@ -69,7 +69,7 @@ export default function LandingPage() {
         </motion.div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-20">
+        <div className="responsive-card-grid mt-16 sm:mt-20">
           {STATS.map(s => (
             <motion.div key={s.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="glass-card p-6">
               <div className="text-3xl font-bold text-gold">{s.value}</div>
@@ -80,12 +80,12 @@ export default function LandingPage() {
       </section>
 
       {/* Features */}
-      <section id="features" className="max-w-7xl mx-auto px-6 py-24">
+      <section id="features" className="max-w-7xl mx-auto px-4 sm:px-6 py-16 sm:py-24">
         <div className="text-center mb-16">
           <h2 className="text-4xl font-bold text-white mb-4">Everything You Need</h2>
           <p className="text-gray-400 text-lg">Powerful tools to manage approval workflows at scale.</p>
         </div>
-        <div className="grid md:grid-cols-3 gap-8">
+        <div className="responsive-card-grid">
           {FEATURES.map((f, i) => (
             <motion.div key={f.title} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }} viewport={{ once: true }} className="glass-card-hover p-8">
               <div className="w-12 h-12 rounded-xl bg-gold/10 flex items-center justify-center mb-4">
@@ -99,12 +99,12 @@ export default function LandingPage() {
       </section>
 
       {/* Pricing */}
-      <section id="pricing" className="max-w-7xl mx-auto px-6 py-24">
+      <section id="pricing" className="max-w-7xl mx-auto px-4 sm:px-6 py-16 sm:py-24">
         <div className="text-center mb-16">
           <h2 className="text-4xl font-bold text-white mb-4">Simple, Transparent Pricing</h2>
           <p className="text-gray-400 text-lg">Start free. Scale as you grow.</p>
         </div>
-        <div className="grid md:grid-cols-3 gap-8">
+        <div className="responsive-card-grid">
           {PRICING.map(p => (
             <motion.div key={p.name} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
               className={`glass-card p-8 relative ${p.popular ? 'border-gold/50 shadow-gold/10 shadow-2xl' : ''}`}>
@@ -135,11 +135,11 @@ export default function LandingPage() {
       </section>
 
       {/* CTA */}
-      <section className="max-w-4xl mx-auto px-6 py-24 text-center">
-        <div className="glass-card p-12 border-gold/20">
+      <section className="max-w-4xl mx-auto px-4 sm:px-6 py-16 sm:py-24 text-center">
+        <div className="glass-card p-6 sm:p-12 border-gold/20">
           <h2 className="text-3xl font-bold text-white mb-4">Ready to Transform Your Workflows?</h2>
           <p className="text-gray-400 mb-8">Join 150+ government entities already using JotFlow.</p>
-          <div className="flex items-center justify-center gap-4">
+          <div className="flex flex-col items-stretch justify-center gap-4 sm:flex-row sm:items-center">
             <Link to="/signup" className="btn-gold text-lg px-8 py-3">Start Free Trial</Link>
             <a href="mailto:support@jotflow.com" className="btn-outline text-lg px-8 py-3">Request Demo</a>
           </div>
@@ -148,7 +148,7 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="border-t border-navy-light/20 py-8">
-        <div className="max-w-7xl mx-auto px-6 flex items-center justify-between text-sm text-gray-500">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col gap-3 text-sm text-gray-500 sm:flex-row sm:items-center sm:justify-between">
           <span>© 2024 JotFlow. All rights reserved.</span>
           <div className="flex gap-6">
             <a href="#" className="hover:text-white transition-colors">Privacy</a>

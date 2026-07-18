@@ -28,7 +28,7 @@ import { apiFetch } from '../lib/api';
 import { humanizeError } from '../lib/errors';
 import { exportToExcel } from '../services/exportService';
 import { getUsableTaskAccessLink } from '../lib/jotformLinks';
-import { JOTFORM_HOST, jotformInboxUrl } from '../config/jotform';
+import { jotformInboxUrl } from '../config/jotform';
 
 interface Props {
   data: ReturnType<typeof useSubmissions>;
@@ -64,7 +64,6 @@ export default function DirectorDashboard({ data }: Props) {
   const [approvedIds, setApprovedIds] = useState<Set<string>>(new Set());
   const [rejectedIds, setRejectedIds] = useState<Set<string>>(new Set());
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [taskUrlLoading, setTaskUrlLoading] = useState<string | null>(null);
   const [formUrlLoading, setFormUrlLoading] = useState<string | null>(null);
   const [assignedToMe, setAssignedToMe] = useState(false);
   const [viewOnly, setViewOnly] = useState(false);
@@ -261,23 +260,6 @@ export default function DirectorDashboard({ data }: Props) {
     }
   };
 
-  const handleTaskComplete = async (submissionId: string, taskId?: string) => {
-    setTaskActionLoading(submissionId);
-    try {
-      await apiFetch('/api/workflow-action', {
-        method: 'POST',
-        body: JSON.stringify({ submissionId, taskId, action: 'complete' }),
-      });
-      invalidateWorkflowCache(submissionId);
-      await refreshExpandedTasks(submissionId);
-      data.scheduleRefreshAfterAction();
-    } catch (err) {
-      alert(`Complete failed: ${humanizeError(err)}`);
-    } finally {
-      setTaskActionLoading(null);
-    }
-  };
-
   const fetchAndShowSignature = async (submissionId: string, level: number, taskId: string) => {
     setSigLoading(taskId);
     try {
@@ -297,11 +279,9 @@ export default function DirectorDashboard({ data }: Props) {
     }
   };
 
-  const openTaskLink = async (task: WorkflowTask) => {
-    // Find the submission this task belongs to so we can call /api/email-url,
-    // which builds the proper /approval-form/{formID}/task/{taskID}/access-token/{token}
-    // URL. Constructing the URL inline without the access token returns 404.
+  const openTaskLink = async (task: WorkflowTask, explicitSubmission?: Submission) => {
     const sub =
+      explicitSubmission ||
       workflowSidebarSubmission ||
       workflowModalSubmission ||
       data.allSubmissions.find(s => s.id === expandedRowId) ||
@@ -321,40 +301,21 @@ export default function DirectorDashboard({ data }: Props) {
       } catch { /* fall through to legacy fallback */ }
     }
 
-    // Last-resort fallback for cases where we have no submission context.
-    // These URLs will 404 without an access token but at least preserve
-    // the previous behavior rather than failing silently.
+    // Assigned forms may use a stored prefill link when live resolution fails.
     const usableLink = getUsableTaskAccessLink(task);
     if (usableLink) {
       window.open(usableLink, '_blank', 'noopener,noreferrer');
-    } else if (task.internalFormID && task.taskId) {
-      const host = JOTFORM_HOST;
-      const qp = task.type === 'workflow_assign_form' ? 'workflowAssignFormTask'
-        : task.type === 'workflow_assign_task' ? 'workflowAssignTask'
-        : 'workflowApprovalTask';
-      window.open(`${host}/${task.internalFormID}?${qp}=1&taskID=${task.taskId}`, '_blank', 'noopener,noreferrer');
+    } else {
+      alert('Could not resolve the assigned form prefill URL.');
     }
   };
 
   const dismissedIds = useMemo(() => new Set([...approvedIds, ...rejectedIds]), [approvedIds, rejectedIds]);
 
   const openTaskUrl = async (sub: Submission) => {
-    setTaskUrlLoading(sub.id);
-    try {
-      // Use email-url endpoint which builds the correct workflow-aware URL with taskID
-      const activeTask = sub.workflowTasks?.find(t => t.status === 'ACTIVE' && t.type !== 'workflow_assign_form');
-      const taskParam = activeTask?.taskId ? `&taskId=${encodeURIComponent(activeTask.taskId)}` : '';
-      const data = await apiFetch<{ approvalUrl?: string }>(
-        `/api/email-url?formId=${encodeURIComponent(sub.formId)}&submissionId=${encodeURIComponent(sub.id)}${taskParam}`,
-        { throwOnError: false },
-      );
-      const url = data.approvalUrl || sub.approvalUrl || sub.taskUrl;
-      if (url) window.open(url, '_blank', 'noopener,noreferrer');
-    } catch {
-      if (sub.taskUrl) window.open(sub.taskUrl, '_blank', 'noopener,noreferrer');
-    } finally {
-      setTaskUrlLoading(null);
-    }
+    const task = sub.workflowTasks?.find(t => t.status === 'ACTIVE' && t.type === 'workflow_assign_task');
+    if (!task?.taskId) return alert('Could not find the active JotForm task ID for this submission.');
+    await openTaskLink(task, sub);
   };
 
   const openFormUrl = async (sub: Submission) => {
@@ -367,11 +328,10 @@ export default function DirectorDashboard({ data }: Props) {
         `/api/email-url?formId=${encodeURIComponent(sub.formId)}&submissionId=${encodeURIComponent(sub.id)}${taskParam}`,
         { throwOnError: false },
       );
-      const url = data.approvalUrl || sub.approvalUrl || sub.formUrl || sub.editLink;
-      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      if (data.approvalUrl) window.open(data.approvalUrl, '_blank', 'noopener,noreferrer');
+      else alert('Could not resolve the assigned form prefill URL.');
     } catch {
-      const url = sub.formUrl || sub.editLink;
-      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      alert('Could not resolve the assigned form prefill URL.');
     } finally {
       setFormUrlLoading(null);
     }
@@ -730,12 +690,12 @@ export default function DirectorDashboard({ data }: Props) {
   // Skeleton: only shown on very first load when Supabase cache is also empty
   if (data.loading && data.allSubmissions.length === 0) {
     return (
-      <div className="space-y-6 animate-pulse">
+      <div className="app-page space-y-6 animate-pulse">
         <div className="glass-card p-5 border border-gold/20">
           <div className="h-7 bg-navy-light/30 rounded w-64 mb-2" />
           <div className="h-4 bg-navy-light/20 rounded w-48" />
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="responsive-card-grid">
           {[...Array(4)].map((_, i) => (
             <div key={i} className="glass-card p-4">
               <div className="h-8 bg-navy-light/30 rounded w-12 mb-1" />
@@ -759,7 +719,7 @@ export default function DirectorDashboard({ data }: Props) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="app-page space-y-6">
       {/* Welcome Banner */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -805,8 +765,8 @@ export default function DirectorDashboard({ data }: Props) {
 
       {/* Search + Assigned to Me */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+          <div className="relative min-w-0 flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
             <input
               type="text"
@@ -914,8 +874,8 @@ export default function DirectorDashboard({ data }: Props) {
         className="glass-card overflow-hidden relative border-t-2 border-gold/40"
       >
         {/* Desktop Table */}
-        <div className="hidden md:block overflow-x-auto w-full" style={{ scrollbarGutter: 'stable' }}>
-          <table className="w-full table-fixed">
+        <div className="responsive-table hidden md:block" style={{ scrollbarGutter: 'stable' }}>
+          <table className="w-full min-w-[1180px] table-fixed">
             <thead className="sticky top-0 z-10">
               <tr className="border-b border-navy-light/40 bg-gradient-to-r from-navy-dark/95 to-navy-dark/90 backdrop-blur-sm">
                 <th className="px-4 py-3.5 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest w-12">No.</th>
@@ -1068,11 +1028,9 @@ export default function DirectorDashboard({ data }: Props) {
                           (user?.email && sub.pendingApproverEmail?.toLowerCase() === user.email.toLowerCase()) ? (
                             <button
                               onClick={() => openTaskUrl(sub)}
-                              disabled={taskUrlLoading === sub.id}
                               className="px-2.5 py-1.5 rounded-lg bg-gold/20 text-gold hover:bg-gold/35 disabled:opacity-50 text-xs font-medium flex items-center gap-1 border border-gold/40 transition-colors shadow-sm"
                             >
-                              {taskUrlLoading === sub.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ClipboardList className="w-3.5 h-3.5" />}
-                              View Task
+                              <ClipboardList className="w-3.5 h-3.5" /> Open Task
                             </button>
                           ) : (
                             <span className="px-2.5 py-1.5 rounded-lg bg-gray-500/10 text-gray-600 text-xs font-medium flex items-center gap-1 border border-gray-500/10" title="This task is assigned to someone else">
@@ -1315,10 +1273,10 @@ export default function DirectorDashboard({ data }: Props) {
                                         ) : isActive && task.type === 'workflow_assign_task' ? (
                                           emailMatch ? (
                                             <button
-                                              onClick={() => openTaskLink(task)}
+                                              onClick={() => openTaskLink(task, sub)}
                                               className="px-2.5 py-1 rounded-md bg-gold/20 text-gold hover:bg-gold/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1 transition-colors"
                                             >
-                                              <ClipboardList className="w-3 h-3" /> View Task
+                                              <ClipboardList className="w-3 h-3" /> Open Task
                                             </button>
                                           ) : (
                                             <span className="px-2 py-1 rounded-md bg-gray-500/10 text-gray-600 text-xs font-medium flex items-center gap-1 border border-gray-500/10" title="This step is assigned to someone else">
@@ -1358,8 +1316,8 @@ export default function DirectorDashboard({ data }: Props) {
                               <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-2">
                                 Child Forms in this Workflow
                               </p>
-                              <div className="rounded-lg border border-navy-light/20 overflow-hidden">
-                                <table className="w-full">
+                              <div className="responsive-table rounded-lg border border-navy-light/20">
+                                <table className="w-full min-w-[900px]">
                                   <thead>
                                     <tr className="bg-navy-dark/40 border-b border-navy-light/20">
                                       <th className="px-3 py-2 text-left text-[10px] font-bold text-gray-500 uppercase w-10">#</th>
@@ -1426,19 +1384,21 @@ export default function DirectorDashboard({ data }: Props) {
                                             </span>
                                           </td>
                                           <td className="px-3 py-2 text-center">
-                                            {isActive && emailMatch && getUsableTaskAccessLink(task) ? (
-                                              <a
-                                                href={getUsableTaskAccessLink(task)}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-xs text-gold hover:underline inline-flex items-center gap-1"
-                                              >
-                                                {typeBadge === 'Task' ? (
-                                                  <><ClipboardList className="w-3 h-3" /> View Task</>
-                                                ) : (
-                                                  <><FileEdit className="w-3 h-3" /> Complete Form</>
-                                                )}
-                                              </a>
+                                            {isActive && emailMatch ? (
+                                              task.type === 'workflow_assign_form' ? (
+                                                <button
+                                                  onClick={() => openTaskLink(task)}
+                                                  className="text-xs text-gold hover:underline inline-flex items-center gap-1"
+                                                >
+                                                  <FileEdit className="w-3 h-3" /> Complete Form
+                                                </button>
+                                              ) : task.type === 'workflow_assign_task' ? (
+                                                <button onClick={() => openTaskLink(task, sub)} className="text-xs text-gold hover:underline inline-flex items-center gap-1">
+                                                  <ClipboardList className="w-3 h-3" /> Open Task
+                                                </button>
+                                              ) : (
+                                                <span className="text-[10px] text-gray-500">—</span>
+                                              )
                                             ) : isCompleted ? (
                                               <span className="text-[10px] text-gray-500">Done</span>
                                             ) : (
@@ -1460,8 +1420,8 @@ export default function DirectorDashboard({ data }: Props) {
                             <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-2">
                               Form Submission Data
                             </p>
-                            <div className="rounded-lg border border-navy-light/20 overflow-x-auto">
-                              <table className="w-full">
+                            <div className="responsive-table rounded-lg border border-navy-light/20">
+                              <table className="w-full min-w-[720px]">
                                 <thead>
                                   <tr className="bg-navy-dark/40 border-b border-navy-light/20">
                                     {sub.formTableData.map((field, i) => (
@@ -1582,11 +1542,9 @@ export default function DirectorDashboard({ data }: Props) {
                       (user?.email && sub.pendingApproverEmail?.toLowerCase() === user.email.toLowerCase()) ? (
                         <button
                           onClick={() => openTaskUrl(sub)}
-                          disabled={taskUrlLoading === sub.id}
                           className="w-full px-2.5 py-1.5 rounded-lg bg-gold/20 text-gold hover:bg-gold/30 disabled:opacity-50 text-xs font-medium flex items-center justify-center gap-1 transition-colors"
                         >
-                          {taskUrlLoading === sub.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ClipboardList className="w-3.5 h-3.5" />}
-                          View Task
+                          <ClipboardList className="w-3.5 h-3.5" /> Open Task
                         </button>
                       ) : (
                         <span className="px-2.5 py-1.5 rounded-lg bg-gray-500/10 text-gray-600 text-xs font-medium flex items-center justify-center gap-1 border border-gray-500/10 w-full">
@@ -1740,7 +1698,6 @@ export default function DirectorDashboard({ data }: Props) {
             onTaskReject={(submissionId, reason) => handleTaskReject(submissionId, reason)}
             onFetchSignature={fetchAndShowSignature}
             onOpenTaskLink={openTaskLink}
-            onCompleteTask={(task) => { if (workflowModalSubmission) handleTaskComplete(workflowModalSubmission.id, task.taskId); }}
             onSetTaskRejecting={setTaskRejectingId}
             onSetTaskRejectReason={setTaskRejectReason}
             onSetTaskConfirmReject={setTaskConfirmRejectId}
@@ -1765,7 +1722,6 @@ export default function DirectorDashboard({ data }: Props) {
         onTaskReject={(submissionId, reason) => { if (workflowSidebarSubmission) { setRejectingId(workflowSidebarSubmission.id); openModal(workflowSidebarSubmission); } }}
         onFetchSignature={fetchAndShowSignature}
         onOpenTaskLink={openTaskLink}
-        onCompleteTask={(task) => { if (workflowSidebarSubmission) handleTaskComplete(workflowSidebarSubmission.id, task.taskId); }}
         onSetTaskRejecting={setTaskRejectingId}
         onSetTaskRejectReason={setTaskRejectReason}
         onSetTaskConfirmReject={setTaskConfirmRejectId}

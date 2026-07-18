@@ -82,8 +82,8 @@ export default function ActivityLog() {
   const actions = [...new Set(logs.map(l => l.action))];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="app-page space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-3">
             <FileText className="w-7 h-7 text-gold" /> Activity Log
@@ -96,8 +96,8 @@ export default function ActivityLog() {
       </div>
 
       {/* Filters */}
-      <div className="glass-card p-4 flex flex-wrap gap-4">
-        <div className="relative flex-1 min-w-[200px]">
+      <div className="glass-card p-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+        <div className="relative min-w-0 flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
           <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
             className="w-full pl-11 pr-4 py-2 rounded-xl bg-navy-dark border border-navy-light/30 text-white placeholder-gray-500 focus:border-gold/50 focus:outline-none"
@@ -118,11 +118,11 @@ export default function ActivityLog() {
       </div>
 
       {/* Log table */}
-      <div className="glass-card overflow-hidden">
+      <div className="glass-card responsive-table">
         {loading ? (
           <div className="flex items-center justify-center py-12"><Loader2 className="w-8 h-8 text-gold animate-spin" /></div>
         ) : (
-          <table className="w-full">
+          <table className="w-full min-w-[760px]">
             <thead>
               <tr className="border-b border-navy-light/20">
                 <th className="text-left px-6 py-4 text-sm font-medium text-gray-400">Timestamp</th>

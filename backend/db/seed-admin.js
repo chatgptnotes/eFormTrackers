@@ -47,20 +47,20 @@ async function seed() {
     );
     const userId = rows[0].id;
 
-    // Profile with admin role.
+    // Profile with super-admin role.
     await client.query(
       `INSERT INTO profiles (user_id, full_name, department, role, org_id, preferences)
-       VALUES ($1, $2, '', 'admin', $3, '{"theme":"dark","language":"en"}')
+       VALUES ($1, $2, '', 'super_admin', $3, '{"theme":"dark","language":"en"}')
        ON CONFLICT (user_id) DO UPDATE
-         SET role = 'admin', org_id = EXCLUDED.org_id, full_name = EXCLUDED.full_name, updated_at = now()`,
+         SET role = 'super_admin', org_id = EXCLUDED.org_id, full_name = EXCLUDED.full_name, updated_at = now()`,
       [userId, fullName, ORG_ID]
     );
 
-    // Org membership with admin role.
+    // Org membership with super-admin role.
     await client.query(
       `INSERT INTO org_members (org_id, user_id, role)
-       VALUES ($1, $2, 'admin')
-       ON CONFLICT (org_id, user_id) DO UPDATE SET role = 'admin'`,
+       VALUES ($1, $2, 'super_admin')
+       ON CONFLICT (org_id, user_id) DO UPDATE SET role = 'super_admin'`,
       [ORG_ID, userId]
     );
 

@@ -16,6 +16,7 @@ interface ApiProfile {
   id: string;
   label: string;
   scope: string;
+  teamId: string;
   default: boolean;
   configured: boolean;
 }
@@ -42,7 +43,7 @@ export default function Settings() {
   }, [user?.email]);
 
   useEffect(() => {
-    apiFetch<{ profiles: ApiProfile[] }>('/api/profiles')
+    apiFetch<{ profiles: ApiProfile[] }>('/api/jotform-profiles')
       .then(d => setProfiles(d.profiles || []))
       .catch(() => setProfiles([]));
   }, []);
@@ -135,7 +136,7 @@ export default function Settings() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="app-page max-w-2xl mx-auto space-y-6">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
         <h2 className="text-2xl font-bold text-white">API Configuration</h2>
         <p className="text-sm text-gray-500 mt-1">Manage the JotForm API source and approval automation.</p>
@@ -152,7 +153,7 @@ export default function Settings() {
           <div className="p-2 rounded-lg bg-emerald-500/10">
             <RefreshCw className={`w-5 h-5 text-emerald-400 ${switching ? 'animate-spin' : ''}`} />
           </div>
-          <div className="flex-1">
+          <div className="min-w-0 flex-1">
             <h3 className="text-sm font-semibold text-white">JotForm API Profile</h3>
             <p className="text-xs text-gray-500">
               Choose which configured JotForm API the dashboard reads from.
@@ -166,7 +167,7 @@ export default function Settings() {
         {profiles.length === 0 ? (
           <p className="text-xs text-gray-500">No API profiles configured. Add them in <code>backend/config/jotform-profiles.json</code>.</p>
         ) : (
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <select
               value={activeProfileId}
               onChange={e => handleKeyTypeChange(e.target.value)}
@@ -175,7 +176,7 @@ export default function Settings() {
             >
               {profiles.map(p => (
                 <option key={p.id} value={p.id}>
-                  {p.label} [{p.scope}]{p.default ? ' • default' : ''}{p.configured ? '' : ' • no key'}
+                  {p.label} [{p.scope}{p.teamId ? ` • team ${p.teamId}` : ''}]{p.default ? ' • default' : ''}{p.configured ? '' : ' • no key'}
                 </option>
               ))}
             </select>
@@ -211,7 +212,7 @@ export default function Settings() {
           <div className="p-2 rounded-lg bg-emerald-500/10">
             <RefreshCw className={`w-5 h-5 text-emerald-400 ${syncing ? 'animate-spin' : ''}`} />
           </div>
-          <div className="flex-1">
+          <div className="min-w-0 flex-1">
             <h3 className="text-sm font-semibold text-white">Sync All Submissions</h3>
             <p className="text-xs text-gray-500">
               Pull every submission from every form on the active key ({keyType === 'gdmo' ? 'Production' : 'Testing'}) and upsert into jf_submissions. Runs server-side so it's not bottlenecked by your browser.
@@ -271,8 +272,8 @@ export default function Settings() {
         </div>
         <div className="space-y-3">
           {autoApproveRules.map(rule => (
-            <div key={rule.id} className="flex items-center justify-between px-4 py-3 rounded-lg bg-navy-dark/50">
-              <div className="flex-1">
+            <div key={rule.id} className="flex items-start justify-between gap-3 px-4 py-3 rounded-lg bg-navy-dark/50">
+              <div className="min-w-0 flex-1">
                 <p className="text-sm text-white">{rule.name}</p>
                 <p className="text-xs text-gray-500 mt-0.5">
                   Action: <span className="text-gray-400">{rule.action}</span>

@@ -45,7 +45,7 @@ interface AuthContextType {
   organization: Organization | null;
   orgRole: OrgRole;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: unknown }>;
+  signIn: (email: string, password: string, adminLogin?: boolean) => Promise<{ error: unknown }>;
   signInWithMagicLink: (email: string) => Promise<{ error: unknown }>;
   signInWithMicrosoft: () => Promise<{ error: unknown }>;
   signUp: (email: string, password: string, fullName: string, orgName: string, department: string) => Promise<{ error: unknown }>;
@@ -134,11 +134,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, [applyUser, fetchOrg, verifyWorkspace]);
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (email: string, password: string, adminLogin = false) => {
     try {
       const data = await apiFetch<{ ok: boolean; user: AppUser }>('/api/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, adminLogin }),
       });
       const isMember = await verifyWorkspace(data.user.email);
       if (!isMember) {

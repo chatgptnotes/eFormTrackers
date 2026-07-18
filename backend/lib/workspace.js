@@ -18,12 +18,20 @@ const env = require('../config/env');
 async function checkWorkspaceMember(rawEmail) {
   const email = String(rawEmail || '').trim().toLowerCase();
 
+  if (env.ADMIN_EMAIL && email === env.ADMIN_EMAIL) {
+    return { isMember: true, member: { email, accountType: 'ADMIN' }, totalMembers: 1, adminBypass: true };
+  }
+
   if (env.NODE_ENV !== 'production') {
     return { isMember: true, member: { email, accountType: 'USER' }, totalMembers: 0, devBypass: true };
   }
 
   const { rows } = await pool.query(
-    `SELECT 1 FROM email_logs WHERE lower(assignee_email) = $1
+    `SELECT 1 FROM jf_users WHERE lower(email) = $1
+     UNION
+     SELECT 1 FROM team_workspace_task_urls WHERE lower(assignee_email) = $1
+     UNION
+     SELECT 1 FROM email_logs WHERE lower(assignee_email) = $1
      UNION
      SELECT 1 FROM jf_submissions
        WHERE lower(submitter_email) = $1

@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { humanizeError } from '../lib/errors';
 import { JOTFORM_LOGO_URL } from '../config/jotform';
 
-export default function Login() {
+export default function Login({ adminMode = false }: { adminMode?: boolean }) {
   const { signIn, signInWithMicrosoft } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
@@ -54,7 +54,7 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const { error: err } = await signIn(email, password);
+    const { error: err } = await signIn(email, password, adminMode);
     if (err) {
       setError(humanizeError(err, 'Sign in failed. Please check your details and try again.'));
       setLoading(false);
@@ -70,23 +70,23 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-sky-100 flex items-center justify-center p-4 overflow-hidden relative">
+    <div className="app-page bg-gradient-to-br from-slate-50 via-blue-50 to-sky-100 flex items-center justify-center p-4 relative">
       <div className="absolute top-20 -left-20 w-72 h-72 bg-blue-200/20 rounded-full blur-3xl motion-safe:animate-pulse" />
       <div className="absolute bottom-20 -right-20 w-72 h-72 bg-sky-200/20 rounded-full blur-3xl motion-safe:animate-pulse" style={{ animationDelay: '1s' }} />
 
       <div className="w-full max-w-md relative z-10">
-        <div className="text-center mb-10">
+        <div className="text-center mb-8 sm:mb-10">
           <Link to="/" className="inline-flex items-center justify-center gap-2 mb-8">
             <div className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 bg-gradient-to-br from-blue-600 to-sky-500 p-2 shadow-xl">
               <img src={JOTFORM_LOGO_URL} alt="FlowAccel Logo" className="w-full h-full object-contain" />
             </div>
             <span className="text-3xl font-black text-slate-900">Eform <span className="text-blue-600">Tracker</span></span>
           </Link>
-          <h1 className="text-4xl md:text-5xl font-black text-slate-900 mb-2">Welcome back</h1>
-          <p className="text-slate-600 text-base font-semibold">Sign in to continue</p>
+          <h1 className="text-4xl sm:text-5xl font-black text-slate-900 mb-2">{adminMode ? 'Admin login' : 'Welcome back'}</h1>
+          <p className="text-slate-600 text-base font-semibold">{adminMode ? 'Sign in with the test admin account' : 'Sign in to continue'}</p>
         </div>
 
-        <div className="backdrop-blur-2xl bg-white/80 border border-white/50 rounded-3xl p-8 shadow-2xl">
+        <div className="backdrop-blur-2xl bg-white/80 border border-white/50 rounded-3xl p-5 sm:p-8 shadow-2xl">
           {error && (
             <div className="mb-6 flex items-start gap-3 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-2xl">
               <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0 text-red-600" />
@@ -94,7 +94,7 @@ export default function Login() {
             </div>
           )}
 
-          <button
+          {!adminMode && <button
             onClick={handleMicrosoft}
             disabled={msLoading || loading}
             className="w-full flex items-center justify-center gap-3 px-4 py-3.5 rounded-2xl bg-white border-2 border-slate-300 text-slate-900 hover:border-blue-500 hover:bg-blue-50 hover:shadow-lg transition-all font-bold text-base disabled:opacity-50 disabled:cursor-not-allowed mb-6 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
@@ -110,13 +110,13 @@ export default function Login() {
               </svg>
             )}
             {msLoading ? 'Signing in...' : 'Sign in with Microsoft'}
-          </button>
+          </button>}
 
-          <div className="flex items-center gap-4 mb-6">
+          {!adminMode && <div className="flex items-center gap-4 mb-6">
             <div className="flex-1 h-px bg-gradient-to-r from-transparent via-slate-300 to-transparent" />
             <span className="text-xs text-slate-500 uppercase tracking-widest font-semibold">or</span>
             <div className="flex-1 h-px bg-gradient-to-r from-transparent via-slate-300 to-transparent" />
-          </div>
+          </div>}
 
           <form onSubmit={handlePasswordSubmit} className="space-y-5">
             <div>
@@ -165,6 +165,12 @@ export default function Login() {
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Sign In <ArrowRight className="w-5 h-5" /></>}
             </button>
           </form>
+
+          {!adminMode && (
+            <p className="mt-4 text-center text-sm text-slate-600">
+              Assigned user without an account? <Link to="/signup" className="font-semibold text-blue-600 hover:text-blue-700">Create an account</Link>
+            </p>
+          )}
 
           <div className="mt-6 flex items-start gap-2 text-xs text-slate-500 leading-relaxed border-t border-slate-200 pt-4">
             <ShieldCheck className="w-4 h-4 mt-0.5 flex-shrink-0 text-emerald-600" />

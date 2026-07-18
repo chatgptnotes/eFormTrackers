@@ -91,7 +91,7 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-12 w-96 glass-card overflow-hidden z-50 shadow-2xl">
+        <div className="absolute right-0 top-12 w-[calc(100vw-2rem)] sm:w-96 glass-card overflow-hidden z-50 shadow-2xl">
           <div className="flex items-center justify-between px-4 py-3 border-b border-navy-light/20">
             <h3 className="font-semibold text-white">Notifications</h3>
             <div className="flex items-center gap-2">

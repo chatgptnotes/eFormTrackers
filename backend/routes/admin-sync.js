@@ -5,14 +5,16 @@ const { readKeyType } = require('../lib/key-type');
 const { pMapLimit } = require('../lib/concurrency');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { detectLevelFields } = require('../lib/detect-fields');
-const { extractTask, deriveWorkflowStatus, mergeWorkflowTasksSql } = require('../lib/workflow-task');
+const { extractTask, taskListFromResponse, deriveWorkflowStatus, mergeWorkflowTasksSql } = require('../lib/workflow-task');
 const { enrichTasksWithPrefill } = require('../lib/prefill');
 const { upsertEmailLogs } = require('../lib/email-log');
+const { emitToAll } = require('../lib/realtime');
+const { upsertWorkspaceForm, upsertWorkspaceLinks } = require('../lib/workspace-links');
+const { applyResourceShareLinks, buildWorkflowTaskUrl } = require('../lib/jotform-link');
 
 const router = Router();
 
 const PAGE_LIMIT = 1000;
-const MAX_PAGES_PER_FORM = 50;
 const FORM_CONCURRENCY = 3;
 const UPSERT_CHUNK = 50;
 
@@ -37,58 +39,62 @@ function extractText(answer) {
   return '';
 }
 
-// Returns { rows, truncated }. `truncated` is true only when we hit the
-// MAX_PAGES_PER_FORM cap while JotForm was still returning full pages — so a
-// form larger than the cap never gets silently dropped without a signal.
-async function fetchAllSubmissionsForForm(formId, keyType, log) {
+async function fetchAllPages(path, keyType, params = {}, log) {
   const all = [];
-  let offset = 0;
-  let truncated = false;
-  for (let page = 0; page < MAX_PAGES_PER_FORM; page++) {
+  for (let offset = 0; ; offset += PAGE_LIMIT) {
     let data;
     try {
-      data = await jotformFetch(`form/${formId}/submissions`, {
-        params: { limit: PAGE_LIMIT, offset, orderby: 'created_at', direction: 'DESC', addWorkflowStatus: '1' },
+      data = await jotformFetch(path, {
+        params: { ...params, limit: PAGE_LIMIT, offset },
         keyType,
       });
     } catch (e) {
-      log.warn({ formId, offset, err: e.message }, '[admin-sync] page fetch failed');
+      log.warn({ path, offset, err: e.message }, '[admin-sync] page fetch failed');
       break;
     }
     const page_rows = Array.isArray(data?.content) ? data.content : [];
     all.push(...page_rows);
     if (page_rows.length < PAGE_LIMIT) break;
-    offset += PAGE_LIMIT;
-    // Last allowed page still returned a full page → more data remains.
-    if (page === MAX_PAGES_PER_FORM - 1) {
-      truncated = true;
-      log.warn({ formId, fetched: all.length }, '[admin-sync] form truncated at MAX_PAGES_PER_FORM');
-    }
   }
-  return { rows: all, truncated };
+  return all;
 }
 
-// Fetch the workflow-instance for a submission and return:
+async function fetchAllSubmissionsForForm(formId, keyType, log) {
+  return fetchAllPages(`form/${formId}/submissions`, keyType, {
+    orderby: 'created_at', direction: 'DESC', addWorkflowStatus: '1',
+  }, log);
+}
+
+// Fetch workflow tasks for a submission and return:
 //   { status: 'completed'|'rejected'|'pending'|null, taskList: [...] }
-// Returns null status when no workflowInstanceID is on the raw submission.
 async function fetchWorkflowInstance(raw, keyType, log) {
   const instanceId = raw.workflowInstanceID || raw.workflow_instance_id;
-  if (!instanceId) return { status: null, taskList: [] };
   try {
-    const data = await jotformFetch(`workflow/instance/${instanceId}`, { keyType });
-    const content = data?.content || {};
-    const wfStatus = String(content.status || '').toUpperCase();
-    const rawTasks = Array.isArray(content.taskList) ? content.taskList : [];
+    let wfStatus = String(raw.workflowStatus || '').toUpperCase();
+    const taskData = await jotformFetch(`workflow/submission/${raw.id}/tasks`, { keyType });
+    let rawTasks = taskListFromResponse(taskData);
+    let resourceShares = [];
+    if (instanceId) {
+      const data = await jotformFetch(`workflow/instance/${instanceId}`, { keyType });
+      const content = data?.content || {};
+      wfStatus = String(content.status || wfStatus || '').toUpperCase();
+      if (rawTasks.length === 0) rawTasks = Array.isArray(content.taskList) ? content.taskList : [];
+      resourceShares = content.resourceShares || [];
+    }
     // Flatten raw JotForm tasks to the shape WorkflowDetailsSidebar expects.
     // Level derives from 1-based taskList order when properties.level is absent.
     const taskList = rawTasks.map((t, idx) => extractTask(t, idx + 1));
     // Resolve the real prefill (access) link for active assign_form tasks.
     await enrichTasksWithPrefill(taskList, raw.id, keyType);
+    applyResourceShareLinks(taskList, resourceShares, raw.form_id);
+    for (const task of taskList) {
+      if (task.taskId) task.accessLink = buildWorkflowTaskUrl(task, raw.form_id);
+    }
     // Authoritative status from instance status + task list (end node / all-done).
     const status = deriveWorkflowStatus(wfStatus, taskList);
     return { status, taskList };
   } catch (e) {
-    log.warn({ instanceId, err: e.message }, '[admin-sync] workflow instance fetch failed');
+    log.warn({ submissionId: raw.id, instanceId, err: e.message }, '[admin-sync] workflow task fetch failed');
     return { status: null, taskList: [] };
   }
 }
@@ -97,6 +103,7 @@ function mapRawToUpsertParams(raw, formId, formTitle, fields, wfStatusOverride, 
   const answers = raw.answers || {};
   const get = (id) => id ? extractText(answers[id]?.answer) : '';
 
+  const hasStatusSignal = fields.levelFields.length > 0 || !!fields.overallStatusFieldId;
   const levels = fields.levelFields.map(lf => ({
     id: lf.level,
     status: get(lf.statusFieldId),
@@ -128,6 +135,11 @@ function mapRawToUpsertParams(raw, formId, formTitle, fields, wfStatusOverride, 
   if (wfStatusOverride) {
     status = wfStatusOverride;
     if (wfStatusOverride === 'completed') currentLevel = maxLevel;
+  }
+  if (!wfStatusOverride && !hasStatusSignal && !(wfTaskList || []).length &&
+      !raw.workflowStatus && !raw.workflowInstanceID && !raw.workflow_instance_id) {
+    status = 'completed';
+    currentLevel = maxLevel;
   }
 
   const submittedBy = get(fields.nameFieldId);
@@ -175,7 +187,8 @@ function mapRawToUpsertParams(raw, formId, formTitle, fields, wfStatusOverride, 
   // "Pending With" = the currently ACTIVE workflow task's assignee. This is the
   // authoritative answer to "where is it pending" and also drives visibility for
   // the assigned user (visibility.js / isSubmissionVisible match this email).
-  const activeTask = (wfTaskList || []).find(t => String(t.status || '').toUpperCase() === 'ACTIVE');
+  const activeTask = (wfTaskList || []).find(t => String(t.status || '').toUpperCase() === 'ACTIVE' && t.assigneeEmail)
+    || (wfTaskList || []).find(t => String(t.status || '').toUpperCase() === 'ACTIVE');
   const pendingApproverName = activeTask?.assigneeName || '';
   const pendingApproverEmail = activeTask?.assigneeEmail || '';
 
@@ -205,6 +218,31 @@ async function fetchFieldsForForm(formId, keyType, log) {
   }
 }
 
+async function upsertForms(forms, profileId, log) {
+  for (const form of forms) {
+    try {
+      await pool.query(
+        `INSERT INTO jf_forms (form_id, title, creator_username, status, created_at_jf, updated_at_jf, last_synced, profile_id)
+         VALUES ($1, $2, $3, $4, $5, $6, now(), $7)
+         ON CONFLICT (form_id) DO UPDATE SET
+           title=$2, creator_username=$3, status=$4, updated_at_jf=$6, last_synced=now(), profile_id=$7`,
+        [
+          String(form.id),
+          String(form.title || ''),
+          String(form.username || ''),
+          String(form.status || ''),
+          form.created_at ? new Date(String(form.created_at).replace(' ', 'T') + 'Z').toISOString() : null,
+          form.updated_at ? new Date(String(form.updated_at).replace(' ', 'T') + 'Z').toISOString() : null,
+          profileId,
+        ]
+      );
+      await upsertWorkspaceForm(profileId, form);
+    } catch (e) {
+      log.warn({ formId: form.id, err: e.message }, '[admin-sync] jf_forms upsert failed');
+    }
+  }
+}
+
 async function upsertChunk(rows, log, profileId) {
   if (rows.length === 0) return 0;
   let ok = 0;
@@ -231,6 +269,12 @@ async function upsertChunk(rows, log, profileId) {
           last_synced=now(), needs_sync=$29, approval_url=$30`,
         [...params, profileId]
       );
+      await upsertWorkspaceLinks({
+        profileId,
+        submissionId: params[0],
+        formId: params[1],
+        workflowTasks: JSON.parse(params[21] || '[]'),
+      }).catch(e => log.warn({ err: e.message, submissionId: params[0] }, '[admin-sync] workspace URL upsert failed'));
       ok++;
     } catch (e) {
       log.warn({ err: e.message, submissionId: params[0] }, '[admin-sync] upsert failed');
@@ -255,8 +299,8 @@ router.post('/admin/sync-all', requireAuth, requireRole('admin'), async (req, re
     const startedAt = Date.now();
     req.log.info({ keyType, enrichWorkflow }, '[admin-sync] starting full sync');
 
-    const formsData = await jotformFetch('user/forms', { params: { limit: 1000 }, keyType });
-    const forms = (formsData.content || []).filter(f => f.id);
+    const forms = (await fetchAllPages('user/forms', keyType, {}, req.log)).filter(f => f.id);
+    await upsertForms(forms, keyType, req.log);
 
     let totalUpserted = 0;
     let totalFailed = 0;
@@ -273,10 +317,10 @@ router.post('/admin/sync-all', requireAuth, requireRole('admin'), async (req, re
       try {
         const fields = await fetchFieldsForForm(formId, keyType, req.log);
 
-        const { rows: rawSubs, truncated } = await fetchAllSubmissionsForForm(formId, keyType, req.log);
+        const rawSubs = await fetchAllSubmissionsForForm(formId, keyType, req.log);
         if (rawSubs.length === 0) {
           formsDone++;
-          perForm.push({ formId, formTitle, total: 0, upserted: 0, truncated, ms: Date.now() - formStart });
+          perForm.push({ formId, formTitle, total: 0, upserted: 0, ms: Date.now() - formStart });
           return;
         }
 
@@ -303,8 +347,8 @@ router.post('/admin/sync-all', requireAuth, requireRole('admin'), async (req, re
         totalUpserted += formUpserted;
         totalFailed += failed;
         formsDone++;
-        perForm.push({ formId, formTitle, total: rawSubs.length, upserted: formUpserted, truncated, ms: Date.now() - formStart });
-        req.log.info({ formId, formTitle, total: rawSubs.length, upserted: formUpserted, truncated }, '[admin-sync] form done');
+        perForm.push({ formId, formTitle, total: rawSubs.length, upserted: formUpserted, ms: Date.now() - formStart });
+        req.log.info({ formId, formTitle, total: rawSubs.length, upserted: formUpserted }, '[admin-sync] form done');
       } catch (e) {
         formsFailed++;
         req.log.warn({ formId, err: e.message }, '[admin-sync] form failed');
@@ -336,6 +380,7 @@ router.get('/admin/sync-all-stream', requireAuth, requireRole('admin'), async (r
   const emit = (event, data) => {
     res.write(`event: ${event}\n`);
     res.write(`data: ${JSON.stringify(data)}\n\n`);
+    emitToAll('sync:progress', { event, ...data });
   };
 
   // Keep the connection alive through any front-line proxy idle timeouts.
@@ -348,8 +393,8 @@ router.get('/admin/sync-all-stream', requireAuth, requireRole('admin'), async (r
 
   try {
     req.log.info({ keyType }, '[admin-sync-stream] starting full sync');
-    const formsData = await jotformFetch('user/forms', { params: { limit: 1000 }, keyType });
-    const forms = (formsData.content || []).filter(f => f.id);
+    const forms = (await fetchAllPages('user/forms', keyType, {}, req.log)).filter(f => f.id);
+    await upsertForms(forms, keyType, req.log);
 
     emit('start', { keyType, formCount: forms.length });
 
@@ -369,7 +414,7 @@ router.get('/admin/sync-all-stream', requireAuth, requireRole('admin'), async (r
 
       try {
         const fields = await fetchFieldsForForm(formId, keyType, req.log);
-        const { rows: rawSubs, truncated } = await fetchAllSubmissionsForForm(formId, keyType, req.log);
+        const rawSubs = await fetchAllSubmissionsForForm(formId, keyType, req.log);
 
         // Enrich each submission with its workflow-instance status + flattened
         // taskList (assignees) — identical to POST /admin/sync-all. Without this
@@ -407,7 +452,6 @@ router.get('/admin/sync-all-stream', requireAuth, requireRole('admin'), async (r
           total: rawSubs.length,
           upserted: formUpserted,
           failed,
-          truncated,
           ms: Date.now() - formStart,
           progress: { completed: completedCount, total: forms.length },
         });

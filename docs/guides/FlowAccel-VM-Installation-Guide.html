@@ -404,8 +404,9 @@ ALLOWED_ORIGIN=http://localhost,http://YOUR_VM_IP
 # ── JotForm API (only needed for live JotForm sync; leave blank otherwise) ──
 JOTFORM_API_KEY=
 JOTFORM_TEAM_ID=
-JOTFORM_BASE=https://bettroi.jotform.com/API
-JOTFORM_HOST=https://bettroi.jotform.com
+JOTFORM_BASE=https://your-jotform-domain.example/API
+JOTFORM_HOST=https://your-jotform-domain.example
+JOTFORM_PREFILL_HOST=https://your-jotform-domain.example
 JOTFORM_WEBHOOK_SECRET=
 
 # ── Microsoft SSO (optional — leave blank to disable) ──
@@ -429,7 +430,7 @@ MICROSOFT_REDIRECT_URI=</code></pre>
     <li><code>development</code> — any account in the database can log in.
         <b>Use this</b> unless the VM is inside the GDMO network.</li>
     <li><code>production</code> — every login is first checked against the
-        JotForm workspace (<code>bettroi.jotform.com</code>). If the VM
+        configured JotForm workspace (<code>JOTFORM_HOST</code>). If the VM
         cannot reach that host, <b>all logins fail</b>. Only use
         <code>production</code> if the VM has network access to JotForm
         Enterprise and you have a valid <code>JOTFORM_API_KEY</code>.</li>

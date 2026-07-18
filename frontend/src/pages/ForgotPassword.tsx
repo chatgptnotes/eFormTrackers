@@ -39,7 +39,7 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-sky-100 flex items-center justify-center p-4">
+    <div className="app-page bg-gradient-to-br from-slate-50 via-blue-50 to-sky-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center justify-center gap-2 mb-6">
@@ -52,7 +52,7 @@ export default function ForgotPassword() {
           <p className="text-slate-600 mt-1">Enter your email to generate a reset link</p>
         </div>
 
-        <div className="backdrop-blur-xl bg-white/80 border border-white/50 rounded-3xl p-8 shadow-2xl">
+        <div className="backdrop-blur-xl bg-white/80 border border-white/50 rounded-3xl p-5 sm:p-8 shadow-2xl">
           {sent ? (
             <div className="text-center py-4 space-y-4">
               <CheckCircle className="w-14 h-14 text-emerald-500 mx-auto" />

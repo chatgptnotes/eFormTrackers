@@ -1,4 +1,4 @@
-const configuredHost = import.meta.env.VITE_JOTFORM_HOST || 'https://bettroi.jotform.com';
+const configuredHost = import.meta.env.VITE_JOTFORM_HOST || 'https://www.jotform.com';
 
 export const JOTFORM_HOST = String(configuredHost).replace(/\/$/, '');
 export const JOTFORM_LOGO_URL = `${JOTFORM_HOST}/enterprise/logo.png`;

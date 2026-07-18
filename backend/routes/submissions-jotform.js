@@ -5,12 +5,14 @@ const { jotformFetch, resolveApiKey } = require('../lib/jotform');
 const { readKeyType } = require('../lib/key-type');
 const { detectLevelFields } = require('../lib/detect-fields');
 const { insertNotification } = require('../lib/notifications');
-const { extractTask, deriveWorkflowStatus, mergeWorkflowTasksSql } = require('../lib/workflow-task');
+const { extractTask, taskListFromResponse, deriveWorkflowStatus, mergeWorkflowTasksSql } = require('../lib/workflow-task');
 const { enrichTasksWithPrefill } = require('../lib/prefill');
 const { upsertEmailLogs } = require('../lib/email-log');
 const { requireAuth } = require('../middleware/auth');
 const { webhookLimiter } = require('../middleware/rateLimit');
 const { emitToAll } = require('../lib/realtime');
+const { upsertWorkspaceForm, upsertWorkspaceLinks } = require('../lib/workspace-links');
+const { applyResourceShareLinks, buildWorkflowTaskUrl } = require('../lib/jotform-link');
 
 const router = Router();
 
@@ -93,6 +95,7 @@ async function getFieldsForForm(formId, keyType) {
 }
 
 router.post('/webhook', webhookLimiter, async (req, res, next) => {
+  const startedAt = Date.now();
   try {
     // Webhook secret is REQUIRED in production. Previously, an empty
     // JOTFORM_WEBHOOK_SECRET silently disabled verification → anyone on the
@@ -140,6 +143,7 @@ router.post('/webhook', webhookLimiter, async (req, res, next) => {
 
     const detected = await getFieldsForForm(formId, keyType);
 
+    const hasStatusSignal = detected.levelFields.length > 0 || !!detected.overallStatusFieldId;
     const levels = detected.levelFields.map(lf => ({
       id: lf.level,
       status: get(lf.statusFieldId),
@@ -165,6 +169,10 @@ router.post('/webhook', webhookLimiter, async (req, res, next) => {
       } else {
         currentLevel = lvl.id; status = 'pending'; break;
       }
+    }
+    if (!hasStatusSignal && !raw.workflowStatus && !raw.workflow_status && !raw.workflowInstanceID && !raw.workflow_instance_id) {
+      status = 'completed';
+      currentLevel = maxLevel;
     }
 
     const submittedBy = get(detected.nameFieldId);
@@ -200,47 +208,46 @@ router.post('/webhook', webhookLimiter, async (req, res, next) => {
     let approvalUrl = '';
     try {
       const workflowInstanceID = raw.workflowInstanceID || raw.workflow_instance_id;
+      let taskList = [];
+      let resourceShares = [];
+      try {
+        const taskData = await jotformFetch(`workflow/submission/${submissionId}/tasks`, { keyType });
+        taskList = taskListFromResponse(taskData);
+      } catch (taskErr) {
+        req.log.warn({ err: taskErr }, 'Could not fetch workflow submission tasks');
+      }
       if (workflowInstanceID) {
         const instData = await jotformFetch(`workflow/instance/${workflowInstanceID}`, { keyType });
-        const taskList = instData?.content?.taskList || [];
+        if (taskList.length === 0) taskList = instData?.content?.taskList || [];
+        resourceShares = instData?.content?.resourceShares || [];
+      }
+      if (taskList.length > 0) {
         // Flatten to the shape readers expect (top-level assigneeEmail) — matches
         // the poller + admin-sync, so task assignees pass the visibility gate.
         workflowTasks = taskList.map((t, idx) => extractTask(t, idx + 1));
         // Resolve the real prefill (access) link for active assign_form tasks.
         await enrichTasksWithPrefill(workflowTasks, submissionId, keyType);
+        applyResourceShareLinks(workflowTasks, resourceShares, formId);
+        for (const task of workflowTasks) {
+          if (task.taskId) task.accessLink = buildWorkflowTaskUrl(task, formId);
+        }
 
-        const activeTask = taskList.find(t => String(t.status || '').toUpperCase() === 'ACTIVE');
+        const activeFlat = workflowTasks.find(t => t.status === 'ACTIVE' && t.assigneeEmail)
+          || workflowTasks.find(t => t.status === 'ACTIVE');
+        const activeTask = taskList.find(t => String(t.id || '') === String(activeFlat?.taskId || ''))
+          || taskList.find(t => String(t.status || '').toUpperCase() === 'ACTIVE');
         if (activeTask) {
           const props = activeTask.properties || {};
           const assigneeUser = props.assigneeUser || {};
           const recipients = Array.isArray(props.recipients) ? props.recipients : [];
           const firstRecipient = recipients[0] || {};
 
-          pendingApproverName = String(assigneeUser.name || firstRecipient.name || '');
-          const candidateEmail = String(props.assigneeEmail || assigneeUser.email || firstRecipient.email || '');
+          pendingApproverName = String(activeFlat?.assigneeName || assigneeUser.name || firstRecipient.name || '');
+          const candidateEmail = String(activeFlat?.assigneeEmail || props.assigneeEmail || assigneeUser.email || firstRecipient.email || '');
           pendingApproverEmail = candidateEmail.includes('@') ? candidateEmail : '';
 
-          const element = activeTask.element || {};
-          const internalFormID = element.internalFormID || element.resourceID || element.formID || props.formID;
           const taskId = String(activeTask.id || '');
-          const taskType = String(element.type || '');
-
-          if (taskType === 'workflow_assign_form') {
-            // Prefer the resolved prefill link (set on the flat task above); fall
-            // back to the bare form URL when no prefill matched.
-            const flat = workflowTasks.find(t => t.taskId === taskId);
-            approvalUrl = (flat && flat.accessLink)
-              || `${env.JOTFORM_HOST}/${internalFormID}?workflowAssignFormTask=1&taskID=${taskId}`;
-          } else {
-            const rawAccessLink = String(activeTask.accessLink || props.accessLink || '');
-            const shareMatch = rawAccessLink.match(/\/share\/(.+)$/);
-            const accessToken = shareMatch ? shareMatch[1] : '';
-            if (internalFormID && taskId && accessToken) {
-              approvalUrl = `${env.JOTFORM_HOST}/approval-form/${internalFormID}/task/${taskId}/access-token/${encodeURIComponent(accessToken)}`;
-            } else if (rawAccessLink) {
-              approvalUrl = rawAccessLink;
-            }
-          }
+          approvalUrl = buildWorkflowTaskUrl(workflowTasks.find(t => t.taskId === taskId), formId);
         }
       }
     } catch (wfErr) {
@@ -317,6 +324,16 @@ router.post('/webhook', webhookLimiter, async (req, res, next) => {
       ]
     );
 
+    await upsertWorkspaceForm(profileId, { id: formId, title: formTitle })
+      .catch(err => req.log.warn({ err }, '[webhook] workspace form upsert failed'));
+    await upsertWorkspaceLinks({
+      profileId,
+      submissionId,
+      formId,
+      workflowTasks,
+      approvalUrl,
+    }).catch(err => req.log.warn({ err }, '[webhook] workspace URL upsert failed'));
+
     // Log task assignments to email_logs
     if (workflowTasks.length > 0) {
       upsertEmailLogs(submissionId, formId, String(raw.form_title || formId), workflowTasks, profileId)
@@ -354,7 +371,8 @@ router.post('/webhook', webhookLimiter, async (req, res, next) => {
     }
 
     emitToAll('submissions:updated', { source: 'webhook', submissionId });
-    res.json({ ok: true, submissionId, currentLevel, status, pendingApproverName, pendingApproverEmail });
+    req.log.info({ submissionId, elapsedMs: Date.now() - startedAt }, '[webhook] submission synced to DB');
+    res.json({ ok: true, submissionId, currentLevel, status, pendingApproverName, pendingApproverEmail, elapsedMs: Date.now() - startedAt });
   } catch (err) { next(err); }
 });
 

@@ -28,7 +28,7 @@ export default function OrgSettings() {
   };
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="app-page space-y-6 max-w-2xl">
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-3">
           <Building2 className="w-7 h-7 text-gold" /> Organization Settings
@@ -36,7 +36,7 @@ export default function OrgSettings() {
         <p className="text-gray-400 mt-1">Manage your organization's profile and branding</p>
       </div>
 
-      <form onSubmit={handleSave} className="glass-card p-8 space-y-6">
+      <form onSubmit={handleSave} className="glass-card p-5 sm:p-8 space-y-6">
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-1">Organization Name</label>
           <input type="text" value={name} onChange={e => setName(e.target.value)} disabled={!canEdit}
@@ -53,7 +53,7 @@ export default function OrgSettings() {
           <label className="block text-sm font-medium text-gray-300 mb-1 flex items-center gap-2">
             <Palette className="w-4 h-4" /> Brand Color
           </label>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <input type="color" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} disabled={!canEdit}
               className="w-12 h-12 rounded-xl border border-navy-light/30 cursor-pointer" />
             <input type="text" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} disabled={!canEdit}

@@ -200,14 +200,23 @@ if (Test-Path $envPath) {
     ''
     '# JotForm API (optional offline - workspace gate bypassed in development)'
     'JOTFORM_API_KEY='
+    'JOTFORM_API_KEY_GDMO='
     'JOTFORM_TEAM_ID='
-    'JOTFORM_BASE=https://bettroi.jotform.com/API'
-    'JOTFORM_HOST=https://bettroi.jotform.com'
+    'JOTFORM_BASE=https://www.jotform.com/API'
+    'JOTFORM_HOST=https://www.jotform.com'
+    'JOTFORM_PREFILL_HOST=https://www.jotform.com'
+    'VITE_JOTFORM_HOST=https://www.jotform.com'
     ''
     '# CORS / Server'
     'ALLOWED_ORIGIN=*'
     "PORT=$BackendPort"
     'NODE_ENV=development'
+    ''
+    '# Auto-sync poller'
+    'ENABLE_POLLER=1'
+    'POLL_INTERVAL_MINUTES=5'
+    'POLL_QUICK_SECONDS=20'
+    'POLLER_KEY_TYPE=gdmo'
   )
   Set-Content -Path $envPath -Value $lines -Encoding utf8
   Ok ".env written (DB=$DbName, port=$BackendPort, NODE_ENV=development)"

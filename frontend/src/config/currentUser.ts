@@ -49,6 +49,23 @@ export function isSubmissionVisible(
   );
 }
 
+export function isOpenSubmission(submission: Submission): boolean {
+  return submission.currentApprovalLevel !== 'completed' && submission.currentApprovalLevel !== 'rejected';
+}
+
+export function isApprovalReview(submission: Submission): boolean {
+  if (!isOpenSubmission(submission)) return false;
+  const tasks = submission.workflowTasks || [];
+  if (tasks.length > 0) {
+    return tasks.some(t => String(t.status).toUpperCase() === 'ACTIVE' && t.type === 'workflow_approval');
+  }
+  return Boolean(
+    submission.pendingApproverEmail ||
+    submission.pendingApproverName ||
+    submission.approvalHistory?.some(a => a.status === 'pending')
+  );
+}
+
 /**
  * "Is this submission awaiting the logged-in user's action right now?"
  *
@@ -58,7 +75,7 @@ export function isSubmissionVisible(
  * pendingApproverEmail column only names one of them — without this, the other
  * parallel approvers would never see the item.
  *
- * Role-agnostic by design: the Modern Dashboard applies the same rule to every
+ * Role-agnostic by design: the Dashboard applies the same rule to every
  * user (no admin "see everything" bypass).
  */
 export function isAwaitingMyAction(
@@ -67,9 +84,7 @@ export function isAwaitingMyAction(
 ): boolean {
   const me = userEmail?.toLowerCase();
   if (!me) return false;
-  if (submission.currentApprovalLevel === 'completed' || submission.currentApprovalLevel === 'rejected') {
-    return false;
-  }
+  if (!isOpenSubmission(submission)) return false;
   // Task list is authoritative when synced: I'm awaiting action only if I hold an
   // ACTIVE task. If tasks exist but none are mine-and-active (workflow advanced or
   // finished), a stale pendingApproverEmail must NOT keep it in my queue.
@@ -86,7 +101,7 @@ export function isAwaitingMyAction(
  * from their ACTIVE workflow task. Lets a card render the correct CTA instead of
  * always saying "Review & Approve":
  *   'approval' → Review & Approve (signature modal)
- *   'task'     → Open Task   (external JotForm task)
+ *   'task'     → Open Task (external JotForm task URL)
  *   'form'     → Fill Form   (external JotForm form)
  *   null       → no action for me (not assigned / already done)
  */

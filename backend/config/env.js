@@ -14,7 +14,7 @@ for (const key of required) {
   }
 }
 
-const jotformBase = process.env.JOTFORM_BASE || 'https://bettroi.jotform.com/API';
+const jotformBase = process.env.JOTFORM_BASE || 'https://www.jotform.com/API';
 if (!jotformBase.startsWith('https://')) {
   console.error('[env] JOTFORM_BASE must use https://');
   process.exit(1);
@@ -37,7 +37,8 @@ module.exports = {
   JOTFORM_API_KEY_GDMO: process.env.JOTFORM_API_KEY_GDMO || '',
   JOTFORM_TEAM_ID: process.env.JOTFORM_TEAM_ID || '',
   JOTFORM_BASE: jotformBase,
-  JOTFORM_HOST: process.env.JOTFORM_HOST || 'https://bettroi.jotform.com',
+  JOTFORM_HOST: process.env.JOTFORM_HOST || 'https://www.jotform.com',
+  JOTFORM_PREFILL_HOST: process.env.JOTFORM_PREFILL_HOST || process.env.JOTFORM_HOST || 'https://www.jotform.com',
   JOTFORM_WEBHOOK_SECRET: process.env.JOTFORM_WEBHOOK_SECRET || '',
   ALLOWED_ORIGIN: allowedOrigin,
   PORT: parseInt(process.env.PORT || '3001', 10),
@@ -50,7 +51,7 @@ module.exports = {
   // Optional: a JotForm browser session cookie (e.g. 'jftoken=xyz...'),
   // used by /api/signature-proxy to fetch /uploads/ files that JotForm
   // protects behind session auth. Obtain from browser DevTools after
-  // logging into bettroi.jotform.com as the workspace admin.
+  // logging into the configured JOTFORM_HOST as the workspace admin.
   JOTFORM_SESSION_COOKIE: process.env.JOTFORM_SESSION_COOKIE || '',
   EMAIL_FORWARD_ENABLED: process.env.EMAIL_FORWARD_ENABLED === '1',
   EMAIL_FORWARD_TO: emailForwardTo,
@@ -76,9 +77,9 @@ module.exports = {
   ADMIN_EMAIL: (process.env.ADMIN_EMAIL || '').trim().toLowerCase(),
   ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || '',
   ADMIN_NAME: process.env.ADMIN_NAME || '',
-  POLL_INTERVAL_MINUTES: parseFloat(process.env.POLL_INTERVAL_MINUTES || '0.5'),
+  POLL_INTERVAL_MINUTES: parseFloat(process.env.POLL_INTERVAL_MINUTES || '2'),
   // Quick incremental sync between full polls (seconds). 0 disables quick polls.
-  POLL_QUICK_SECONDS: parseInt(process.env.POLL_QUICK_SECONDS || '20', 10),
+  POLL_QUICK_SECONDS: parseInt(process.env.POLL_QUICK_SECONDS || '1', 10),
   POLLER_KEY_TYPE: process.env.POLLER_KEY_TYPE || 'gdmo',
   ORG_ID: process.env.ORG_ID || '',
   // M-2: Production-safe rate-limit defaults. Override via env vars if needed.

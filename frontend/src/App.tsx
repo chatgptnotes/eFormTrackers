@@ -32,9 +32,6 @@ const CompletedPage = lazy(() => import('./pages/CompletedPage'));
 const PendingWithPage = lazy(() => import('./pages/PendingWithPage'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
-const MyEmails = lazy(() => import('./pages/MyEmails'));
-const AdminEmails = lazy(() => import('./pages/AdminEmails'));
-const AdminUsers = lazy(() => import('./pages/AdminUsers'));
 
 function PageLoader() {
   return (
@@ -73,7 +70,7 @@ function ProtectedApp() {
           <Route path="/bottlenecks" element={<RoleGuard allowed={['super_admin', 'admin']}><BottleneckAnalysis data={data} /></RoleGuard>} />
           <Route path="/approval/:level" element={<RoleGuard allowed={['super_admin', 'admin', 'approver', 'viewer', 'user']}><ApprovalDetail data={data} /></RoleGuard>} />
           <Route path="/settings" element={<RoleGuard allowed={['super_admin', 'admin', 'approver']}><Settings /></RoleGuard>} />
-          <Route path="/team" element={<RoleGuard allowed={['super_admin', 'admin']}><TeamManagement /></RoleGuard>} />
+          <Route path="/team" element={<RoleGuard allowed={['super_admin', 'admin']}><TeamManagement data={data} /></RoleGuard>} />
           <Route path="/org-settings" element={<RoleGuard allowed={['super_admin']}><OrgSettings /></RoleGuard>} />
           <Route path="/billing" element={<RoleGuard allowed={['super_admin']}><Billing /></RoleGuard>} />
           <Route path="/profile" element={<Profile />} />
@@ -84,10 +81,7 @@ function ProtectedApp() {
           <Route path="/director" element={<DirectorDashboard data={data} />} />
           <Route path="/submit-request" element={<SubmitRequest activeForms={data.activeForms} />} />
           <Route path="/completed" element={<CompletedPage data={data} />} />
-          <Route path="/pending-with" element={<PendingWithPage data={data} />} />
-          <Route path="/my-emails" element={<MyEmails />} />
-          <Route path="/admin-emails" element={<RoleGuard allowed={['super_admin', 'admin']}><AdminEmails /></RoleGuard>} />
-          <Route path="/admin-users" element={<RoleGuard allowed={['super_admin', 'admin']}><AdminUsers /></RoleGuard>} />
+          <Route path="/pending-with" element={<RoleGuard allowed={['super_admin']}><PendingWithPage data={data} /></RoleGuard>} />
         </Routes>
       </Suspense>
     </Layout>
@@ -125,6 +119,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/app" replace />} />
           <Route path="/login" element={user ? <Navigate to="/app" replace /> : <Login />} />
+          <Route path="/admin/login" element={user ? <Navigate to="/app" replace /> : <Login adminMode />} />
           <Route path="/signup" element={user ? <Navigate to="/app" replace /> : <Signup />} />
           <Route path="/forgot-password" element={user ? <Navigate to="/app" replace /> : <ForgotPassword />} />
           <Route path="/reset" element={user ? <Navigate to="/app" replace /> : <ResetPassword />} />

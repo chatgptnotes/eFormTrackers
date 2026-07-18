@@ -16,6 +16,7 @@ import { WorkflowStep, fetchWorkflowSteps, fetchWorkflowTasks } from './workflow
 import { ApproverConfig, fetchApproverConfigs } from './useApproverConfig';
 import { mapGenericSubmission } from './submissionMappers';
 import { JOTFORM_HOST } from '../config/jotform';
+import { getUsableTaskAccessLink } from '../lib/jotformLinks';
 
 export interface LoadFromJotFormResult {
   submissions: Submission[];
@@ -174,12 +175,13 @@ async function enrichWithWorkflowTasks(mapped: Submission[]): Promise<void> {
       }
 
       // Prefer accessLink (direct URL with access token from JotForm)
-      if (activeTask.accessLink) {
-        sub.approvalUrl = activeTask.accessLink;
-      } else if (activeTask.taskId && activeTask.internalFormID) {
+      const usableAccessLink = getUsableTaskAccessLink(activeTask);
+      if (usableAccessLink) {
+        if (taskType === 'workflow_assign_form') sub.formUrl = usableAccessLink;
+        else sub.approvalUrl = usableAccessLink;
+      } else if (taskType !== 'workflow_assign_task' && activeTask.taskId && activeTask.internalFormID) {
         const host = JOTFORM_HOST;
         const qp = taskType === 'workflow_assign_form' ? 'workflowAssignFormTask'
-          : taskType === 'workflow_assign_task' ? 'workflowAssignTask'
           : 'workflowApprovalTask';
         sub.approvalUrl = `${host}/${activeTask.internalFormID}?${qp}=1&taskID=${activeTask.taskId}`;
       }

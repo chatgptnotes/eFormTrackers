@@ -33,9 +33,9 @@ export default function BottleneckAnalysis({ data }: Props) {
   };
 
   return (
-    <div className="space-y-6" id="bottleneck-report">
+    <div className="app-page space-y-6" id="bottleneck-report">
       {/* Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="responsive-card-grid">
         {bottleneckData.map((bn, i) => (
           <motion.div
             key={bn.level}
@@ -129,7 +129,7 @@ export default function BottleneckAnalysis({ data }: Props) {
       {/* Top Approvers with Longest Queues */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} className="glass-card p-6">
         <h3 className="text-lg font-semibold text-white mb-4">Top Approvers — Pending Queues</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="responsive-card-grid">
           {bottleneckData.map(bn => (
             <div key={bn.level} className="space-y-2">
               <h4 className="text-sm font-medium text-gold">{bn.level}</h4>
@@ -149,7 +149,7 @@ export default function BottleneckAnalysis({ data }: Props) {
 
       {/* Stuck Forms Alert List */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }} className="glass-card p-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-red-400" />
             <h3 className="text-lg font-semibold text-white">Stuck Forms Alert — Over 14 Days</h3>
@@ -158,8 +158,8 @@ export default function BottleneckAnalysis({ data }: Props) {
             <Download className="w-3.5 h-3.5" /> Export PDF
           </button>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
+        <div className="responsive-table">
+          <table className="w-full min-w-[720px]">
             <thead>
               <tr className="border-b border-navy-light/20">
                 <th className="px-4 py-2 text-left text-xs font-semibold text-gray-400 uppercase">Reference</th>

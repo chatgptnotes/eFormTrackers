@@ -18,30 +18,44 @@ function extractTask(t, derivedLevel) {
   const assigneeUser = props.assigneeUser || {};
   const recipients = Array.isArray(props.recipients) ? props.recipients : [];
   const firstRecipient = recipients[0] || {};
+  const elementAssignees = Array.isArray(element.assignee) ? element.assignee : [];
+  const firstElementAssignee = elementAssignees[0] || {};
   const result = t.result || {};
   const completedBy = t.completedBy || t.completed_by || {};
   const status = String(t.status || 'PENDING').toUpperCase();
+  const internalFormID = String(element.internalFormID || element.resourceID || element.formID || props.formID || '');
+  const rawType = String(element.type || '');
 
   return {
     name: String(element.name || props.taskName || t.name || ''),
-    type: String(element.type || ''),
+    type: rawType,
     status,
-    assigneeName: String(assigneeUser.name || firstRecipient.name || t.assignee_name || ''),
-    assigneeEmail: String(props.assigneeEmail || assigneeUser.email || firstRecipient.email || t.assignee || ''),
+    assigneeName: String(assigneeUser.name || firstRecipient.name || firstElementAssignee.text || t.assignee_name || ''),
+    assigneeEmail: String(props.assigneeEmail || assigneeUser.email || firstRecipient.email || firstElementAssignee.value || firstElementAssignee.text || t.assignee || ''),
     level: typeof props.level === 'number' ? props.level : (typeof derivedLevel === 'number' ? derivedLevel : 0),
     updatedAt: String(t.updated_at || ''),
     taskId: String(t.id || ''),
-    internalFormID: String(element.internalFormID || element.resourceID || element.formID || props.formID || ''),
+    internalFormID,
     accessLink: String(t.accessLink || props.accessLink || element.accessLink || ''),
     submittedBy: String(completedBy.name || result.submittedBy || result.completed_by ||
       (status === 'COMPLETED' ? (assigneeUser.name || firstRecipient.name || '') : '') || ''),
     submittedByEmail: String(completedBy.email || result.submittedByEmail || result.completed_by_email ||
-      (status === 'COMPLETED' ? (props.assigneeEmail || assigneeUser.email || firstRecipient.email || '') : '') || ''),
+      (status === 'COMPLETED' ? (props.assigneeEmail || assigneeUser.email || firstRecipient.email || firstElementAssignee.value || firstElementAssignee.text || '') : '') || ''),
     // Approval-step signature: when an approver signs while approving a task,
     // JotForm stores the signature URL in properties.signature.value. This is
     // separate from form-field (control_signature) signatures in answers.
     signatureUrl: String(props.signature?.value || props.signature || ''),
   };
+}
+
+function taskListFromResponse(data) {
+  const content = data?.content;
+  if (Array.isArray(content?.taskList)) return content.taskList;
+  if (Array.isArray(content)) {
+    if (content.length === 1 && Array.isArray(content[0]?.taskList)) return content[0].taskList;
+    return content;
+  }
+  return [];
 }
 
 /**
@@ -59,14 +73,20 @@ function deriveWorkflowStatus(workflowStatus, flatTasks = []) {
   const ws = String(workflowStatus || '').toUpperCase();
   if (ws === 'COMPLETED' || ws === 'COMPLETE') return 'completed';
   if (ws === 'REJECTED' || ws === 'CANCELLED' || ws === 'DECLINED') return 'rejected';
+  if (ws === 'NOT_STARTED') return 'completed';
 
   const tasks = Array.isArray(flatTasks) ? flatTasks : [];
   if (tasks.length > 0) {
-    const anyOpen = tasks.some(t => ['ACTIVE', 'PENDING'].includes(String(t.status).toUpperCase()));
-    if (anyOpen) return 'pending';
+    const anyActive = tasks.some(t => String(t.status).toUpperCase() === 'ACTIVE');
+    if (anyActive) return 'pending';
+    const anyPending = tasks.some(t => String(t.status).toUpperCase() === 'PENDING');
+    if (anyPending) return 'pending';
+    const anyFailed = tasks.some(t => ['CANCELED', 'CANCELLED', 'FAILED'].includes(String(t.status).toUpperCase()));
+    if (anyFailed) return 'rejected';
     const endDone = tasks.some(t => String(t.type) === 'workflow_end_point' && String(t.status).toUpperCase() === 'COMPLETED');
     const allDone = tasks.every(t => String(t.status).toUpperCase() === 'COMPLETED');
     if (endDone || allDone) return 'completed';
+    return 'completed';
   }
 
   if (ws === 'ACTIVE' || ws === 'PENDING' || ws === 'INPROGRESS' || ws === 'IN_PROGRESS') return 'pending';
@@ -76,16 +96,19 @@ function deriveWorkflowStatus(workflowStatus, flatTasks = []) {
 /**
  * SQL expression for `workflow_tasks = ...` in an ON CONFLICT DO UPDATE.
  * Merges the incoming task array (bind param, e.g. '$21') with the existing
- * row: when an incoming task's accessLink is empty but the stored task (same
- * taskId) has one, the stored link is kept. JotForm's API only exposes
- * /share/{token} links for the API key's own account, so links harvested from
- * sent emails (lib/email-link-harvester.js) live ONLY in our DB — without this
- * merge every sync wipes them.
+ * row: when an incoming non-assign-form task's accessLink is empty but the
+ * stored task (same taskId) has one, the stored link is kept. Assign-form tasks
+ * only keep stored /prefill/ URLs; old email-harvested links are deprecated.
  */
 function mergeWorkflowTasksSql(param) {
   return `(
     SELECT COALESCE(jsonb_agg(
       CASE WHEN COALESCE(nt->>'accessLink','') = '' AND COALESCE(ot.link,'') <> ''
+                AND (nt->>'type' = 'workflow_approval'
+                  OR (nt->>'type' = 'workflow_assign_task'
+                    AND COALESCE(nt->>'internalFormID','') <> ''
+                    AND (ot.link LIKE '%/share/%' OR ot.link LIKE '%/approval-form/%'))
+                  OR (nt->>'type' = 'workflow_assign_form' AND ot.link LIKE '%/prefill/%'))
            THEN jsonb_set(nt, '{accessLink}', to_jsonb(ot.link))
            ELSE nt END
     ), '[]'::jsonb)
@@ -102,4 +125,4 @@ function mergeWorkflowTasksSql(param) {
   )`;
 }
 
-module.exports = { extractTask, deriveWorkflowStatus, mergeWorkflowTasksSql };
+module.exports = { extractTask, taskListFromResponse, deriveWorkflowStatus, mergeWorkflowTasksSql };

@@ -26,8 +26,8 @@ export default function Signup() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-navy-dark flex items-center justify-center p-6">
-        <div className="glass-card p-12 text-center max-w-md">
+      <div className="app-page bg-navy-dark flex items-center justify-center p-4 sm:p-6">
+        <div className="glass-card p-6 sm:p-12 text-center max-w-md">
           <Mail className="w-16 h-16 text-gold mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-white mb-2">Check your email</h2>
           <p className="text-gray-400 mb-6">We sent a confirmation link to <strong className="text-white">{form.email}</strong></p>
@@ -38,7 +38,7 @@ export default function Signup() {
   }
 
   return (
-    <div className="min-h-screen bg-navy-dark flex items-center justify-center p-6">
+    <div className="app-page bg-navy-dark flex items-center justify-center p-4 sm:p-6">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-3 mb-6">
@@ -50,7 +50,7 @@ export default function Signup() {
           <h1 className="text-2xl font-bold text-white">Create your account</h1>
           <p className="text-gray-400 mt-1">Start tracking approvals in minutes</p>
         </div>
-        <div className="glass-card p-8">
+        <div className="glass-card p-5 sm:p-8">
           <form onSubmit={handleSubmit} className="space-y-4">
             {[
               { key: 'fullName', label: 'Full Name', icon: User, type: 'text', placeholder: 'John Smith' },

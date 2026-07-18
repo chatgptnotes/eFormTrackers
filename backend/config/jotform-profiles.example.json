@@ -3,20 +3,20 @@
     "id": "gdmo",
     "label": "Bettroi Workspace",
     "apiKeyEnv": "JOTFORM_API_KEY_GDMO",
-    "baseUrl": "https://bettroi.jotform.com/API",
-    "host": "https://bettroi.jotform.com",
+    "baseUrlEnv": "JOTFORM_BASE",
+    "hostEnv": "JOTFORM_HOST",
     "scope": "user",
-    "teamId": "",
+    "teamIdEnv": "JOTFORM_TEAM_ID",
     "default": true
   },
   {
     "id": "myaccount",
     "label": "Testing",
     "apiKeyEnv": "JOTFORM_API_KEY",
-    "baseUrl": "https://bettroi.jotform.com/API",
-    "host": "https://bettroi.jotform.com",
+    "baseUrlEnv": "JOTFORM_BASE",
+    "hostEnv": "JOTFORM_HOST",
     "scope": "user",
-    "teamId": "",
+    "teamIdEnv": "JOTFORM_TEAM_ID",
     "default": false
   }
 ]

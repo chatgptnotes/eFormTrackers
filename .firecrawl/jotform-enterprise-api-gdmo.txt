@@ -1,0 +1,3438 @@
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+Jotform Enterprise  
+API Documentation
+
+  This Jotform Enterprise API Documentation is in addition to the published Jotform API
+  and covers Enterprise-specific features and functionalities. It can only be used by
+  current Jotform Enterprise customers. 
+
+
+  All Jotform Enterprise API calls should be made with the following structure:
+
+  https://your-jotform-enterprise-domain.com/API or subdomain.jotform.com/API
+  instead of api.jotform.com
+
+
+
+
+ JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               2
+ Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+Table of Contents
+1 Jotform Sign
+2 Prefill
+3 Sharing
+4 Teams
+5 PDFs
+6 Conditions
+7 History
+8 Reports
+9 Users
+10 Product List element
+11 Approval workflow
+12 Filtering
+13 Analytics
+14 Action Buttons
+15 Other / Misc
+
+
+  JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               3
+  Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+1 Jotform Sign  
+Getting Sign Document IDs
+
+GET API/listings/sign
+
+
+
+Creating a Sign Document
+
+POST /API/listings/sign  
+
+With a form data payload containing the key file[], eg:  
+
+Import requests
+
+
+
+file_path = “./example.pdf” 
+files = {'file[]': open(file_path, 'rb')}
+
+requests.post(f"{base_endpoint}listings/sign?apiKey={api_key}", files=files)
+
+
+
+Generating Sign Envelopes
+
+POST API/sign/#signId/send
+
+ 
+
+Example Payload:
+
+
+
+{
+
+     "_documentID": "#signId",
+
+     "props": {
+
+      "participants": [
+
+       {
+
+          "authenticationMethod": "email",
+
+          "color": "#0099FF",
+
+          "email": "ed+1@jotform.com",
+
+          "name": "first person",
+
+          "participantID": "2",
+
+          "role": "Signer 1",
+
+          "signingOrder": 0,
+
+          "status": "CREATED",
+
+          "type": "signer",
+
+          "username": "",
+
+          "fields": [
+
+           "3",
+
+           "4",
+
+           "5",
+
+           "6",
+
+           "7",
+
+           "8",
+
+           "9",
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               4
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+        "10",
+
+        "11",
+
+        "12",
+
+        "13",
+
+        "14",
+
+        "15"
+
+        ]
+
+     },
+
+     {
+
+        "authenticationMethod": "email",
+
+        "color": "#FF7B1C",
+
+        "customMessage": "",
+
+        "email": "Ed@jotform.com",
+
+        "name": "Ed",
+
+        "participantID": "1",
+
+        "role": "Me",
+
+        "signingOrder": 1,
+
+        "status": "CREATED",
+
+        "type": "owner",
+
+        "username": "ed",
+
+        "fields": []
+
+     },
+
+     {
+
+        "authenticationMethod": "email",
+
+        "color": "#9C4DD3",
+
+        "email": "ed+2@jotform.com",
+
+        "fields": [
+
+           "16"
+
+        ],
+
+        "name": "second",
+
+        "participantID": "1673526218104",
+
+        "phoneNumber": "",
+
+        "role": "Signer 2",
+
+        "signingOrder": 2,
+
+        "status": "CREATED",
+
+        "type": "signer",
+
+        "username": ""
+
+     },
+
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               5
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+       {
+
+             "authenticationMethod": "email",
+
+             "color": "#ebedf3",
+
+             "email": "ed+cc@jotform.com",
+
+             "fields": [],
+
+             "name": "",
+
+             "participantID": "zaQZYjCOj",
+
+             "phoneNumber": "",
+
+             "role": "CC Participant",
+
+             "signingOrder": 0,
+
+             "status": "CREATED",
+
+             "type": "cc",
+
+             "username": ""
+
+             }
+
+           ],
+
+           "hasSigningOrder": "Yes",
+
+           "reminderInterval": "everyDay",
+
+           "expireEnabled": "Yes",
+
+           "expirationDate": "January 20, 2023",
+
+           "delegationEnabled": "Yes",
+
+           "expireAfterTime": "No",
+
+           "expireOnDate": "Yes",
+
+           "expireAfterAmount": "2",
+
+           "expireAfterUnit": "day"
+
+      }
+
+}
+
+
+
+The required participants are 1 and 2, where 1 is the role Me, and 2 is the role Signer 1. If you have other
+signers, e.g., Signer 2, they follow the same format. Just increment the signer index 2, 3, 4, etc. The only
+other role, which is optional. is the CC Participant.
+
+
+
+hasSigningOrder: Yes | No - Required
+
+reminderInterval: ‘unselected', 'everyDay', 'everyTwoDays', 'everyThreeDays', 'everyFourDays',
+'everyFiveDays', 'everySixDays', 'everySevenDays
+
+expireEnabled: Yes | null
+
+expirationDate: Month Date, Year
+
+delegationEnabled: Yes | null
+
+expireAfterTime: Yes | No
+
+expireOnDate: Yes | null
+
+expireAfterAmount: Integer
+
+expireAfterUnit: day
+
+
+
+Apart from hasSigningOrder the other options are only required if you’re setting them, e.g. if you don’t
+specify expireEnabled: Yes then it won’t be enabled.
+
+
+
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               6
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+ Generating public sign link 
+ PUT API/sign/#signID/invitationKey
+
+
+
+ Example Response:
+
+
+
+ {"responseCode":200,"message":"success","content":
+ {"invitationKey":"01gq54g53fb2831b419be06c7b","invitationKeyCreationDate":"2023-01-19
+ 08:46:39","modificationTime":"2023-01-19 08:46:39"},"duration":"37.21ms"}  
+
+ Public sign link is: 
+ https://{slug}.jotform.com/sign/#signId/invite/#invitationKey
+
+
+
+ Params:
+
+
+
+ Slug: Instance Slug
+
+ signId: The document Sign ID
+
+ invitationKey: Obtained from the Put response
+ 
+
+ Generating an embed link 
+ The same as the public sign link but with the signEmbed=1 parameter: 
+
+
+
+ PUT API/sign/#signDocumentId/invitationKey?signEmbed=1
+
+
+
+ The response will include “embedDocumentKey”:“#documentKey”,”
+
+ Then the iframe embed just follows the format:
+
+ <iframe title="#DesiredTitle" src="https://{slug}.jotform.com/sign/#signDocumentId/invite/
+ #documentKey?signEmbed=1" style="height:600px; width: 375px; border: 0"></iframe>
+
+
+
+ Get signed PDF 
+ GET API/inbox/sign/#signedDocumentID/downloadPDF  
+
+ It returns it in base64 format in the response. The #signedDocumentID can be found on the submission
+ information itself when you get it via the submissionID using the normal GET /submission/{id} if you
+ include the parameter addSignDocumentData=1. If you include that param as well then it also have the
+ signDocument key which includes the document info, and also an auditTrailEvents child key which
+ includes the events around opening, email etc.
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               7
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+Adding Fields to Document
+
+
+
+POST /API/sign/#signDocumentId/createFields
+
+
+
+
+
+
+Payload format: Form Data
+
+
+
+
+
+
+Example:
+
+
+{
+
+
+
+  "_documentID": "232561802602044",
+
+
+
+  "formID": "232561263576055",
+
+
+
+  "questions": [{
+
+
+
+      "text": "Email",
+
+
+
+      "labelAlign": "Auto",
+
+
+
+      "required": "Yes",
+
+
+
+      "domainCheck": "No",
+
+
+
+      "allowedDomains": "",
+
+
+
+      "allowCustomDomains": "No",
+
+
+
+      "verificationCode": "No",
+
+
+
+      "size": "30",
+
+
+
+      "validation": "Email",
+
+
+
+      "maxsize": "",
+
+
+
+      "defaultValue": "",
+
+
+
+      "subLabel": "example@example.com",
+
+
+
+      "confirmationSublabel": "Confirm Email",
+
+
+
+      "hint": "",
+
+
+
+      "description": "",
+
+
+
+      "confirmation": "No",
+
+
+
+      "confirmationHint": "example@example.com",
+
+
+
+      "readonly": "No",
+
+
+
+      "disallowFree": "No",
+
+
+
+      "limitEntry": "Disable",
+
+
+
+      "qid": "93",
+
+
+
+      "order": "91",
+
+
+
+      "name": "email93",
+
+
+
+      "type": "control_email",
+
+
+
+      "pdfDetails": {
+
+
+
+       "geometry": {
+
+
+
+           "fieldRect": [20, 801.59658203125, 100, 821.59658203125]
+
+
+
+       },
+
+
+
+       "fieldName": "id-8175706287"
+
+
+
+      }
+
+
+
+  }],
+
+
+
+  "annotations": [{
+
+
+
+      "id": "id-8175706287",
+
+
+
+      "name": "id-8175706287",
+
+
+
+      "rect": [20, 801.59658203125, 100, 821.59658203125],
+
+
+
+      "type": "control_textbox",
+
+
+
+      "pageIndex": 0,
+
+
+
+      "qid": "93",
+
+
+
+      "fieldName": "fieldName"
+
+
+
+  }]
+
+
+
+}
+
+
+
+
+
+
+Most fields are self explanatory, the positioning is done via the pdfDetails -> Geometry -> fieldRect key
+
+
+where you specify an array of 4 numbers. Which are [x, height, width, y]. The fieldName should be in the
+
+
+structure id-XXXXXXXXXX where the XXXXXXXXXX is a 10 digit number. Otherwise, it just has to be
+
+
+consistent there and in the annotations array’s id and name keys. 
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               8
+
+
+
+
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+2 Prefil
+
+ EY To create a prefilled URL, you have to create a prefill with an empty configuration. For every form that
+
+       you want to create a prefilled URL for, first you have to create an empty prefill.
+
+
+
+
+
+
+Creating prefill with empty configuration
+
+
+(POST)  
+
+https://{ServerName}.jotform.com/API/form/{form_id}/prefills?apiKey={yourAPIKey}
+
+
+
+
+
+Request body:
+
+
+
+
+       { 
+
+             "provider": "manual", 
+
+             "account_id": "", 
+
+             "configuration": {} 
+
+       }
+
+
+
+
+Request response:
+
+
+
+
+       { 
+
+             "responseCode": 200, 
+
+             "message": "success", 
+
+             "content": { 
+
+                   "id": "212131766522045" // prefill_id 
+
+             }, 
+
+             "duration": "8.42ms" 
+
+       }
+
+
+
+
+ C B
+   Y        efore creating a prefilled URL, we need to get       q   uestion   k
+                                                                               eys to      be a   b
+                                                                                                  le to set   k
+                                                                                                              ey and value pairs
+
+       while creating a URL         .
+
+
+
+Get question keys
+
+(GET) 
+https://{ServerName}.jotform.com/API/form/               {form_id}    /prefills/   q   uestions?apiKey=   {yourAPIKey}
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise                                     API        Documentation                                    9
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+Request response:
+
+
+     { 
+          "responseCode": 200, 
+          "message": "success", 
+          "content": [ 
+              { 
+                  "prefill_key": "3-first", 
+                  "type": "control_fullname-first", 
+                  "text": "Name - First Name" 
+              }, 
+              { 
+                  "prefill_key": "3-last", 
+                  "type": "control_fullname-last", 
+                  "text": "Name - Last Name" 
+              }, 
+              { 
+                  "prefill_key": "4", 
+                  "type": "control_email", 
+                  "text": "Email" 
+              }, 
+              { 
+                  "prefill_key": "5-state", 
+                  "type": "control_address-state", 
+                  "text": "Address - State / Province" 
+              }, 
+              { 
+                  "prefill_key": "5-postal", 
+                  "type": "control_address-postal", 
+                  "text": "Address - Postal / Zip Code" 
+              }, 
+              { 
+                  "prefill_key": "5-addr_line1", 
+                  "type": "control_address-addr_line1", 
+                  "text": "Address - Street Address" 
+              }, 
+              { 
+                  "prefill_key": "5-city", 
+                  "type": "control_address-city", 
+                  "text": "Address - City" 
+              }, 
+              { 
+                  "prefill_key": "5-addr_line2", 
+                  "type": "control_address-addr_line2", 
+                  "text": "Address - Street Address Line 2" 
+              } 
+          ], 
+          "duration": "6.98ms" 
+     }
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               10
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+ '% Now, we can create prefilled URLs by using prefill_keys from the second step. ‘metadata’, ‘settings’
+    and ‘mapping’ must be added to the request body%
+ % To prefill the dates when useQuestionID is true, we need to change the keys to QuestionID format. 
+
+
+
+     "24-month": "01", 
+     "24-day": "18", 
+     "24-year": "1982", 
+     "24-lite-mode": "01-18-1982"
+
+
+If you create the prefill with useQuestionID set to false you can use the following format :
+
+
+
+     "month_24": "01", 
+     "day_24": "18", 
+     "year_24": "1982", 
+     "lite_mode_24": "01-18-1982"
+
+
+5.) To prefill the fill in the blanks fields you would need to use this format: 
+
+qid-FIELDNAME-id 
+
+The qid would be the question ID and the same for all, and the id you can fetch from the /API/form/
+#formid/questions endpoint and look at the specific field you have created. You will then see that each
+child field in the fill in the blanks has an ID key which you would need to use.
+ 
+The FIELDNAME would be one of:
+ 
+firstname 
+lastname 
+email 
+streetaddress 
+addressline2 
+city 
+state 
+zip 
+shorttext 
+areacode 
+phone 
+number 
+optionN (where N is the index, eg q3_option1-14 would be the first selected option for that field.
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               11
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+For dates, times, checkbox, radio, and signature the format is different: 
+
+
+Checkbox & Radio: 
+input_qid_selectbox-id 
+
+Time 
+hourSelect_qid_time-id 
+timeInput_qid_time-id 
+minuteSelect_qid_time-id 
+ampm_qid_time-id 
+
+Date 
+year_qid-date-id 
+month_qid-date-id 
+day_3-date-id 
+
+Signature 
+qid_input_signature-id (this takes a base64 string)
+
+
+
+Creating prefilled URL
+
+(POST) https://{ServerName}.jotform.com/API/form/{form_id}/prefills/{prefill_id}/url?
+apiKey={yourAPIKey
+   metadatW
+      name is the prefill URL label
+      email is the default email value for the URL. It is used while sending invitations from UI
+   settingb
+      fieldBehaviour can be edit or readonly. If prop is set to readonly, prefilled field values can be
+       viewed, but cannot be changed while previewing the form
+      useQuestionID is used to specify that the prefilled URL is created via API
+   mapping is where we define fields and their values.
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               12
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+ Request body:
+
+
+     [{ 
+           "metadata": { 
+               "name": "prefilled_url_name", // ex: "name": "New Prefill", 
+               "email": "" 
+           }, 
+           "settings": { 
+               "fieldBehaviour": "edit", // edit or readonly 
+               "useQuestionID": true, 
+           }, 
+           "mapping": { 
+               "prefill_key": value, // ex: "3-first": "John" 
+               "prefill_key": value, // ex: "3-last": "Smith" 
+           } 
+     }]
+
+
+
+ Request response:
+
+
+     { 
+           "responseCode": 200, 
+           "message": "success", 
+           "content": [ 
+              { 
+                 "id": "6107bc96840b5956a37b6e347b8c", // prefilled url id 
+                 "prefill_id": "212132105612033", 
+                 "form_id": "212103752450039", 
+                 "username": "#####", 
+                 "is_deleted": 0, 
+                 "settings": { 
+                    "metadata": { 
+                       "name": "New Prefill", 
+                       "email": "" 
+                    },
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               13
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+                         "settings": { 
+                               "fieldBehaviour": "edit", 
+                               "useQuestionID": true 
+                         }, 
+                         "mapping": { 
+                               "3-first": "John", 
+                               "3-last": "Smith" 
+                         } 
+                    } 
+               } 
+         ], 
+         "duration": "8.26ms" 
+     }
+
+
+
+
+ pc To view the prefilled form that we created in the third step, open 
+     https://form.jotform.com/{form_id}/prefill/{dD
+
+
+ Ec By repeating the third step, you can create more than one prefilled URL. To get all created URLs:
+
+     Get prefilled URLs
+
+ (GET) https://{ServerName}.jotform.com/API/form/{form_id}/prefills?apiKey={yourAPIKey}
+
+
+
+
+Request response:
+
+
+
+
+         "responseCode": 200, 
+         "message": "success", 
+         "content": [ 
+               { 
+                    "id": "212132105612033", 
+                    "form_id": "212103752450039", 
+                    "username": "#####", 
+                    "provider": "manual", 
+                    "account_id": "", 
+                    "configuration": null, 
+                    "created_at": "2021-08-02 05:35:27", 
+                    "updated_at": null, 
+                    "urls": [
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               14
+
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+                         { 
+                              "id": "6107bc96840b5956a37b6e347b8c", 
+                              "prefill_id": "212132105612033", 
+                              "form_id": "212103752450039", 
+                              "username": "#####", 
+                              "settings": { 
+                                    "metadata": { 
+                                          "name": "New Prefill", 
+                                          "email": "" 
+                                    }, 
+                                    "settings": { 
+                                          "fieldBehaviour": "edit",
+
+                                          "useQuestionID": true 
+                                    }, 
+                                    "mapping": { 
+                                          "3-first": "John", 
+                                          "3-last": "Smith" 
+                                    } 
+                              }, 
+                              "created_at": "2021-08-02 05:36:22", 
+                              "updated_at": null, 
+                              "invitation_count": "0", 
+                              "invitation_sent_at": null, 
+                              "is_deleted": "0" 
+                         } 
+                    ] 
+               } 
+         ], 
+         "duration": "8.39ms" 
+     }
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               15
+
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+  ÆÌ To update a prefilled URL:
+
+
+
+ Update existing prefilled URL
+
+ (PUT)  
+ https://{ServerName}.jotform.com/API/form/{form_id}/prefills/{prefill_id}/url/{prefill_url_id}?
+ apiKey={yourAPIKey}
+
+ Request body:
+
+
+     { 
+          "metadata": { 
+              "name": "prefilled_url_name", // ex: "name": "New Prefill", 
+              "email": "" 
+          }, 
+          "settings": { 
+              "fieldBehaviour": "edit", // edit or readonly 
+              "useQuestionID": true, 
+          }, 
+          "mapping": { 
+              "prefill_key": value, // ex: "3-first": "John" 
+              "prefill_key": value, // ex: "3-last": "Smith" 
+          } 
+     }
+
+
+
+ Request response:
+
+
+     { 
+          "responseCode": 200, 
+          "message": "success", 
+          "content": true, 
+          "duration": "12.71ms" 
+     }
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               16
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+ o\ You can delete a single URL or multiple prefilled URLs at once. To delete prefilled URL:
+
+
+
+
+
+ Delete prefilled URLs
+
+ (DELETE)  
+ https://{ServerName}.jotform.com/API/form/{form_id}/prefills/{prefill_id}/url?apiKey={yourAPIKey}
+
+
+
+
+ Request body:
+
+
+
+
+     ["{prefilled_url_id}"]
+
+      // or
+
+     ["{prefilled_url_id}", "{prefilled_url_id}", "{prefilled_url_id}"]
+
+
+
+
+ Request response:
+
+
+
+
+     { 
+          "responseCode": 200, 
+          "message": "success", 
+          "content": true, 
+          "duration": "10.11ms" 
+     }
+
+
+
+
+ Salesforce prefilÄ
+
+ ¬\ You can see what accounts you’ve authenticated by calling:  
+
+
+     GET /API/integrations/accounts/partner/salesforceV2  
+
+
+     You’ll need the account_id value from the response\
+
+
+ ¼\ Then to setup the mappings  
+
+
+     GET /API/integrations/options  
+
+
+     With a payload of  
+
+
+     {"app":"salesforceV2","aid":"account_ID","type":"getFields","data":{"list":"LIST"},"formID": "#formID"}  
+
+
+     Swap out the account_Id value, list and formID values with the relevant values.  
+
+
+     In the response, you’ll get an array of the mappable values. Specifically, you’ll need the name key from
+     each question you want to map.
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               17
+
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+ ./ POST API/form/:formID/prefills  
+    With a form data payload:  
+    {"provider":"salesforceV2","account_id":"ACCOUNT_ID","configuration":{"list":"LIST","mapping":
+    [{"jot":"input_qid","target":"salesForceFieldNameKey"},...]}}:   
+    Your list value will be the same as before: the account ID, your account ID, and then for each question
+    in the mapping array, the jot value will be an input_qid and you can get a list of question ID values
+    from the GET /form/:formid/questions  
+    The target key will have the value of the Salesforce name value from the step above, e.g., for First
+    Name it would be FirstNam$
+
+ / Then do another get to   
+    GET /API/integrations/options  
+    With a slightly modified payload with the type value changed to getListEntries 
+    {"app":"salesforceV2","accountID":"ACCOUNT_ID","type":"getListEntries","data":
+    {"list":"LIST"},"formID":FORMID}:   
+    This will return a list of the people/entries from the Salesforce source you’re using to prefill/
+
+ G/ To create the prefill itself  
+    POST API/form/:formId/prefills/:prefillID/url  
+    Payload of  
+    [{"id":"itemID","metadata":{"name":"NAME","email":EMAIL},"settings":{"fieldBehaviour":"edit"}}]:   
+    The itemID is the ID value from the list returned as a result of step 4, and the name and email values
+    also come from there. If you don’t have either of those values just use null.
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               18
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+3 Sharing 
+
+This creates a form user account on the instance. 
+ 
+
+Add assignee
+
+POST /form/{formID}/formuser/bulkAssign  
+
+
+
+Remove assignees
+
+DELETE /form/{formID}/formuser/bulkRemove  
+ 
+
+Some example calls are: 
+ 
+
+curl -X POST “https://demo.jotform.com/API/form/211393468185058/formuser/bulkAssign?
+&parseJSON=1&isShare=0&apiKey=API_KEY&users=%5B%22example%40email.com%22%5
+D&message=&permission=submitAndEdit” 
+ 
+
+Notes: 
+
+You can pass the users, message, and permission parameters individually. 
+
+The bulkRemove takes ‘emails’ as a form data field to set the emails to remove. 
+
+users is an array so you can just pass in the other users you want [“user1Email”, “user2Email” etc.]. 
+
+
+
+Share resource
+
+
+POST share/#productType/:resourceID/bulkShare  
+
+eg share/sheets/123/bulkShare
+
+
+
+Payload:  
+users[]  
+message 
+role: readOnly | commenter | collaborator 
+continueOnExistingEmails: Boolean 
+
+
+Get resource share users
+
+GET /API/share/#productType/:resourceID 
+
+
+Add assignee
+
+POST /form/{formID}/formuser/bulkAssign   
+
+
+Update shared resource permissions 
+
+API/#productType/:resourceID/share/:shareKey/update  
+payload: 
+
+permissions[role]: readOnly | commenter | collaborator
+
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                                19
+ Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+4 Teams  
+Whenever you’re fetching a resource inside a Team, specify the jf-team-id header with the relevant value
+(see the teams endpoints for getting the team id). 
+
+
+
+
+Get teams you are a member of
+
+GET /API/team/user/me  
+
+Parameters:
+
+
+
+addMemberCount: 0 | 1 
+returnTeamProperties: 0 | 1 
+returnMembers: 0 | 1
+
+
+
+
+Get all public teams on the server
+
+GET /API/team/server/teams
+
+
+
+addMemberCount: 0 | 1 
+returnTeamProperties: 0 | 1 
+returnMembers: 0 | 1
+
+
+
+
+Get Team ID using form ID
+
+GET 
+
+/API/enterprise-dashboard/server/forms?handleTeamResourceOwner=1&keyword={{form_id}}
+
+
+
+
+Get a specific team
+
+GET /API/team/#team_id  
+
+Parameters:  
+
+jf-team-id: same as the #team_id but as a header value
+
+addSubfolders: 0 or 1 
+returnMembers: 0 or 1 
+returnTeamProperties: 0 or 1 
+returnMembersRoles: 0 or 1
+
+returnMembersLastSeen: 0 or 1
+
+
+
+
+Delete a specific team
+
+DELETE /API/team/#team_id
+
+
+
+
+Get roles defined
+
+GET /API/team/list/roles
+
+
+
+
+
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               20
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+Create a team
+
+POST /API/team/new
+
+
+
+Parameters:(Form Data)
+
+
+
+name: String - The string you want the team to be called 
+members: [emails] - An array of emails
+
+Privacy: public | private
+
+
+
+
+
+Get team properties
+
+GET /API/team/#team_id/properties
+
+Parameters:  
+
+jf-team-id: same as the #team_id but as a header value
+
+
+
+Update team properties
+
+PUT /API/team/#team_id/properties
+
+
+
+Form Data Request Body:
+
+name                                            team name, if given a slug is generated based on this name,
+string                                          otherwise random is given
+
+slug
+                                                team slug for form and team access
+string
+
+privacy
+                                                Team privacy
+string
+
+showCoverImage
+                                                show or hide cover image on team settings page
+string
+
+coverBgColor
+                                                Cover background image
+string
+
+coverTitleColor
+string
+
+coverBgImageURL
+string
+
+teamAvatarURL
+string
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               21
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+teamAvatarIcon
+string
+
+teamAvatarEmojiId
+string
+
+teamAvatarIconSvgRef
+string
+
+teamAvatarIconColor
+string
+
+teamAvatarIconBgColor
+string
+
+coverBgImageCropInfo
+                                                json encoded string that has x y and position
+string
+
+
+Get team members
+
+GET /API/team/#team_id/members
+
+
+
+Parameters
+  if-team-id: same as the #team_id but as a header valu£
+  returnMembersRoles: boolean (fetch team member roles as well)
+
+
+
+Add team members
+
+POST API/team/#teamId/members  
+
+Parameters
+  Members[index][email]: Users emai}
+  Members[index][role]: team_admin | data_collaborator | data_viewer | creator
+ 
+
+To specify multiple in one call, increment the index, 0, 1, 2, 3, etc.
+
+
+
+Update specific team member
+
+PUT /API/team/#teamId/member/#username
+
+
+
+Parameters
+  jf-team-id: same as the #team_id but as a header valu£
+  role_id: integer for role ID
+
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               22
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+Remove specific team member
+
+DELETE /API/team/#teamId/member/#username 
+
+
+ParametersA
+ : jf-team-id: same as the #team_id but as a header value
+
+
+
+Delete multiple Team members
+
+DELETE /API/team/#teamId/members
+
+
+
+ParametersA
+ : jf-team-id: same as the #team_id but as a header valuN
+ : members: [username, username2,...]
+
+
+
+Update team members
+
+PUT /API/team/#teamId/members
+
+
+
+ParametersA
+ : jf-team-id: same as the #team_id but as a header value
+
+
+
+application/json Request body
+
+
+
+{
+
+       "members": [
+
+          {
+
+             "username": "",
+
+             "role_id": ""
+
+          },...
+
+       ]
+
+}
+
+
+
+
+
+Get team resources
+
+GET /API/team/#teamId/assets 
+
+
+ParametersA
+ : jf-team-id: same as the #team_id but as a header valuN
+ : favorite: boolean (if true, return only favorited by current user2
+ : getLastLog: boolean (latest historical log2
+ : team_offset: string example 
+ : limit: string example 10
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               23
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+Get specific type of team resource
+
+GET /API/team/#teamId/assets/#assetType 
+
+Available asset types: form, sheet, portal, workflow, report 
+
+Parameters7
+ ' jf-team-id: same as the #team_id but as a header valuG
+ ' favorite: boolean (if true, return only favorited by current user+
+ ' getLastLog: boolean (latest historical log+
+ ' team_offset: string example 
+ ' limit: string example 10
+
+
+
+Take action on asset type
+
+POST /team/#teamId/#assetType/#assetId/#action
+
+
+Asset type options: form, sheet, portal, workflow, report
+
+Action types: favorite, archive, unfavorite, unarchive
+
+
+Parameters7
+ ' jf-team-id: same as the #team_id but as a header value
+
+
+
+Moving an asset into a team
+
+POST /API/team/#teamid/move/asset
+
+
+Payload (formData)
+
+
+v2: 1
+
+assets[0][id]: #assetID
+
+assets[0][type]: enum of form, sheet, portal, workflow, report, sign
+
+isRetry: boolean (send false)
+
+
+
+Moving an asset into a folder
+
+PUT /API/listings/team/#teamid/folder/#folderID/add
+
+
+Query String parameters7
+ ' resources[0][resource_id]: #assetI^
+ ' resources[0][resource_type]: one of form, sheet, portal, workflow or repord
+ ' folder_id: #folderID
+
+
+Header7
+ ' jf-team-id: same as the #team_id but as a header value
+
+
+
+
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               24
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+List Team Folders
+
+GET /API/team/#teamid/folders
+
+
+
+Headers!
+  jf-team-id: same as the #team_id but as a header value
+
+
+
+Create Team Folder
+
+POST /API/team/#teamid/folder/create
+
+
+
+Headers!
+  jf-team-id: same as the #team_id but as a header value
+
+
+
+Parameters:N
+  name: $FOLDERNAM4
+  color: Hex value
+
+
+
+Update Team Folder
+
+POST /API/team//#teamid/folder/#folderid/properties
+
+
+
+Headers!
+  jf-team-id: same as the #team_id but as a header value
+
+
+
+Parameters (JSON format):
+
+{“name”: “”, color: “”}
+
+
+
+List Team Folder Resources 
+
+GET /API/team/#team_id/folder/#folder_id/resources/form
+
+
+
+Headers:
+
+jf-team-id: #team_id
+
+
+
+Parameters:
+
+
+limit:                                          (Records Limit, default is 20)
+team_offset:                                    (Offset, when fetching pagination)
+order by: updated_at                            (Sort Order)
+addProperties: {0|1}                            (Detailed Form properties)
+includeSharedForms: {0|1}                       (Include Shared Forms)
+getLastLog: {0|1}                               (Last update log)
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               25
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+Get team resources with resource ID and type
+
+GET /team/asset/#resourceId/#resourceType
+
+
+
+Resource type options: form, sheet, portal, workflow, report, sign
+
+
+
+Get invitation link
+
+GET /API/team/#teamId/invitelink 
+
+
+Parameters
+ # jf-team-id: same as the #team_id but as a header value
+ 
+
+Create invitation link
+
+POST /API/team/#teamId/create/invitelink
+
+
+
+Form data request body:
+
+
+properties[role]                                team name, if given a slug is generated based on this name,
+string                                          otherwise random is given
+
+properties[visibility]
+                                                team slug for form and team access
+string
+
+Update invitation link
+
+PUT /API/team/#teamId/update/invitelink
+
+
+
+Parameters
+ # jf-team-id: same as the #team_id but as a header value
+ 
+
+Request body application/json:
+
+
+
+{
+
+      "properties": {
+
+         "visibility": "private"
+
+      }
+
+} 
+
+
+Get team history
+
+GET /API/team/#team_id/history 
+
+
+Parameters
+ # jf-team-id: same as the #team_id but as a header valuw
+ # returnedGroupedData: boolean: group history data and returns as meta and dat
+ # date: allTime, last7Days, last30Days, previousWeek, previousMonth, thisYear, previousYear, rangw
+ # startDate: string($date-time) (if range selected for date
+ # endDate: string($date-time) (if range selected for date)
+
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               26
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+Create export team history job
+
+GET /API/team/#teamId/history/export
+
+
+
+Parameters0
+ + jf-team-id: same as the #team_id but as a header valu<
+ + date: allTime, last7Days, last30Days, previousWeek, previousMonth, thisYear, previousYea4
+ + type: xlsx, cs
+ + sortWay: DESC, AS
+ + sortBy: by default logs are sorted by timestamp based on sortWay
+
+
+
+Example Response:
+
+
+
+{
+
+     "responseCode": 200,
+
+     "message": "success",
+
+     "content": {
+
+       "message": "Job received",
+
+       "id": 1658215172750
+
+     },
+
+     "duration": "186.77ms"
+
+
+
+Check export job status
+
+GET /API/team/#teamId/history/export/status 
+
+
+Parameters0
+ + jf-team-id: same as the #team_id but as a header valu<
+ + id: export job ID
+
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               27
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+5 PDFs  
+Get Jotform-styled PDF 
+
+
+GET /generatePDF  
+
+
+Generate a PDF of given submissionID 
+
+
+curl -X GET 
+
+"https://{companyDomain}.jotform.com/API/generatePDF?formid={formID}&submissionid={submissionID}
+&download={0|1}&apiKey={apiKey}"  
+
+
+Parameters:Ó
+ U formid (Required): The form ID that the submission belongs t
+    U submissionid (Required): the submission ID. It can be observed by an API call (https://
+      api.jotform.com/docs/#form-id-submissions) or via this guide: https://www.jotform.com/help/549-
+      Where-to-Find-the-Submission-IDÓ
+ U download (Default 0): Set it to 1 if you want to directly download the PDF file or set it to 0 to get the
+   URL of created the PDF filZ
+ U reportid: A different PDF template that is not the default one created, i.e., another one you have
+   created. This is optional. 
+
+
+
+https://{serverslug}.jotform.com/API/generatePDF/{formID}/fill-pdf?download=1&reportid={pdfid}
+&submissionid={sumissionID}&apikey={apiKey}
+
+
+
+
+Get Smart PDF form
+
+GET /API/pdf-editor/pdf-converter/#formID/fill-pdi
+ U Download: 0 or 1 Set it to 1 if you want to direct download the PDF file or set it to 0 to get the URL of
+   created the PDF filZ
+ U submissionID = submissionID of the relevant submission
+
+
+
+
+Get fillable PDF
+
+To get a blank, fillable PDF
+
+GET /API/pdf-editor/generateFillablePDF
+
+
+
+Parameters½
+ U pdfId: The PDF ID, also the same as the reportID from the calls abovZ
+ U formId: The form ID
+
+
+
+
+
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               28
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+Create a Smart PDF form
+
+
+You would do a
+
+GET /API/form/new?isPdfForm=1
+
+That would return the form ID 
+
+
+You then do a 
+
+POST /API/pdf-converter/import-pdf 
+
+
+Payload: 
+
+
+pdf: binaryObjectofPDF 
+
+
+formID: formID returned from step 1 
+
+
+convert2Form: 1 (static value) 
+
+
+source: DEFAULT (static) 
+
+
+This then leaves you with a created form. You can then add/edit questions using the POST & PUT /form/
+formID/questions endpoint.
+
+
+
+
+
+
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               29
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+6 Conditions  
+page = skip/hide a page
+
+
+email = change email recipient
+
+
+calculation = calculation
+
+
+
+
+
+
+Get form conditions
+
+
+GET `/API/form/:formID/properties`  
+
+
+
+
+And then the conditions is on the “conditions” key.  
+
+
+
+
+
+Create form condition
+
+
+
+
+
+POST `/API/form/:formID/conditions/create`
+
+
+
+
+
+
+It takes a json object as payload, and each object is one condition. The action object should be
+
+stringified. They have the format of:  
+
+
+
+
+{"condition": {\"action\": ...}}  
+
+
+
+
+
+Definition of an action:  
+
+
+
+
+
+action: JSON array defining the result of the conditions                (as below)
+
+
+             id = alphanumeric id
+
+
+             isError = Boolean
+
+
+             And then dependent on action type, see below
+
+
+
+
+
+
+id: alphanumeric string to be form unique
+
+
+index: integer, used to sort the order of conditions
+
+
+priority: integer, used to sort the priority of the conditions
+
+
+link: If it's any or all: Any or All
+
+
+terms: JSON array defining the conditions to match (as below)
+
+
+             id = id
+
+
+             field = source element
+
+
+             operator = (see operators list below)
+
+
+             value = what to match (placeholder via unique name)
+
+
+             isError = Boolean
+
+
+
+
+
+
+type: Condition type: field, page, email, url, message. Available types are:
+
+
+             field = show/hide
+
+
+
+
+
+
+             require = enable/disable/require/unrequire
+
+
+             url = change thank you page url
+
+
+             message = change thank you page text
+
+
+
+
+
+
+disabled: 1 or NULL
+
+
+
+
+
+
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               30
+
+
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+Action type examples 
+
+Show/Hide
+
+Set the visibility to Hide or Show depending on what you want.
+
+
+
+       "id": "action_1666008922285",
+
+       "visibility": "Hide",
+
+       "isError": false,
+
+       "field": "2" 
+
+
+
+Calculate
+
+    "replaceText": "",
+
+    "readOnly": false,
+
+    "newCalculationType": true,
+
+    "useCommasForDecimals": false,
+
+    "operands": "3",
+
+    "equation": "{3}",
+
+    "showBeforeInput": false,
+
+    "showEmptyDecimals": false,
+
+    "ignoreHiddenFields": false,
+
+    "insertAsText": false,
+
+    "id": "action_1666010410872",
+
+    "resultField": "4",
+
+    "decimalPlaces": "2",
+
+    "isError": false
+
+
+
+Enable/Require
+
+This has the same structure as Show/Hide. Just change the visibility to Require, Unrequire,
+RequireMultiple, UnrequireMultiple, Disable, Enable, Mask
+
+
+
+For multiple, the field just becomes an array as a string. And for Mask, an additional key “mask” is added
+with the value as the desired mask.
+
+
+
+       "id": "action_1666010761226",
+
+       "field": "4",
+
+       "visibility": "Require",
+
+       "isError": false
+
+
+
+Show/Hide 
+
+
+
+skipTo with page-X
+
+
+
+       "id": "action_1666010996403",
+
+       "skipTo": "page-1",
+
+       "isError": false
+
+
+
+
+
+
+
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               31
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+Change thank you message/URL
+
+The message takes an HTML string for the thank you page. 
+
+
+     "id": "action_1666011107504",
+
+     "message":  
+"<div+class=\"thankyou-wrapper\"><p+style=\"text-align:center;\"><img+src=\"https://cdn.jotfor.ms/img/
+Thankyou-iconV2.png\"+alt=\"\"+width=\"153\"+height=\"156\"+/></p><div+style=\"text-align:center;
+\"><h1+class=\"thankyou-main-text+ty-text\"+style=\"text-align:+center;\">Thank+You!</
+h1><p+class=\"thankyou-sub-text+ty-text\"+style=\"text-align:+center;
+\">Your+submission+has+been+received.</p></div></div>",
+
+  "isError": false
+
+
+OR redirect key with the URL to redirect to. 
+
+
+Operators:
+
+
+Generic
+
+isEmpty
+
+isFilled
+
+
+Text
+
+equals
+
+notEquals
+
+contains
+
+notContains
+
+startsWith
+
+notStartsWith
+
+endsWith
+
+notEndsWith
+
+
+Numeric
+
+quantityEquals
+
+quantityNotEquals
+
+quantityLess
+
+quantityGreater
+
+quantityNumeric
+
+lessThan
+
+greaterThan
+
+
+Matrix
+
+contains
+
+notContains
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               32
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+ Date 
+
+ before
+
+ after
+
+ equalDate
+
+ notEqualDate
+
+ equalDay
+
+ notEqualDay
+
+
+
+ Address
+
+ equalCountry
+
+ notEqualCountry
+
+
+
+ Updating Condition
+
+ It takes the same payload as a create, but the endpoint is:
+
+
+
+ POST /API/form/#formid/conditions/update
+
+  
+
+ Deleting a condition
+
+ DELETE /API/form/#formid/conditions/delete
+
+
+
+ JSON Payload:
+
+
+
+ condition: [$conditionID] 
+
+
+
+ Eg:   
+
+ {
+
+              "condition": "[\"1702515031838\"]"
+
+ }
+
+
+
+
+
+
+
+
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               33
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+ 7 History  
+ Get actions on the instance
+
+
+ GET .../API/enterprise/history
+
+
+
+ There are a range of parameters to filter the endpoint:
+
+
+
+ next - takes an integer, default 100
+
+ returnedGroupedData: Boolean, default false
+
+ date: last7Days (includes today - default), lastWeek (the previous 7 days before today), last30Days,
+ lastMonth, last6Months, lastYear, previousWeek (working days), previousMonth, thisYear, previousYear,
+ range 
+
+
+ If range specified, add ‘startDate’ and endDate with relevant start and end dates. Format of date is Y-m-d
+ 00:00:00
+
+ sortBy: timestamp, 
+
+ countOnly: 1 or 0
+
+ sortWay: ASC, default DESC
+
+
+
+ If you’re looking to filter against a specific piece of information, you can do so with these types:
+
+
+
+ Forms:O
+  @ formI
+  @ usernam5
+  @ formTitl5
+  @ ip
+
+
+
+ Submissions
+  @ formI
+  @ submissionI
+  @ Username
+
+
+
+ Users:O
+  @ usernam5
+  @ i1
+  @ Email
+
+
+
+
+
+
+
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               34
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+There are more granular filter options too using the actions parmeter. 
+
+
+
+Actions:
+
+(User Actions!
+  emailChang#
+  parentDelet#
+  usernameChang#
+  subuserDelet#
+  userCreatio9
+  userLogi9
+  webHookAd
+  webHookAddManua
+  webHookUpdateManua
+  passwordChanged 
+
+
+(Form Actions!
+  formCreatio9
+  formDelet#
+  formPurg#
+  formRestor#
+  formUpdat#
+  submissionDeleteAl
+  submissionDeleteBatc
+  webHookUpdat#
+  formAssigne
+  formUnassigned 
+
+
+(Submission Actions!
+  submissionDelet#
+  submissionEdit
+
+
+
+
+
+
+
+
+
+
+For example:
+
+
+     GET .../API/enterprise/history?action[]=formPurge
+
+
+
+You can specify as many action[] parameters as you want individually, e.g.:
+
+
+
+     GET .../API/enterprise/history?action[]=userLogin&action[]=userLogout&action[]=failedLogin
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               35
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+ Get system logs
+
+
+
+
+     GET .../API/enterprise/system-logs
+
+
+
+
+ Parameters&
+
+  9 limit: in=
+
+  9 offset: in=
+
+  9 sortBy: enum: dat,
+
+  9 sortWay: enum: DESC, AS
+
+  9 date: enum/string:1
+
+  9 event[0]: enum: email, integration
+
+
+
+
+
+
+ Get specific email status & content
+
+
+ GET /API/emailq/#emailId  
+
+
+
+
+ The emailId parameter can be fetched using the publicly documented /API/user/history, or the above
+
+ enterprise wide call if you want emails sent by other users’ forms.
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               36
+
+
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+8 Reports  
+
+Creating a report
+
+You will need the Form ID and the Sheet ID. The Sheet ID is the same as the Form ID, since that is the
+default Tab that holds all form data.
+
+
+
+
+POST https://${serverSlug}.jotform.com/API/sheets/${FORM_ID}/sheet/${SHEET_ID}/views
+
+
+
+
+It has the following parameters: 
+
+
+
+config[name] - This is the name of the report; this is any string value you want it to be called.
+
+config[type] - This is the type of report, for blank, compact, and standard; this is always report
+
+config[formID] - This is the Form ID of the form you’re generating a report for
+
+config[reportTemplate] - This is the basic template you’d like; there are three options: blank,
+
+single, and two
+
+isDuplicated : Expected value is false
+
+tempTables : Expected value is 0 (a zero)
+
+When you make a post it will have the View ID and Report ID in the response, which you will need later. 
+
+
+
+Example Request
+
+curl -XPOST
+
+https://{serverSlug}.jotform.com/API/sheets/222113544526044/sheet/222113544526044/views?
+apiKey=${API_KEY}' \ 
+--data
+'config%5Bname%5D=Test_Report&config%5Btype%5D=report&config%5BformID%5D=22211354452604
+4&config%5BreportTemplate%5D=blank&isDuplicated=false&tempTables=0' 
+
+
+
+Would create a blank report called Test_Report for formID 222113544526044
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               37
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+ Adding basic elements to a report
+
+
+ POST https://{serverSlug}.jotform.com/API/sheets/{FORM_ID}/sheet/{SHEET_ID}/view/{VIEW_ID
+
+ }
+
+
+ All basic elements have the following parameters:
+
+ config[height] - An integer specifying the height desired.
+
+ config[itemType] For basic elements the options are: text, header, image, shapes, icon, sheet
+
+ config[width] - An integer specifying the width of the element
+
+ config[id] - A 6-character alphanumeric ID you generate; it has to be report unique
+
+ config[left] - An integer, specifying how far left the element should be placed on the page starting. 0 is
+ the left most value.
+
+ config[pageID] - A page ID taken from the values above in step 1.
+
+ config[top] - An integer, specifying how high the element should be placed on the page. 0 is the top of
+ the page.
+
+ image also has these additional parameters:
+
+ opacity - between 0 and 1, for the opacity of the element
+
+ roundedCorners -
+
+ URL - a URL for the image, nb Firefox requires some types of embedded images to be from the same
+ domain; so it's best to upload to Jotform first so you can serve it from the same domain as your form.
+
+ icon also has these additional parameters:
+
+ iconCategory - Animals, Business, Childhood, Communication, Education, Entertainment, Finance, People 
+
+ iconFillColor - a hex value for the color
+
+ iconType - A string for the name of the icon being used.
+
+ opacity - between 0 and 1, for the opacity of the element
+
+ sheet also has these additional parameters:
+
+ frozenQuestions - An array of the question IDs you want frozen.
+
+ hiddenQuestions - An array of the question IDs you want hidden.
+
+ questionOrders - An array of the question IDs for questions you created, as well as
+
+ ["ip","created_at","updated_at","id"] for the submission IP, created time, last updated time, and submission
+ ID.
+
+
+ questionCustomTitles - A json object with a key of the question ID and the value of the custom title; e.g.,
+ {"4":"foobar"} would make questionID four be foobar as the question column title on the form regardless
+ of the question on the form.
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               38
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+ Adding questions
+
+ You use the same post request endpoint as adding a basic element, but the parameters are different:  
+
+
+
+ config[height] - An integer specifying the height desired.
+
+ config[itemType] : chart
+
+ config[width] : An integer specifying the width desired.
+
+ config[chartOptions] : Normally 0, except where orderBy is custom. In that event it's an array of
+
+ JSON objects in with the format: {"name":"VISIBLE
+
+ TEXT","value":1,"color":"","isVisible":true,"percentage":"0.00"} replacing VISIBLE
+
+ TEXT with the option that would be shown on the report. And value being the response count shown. It is
+ not advised to set these values via API.
+
+ config[chartType] - Options are textGrid, donut, pie, column, bar
+
+ config[entryLimit] - An integer specifying the maximum number of options to show; i.e. different answer
+ groups.
+
+ config[infoType] - noGrid, legend, or tableGrid
+
+ config[infoPosition] - Only needed when the infoType is not noGrid. Options: top or left
+
+ config[orderBy] : desc , asc , alphabetic , custom , or form
+
+ config[qid] - The question ID of the relevant question. If unknown it can be fetched using the
+
+ /form/${FORM_ID}/questions endpoint
+
+ config[text] - String of the question text
+
+ config[id] - A 6-character alphanumeric ID you generate, it has to be report unique
+
+ config[left] - An integer, specifying how far left the element should be placed on the page starting. 0 is
+ the left most value.
+
+ config[pageID] - A page ID taken from the values above in step 1.
+
+ config[top] - An integer, specifying how high the element should be placed on the page. 0 is the top of
+ the page.
+
+ config[labelResponseValueShow] - off or on
+
+ config[labelPercentageTotalShow] - off or on
+
+ config[isRoundedValues] - off or on
+
+ config[chartColorPalette] : default_x where x is an integer corresponding to the color palette in Jotform.
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                                               39
+Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externally is Not Authorized
+Updating questions or basic elements
+
+
+POST
+
+https://{serverSlug.jotform.com}/API/sheets/${FORM_ID}/sheet/${SHEET_ID}/view/${VIEW
+
+_ID}/report/${ELEMENT_ID}
+
+
+
+The ELEMENT_ID is the value you specified in config[id] when adding the question.
+
+And the additional parameter is what you want to update taken from the available parameters listed in 2
+or 3. 
+
+
+For example, specifying config[chartType]: donut would be used to turn a question element from a
+textGrid to a doughnut
+
+
+
+Deleting a question or basic element
+
+
+DELETE https://{serverSlug.jotform.com}/API/sheets/${FORM_ID}/sheet/${SHEET_ID}/view/${VIEW
+
+_ID}/report/${ELEMENT_ID}
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                   40
+       Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externa
+9 Users 
+
+
+Invite user by email
+
+POST /API/user/new   
+
+
+Form data payload: 
+name: String 
+email: emailString 
+jobTitle: string 
+account_type: USER | ADMIN | DATA_ONLY_USER 
+isNewAddUser: 1
+
+
+
+
+Invite user by link
+
+GET API/enterprise/getInvitationId  
+
+
+In the response there will be an ID value; you can use that in a link in the format: 
+https://{slug}.jotform.com/join/#id  
+
+
+
+Update a user 
+
+POST /API/enterprise/update/user  
+
+
+Form Data payload options: 
+name: 
+email: 
+username: 
+jobTitle: 
+accountLockout: 
+account_type 
+currentUsername 
+isNewAddUser 
+
+
+
+Delete a user
+
+DELETE /API/user/#username
+
+
+
+
+Get list of users
+
+GET /API/users
+
+
+
+
+
+
+
+
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                       41
+
+           Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externa
+10 Product list element 
+
+
+Create a coupon
+
+POST /API/payment/editor/FormID/create-coupon 
+
+
+payload (form data):
+
+code: theCodeYouwant
+
+type: percent
+
+rate: integer for the amount of discount
+
+limit: {"type":"none","value":""}
+
+apply: product
+
+products: ["all"]
+
+gatewayType: paymentGatewayName (defaults to payment)
+
+id: someIdInteger 
+
+
+An example call would be:
+
+curl -XPOST  
+'https://demo.jotform.com/API/payment/editor/230233731305039/create-coupon?apiKey=${DEMO_KEY}' 
+
+
+ --data-raw
+'code=THISCODE&type=percent&rate=10&limit=%7B%22type%22%3A%22none%22%2C%22value%22%3
+A%22%22%7D&apply=product&products=%5B%22all%22%5D&gatewayType=payment&id=0' \
+ 
+
+Edit a coupon
+
+POST /payment/editor/#FormID/#couponID/update-coupon?
+
+And then the payload as appropriate with your updated values
+
+
+
+Remove a coupon:
+
+POST /API/payment/editor/#formID/#couponID/delete-coupon
+
+
+
+Get all coupons/Get coupon ID
+
+GET /API/form/#formID/properties  
+
+The response has a ‘coupons’ key that lists the coupons with their ID as their key; it’s also a key: value
+pair in each coupon element. 
+
+
+
+Add a product
+
+Remove a product
+
+Update a product
+
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                    42
+       Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externa
+11 Approval workflow 
+
+
+
+
+Starting a workflow
+
+
+POST /API/workflow/submission/#submissionID/start﻿
+ 
+
+
+
+
+Restarting a workflow
+
+
+POST /API/sheets/#formid/workflow/instance/#workflowid/restart
+ 
+
+
+
+
+Get submission workflow status
+
+
+Using the normal 
+
+
+
+
+
+GET /API/submission/#submissionID
+
+
+
+
+
+
+Include the parameter addWorkflowStatus=1
+
+
+
+
+
+
+Get tasks on a submission
+
+
+GET /workflow/submission/#submissionID/tasks
+
+
+
+
+
+
+Get history of an approval
+
+
+GET /API/inbox/submission/#submissionID/thread
+
+
+
+
+
+
+Action an approval
+
+
+POST /API/workflow/task/#taskID/complete  
+
+
+
+
+Payload: 
+
+outcomeID: integer relating to the outcomeID 
+
+comment: string  
+
+
+
+
+The outcomeID can be found on the taskList -> outcomes when you fetch the available tasks on a
+
+submission
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                   43
+
+
+        Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Extern
+12 Filtering 
+
+
+Filter with OR on submissions
+
+GET /API/sheets/#formid/sheet/#formid/view/#formid/rows
+
+
+
+And then the filter parameter can be specified with an Array to filter using OR across that question ID, 
+
+Eg:
+
+filter=%7B%22q3:matches%22:\[%22foo%22,%22bar%22\]%7D
+
+
+
+Would filter question 3 providing where the response was foo or bar
+
+
+
+Filter Operators
+
+When using the API you can use the filter key where available, there are operators for it that work with
+strings, numbers, and dates these are:
+
+
+
+
+Strings & Numbers:
+matches
+
+eq                                    Equals
+
+ne                                    Not Equals
+
+lt                                    Less Than
+
+lte                                   Less Than and Equal
+
+gt                                    Greater Than
+
+gte                                   Greater Than and Equal
+
+
+Dates
+matches
+
+lt                                    Less Than
+
+lte                                   Less Than and Equal
+
+gt                                    Greater Than
+
+gte                                   Greater Than and Equal
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                    44
+        Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externa
+13 Analytics 
+
+
+Get form analytics
+
+GET /API/form/#formid/analytics
+
+
+
+List Drafts
+
+GET /API/sacl/#form_id/drafts
+
+
+
+(note this doesn't work on HIPAA)
+
+
+
+View Draft
+
+GET /API/sacl/#form_id/draft/#draft_id
+
+
+
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                   45
+       Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Externa
+Example response
+
+
+
+
+
+   { 
+
+        "responseCode": 200, 
+
+        "message": "success", 
+
+        "content": { 
+
+              "id": "019097eafbae74d98d999d304d57xxxxxxxx", 
+
+              "form_id": "241903472900048", 
+
+              "data": { 
+
+                    "visitedPages": { 
+
+                          "1": true 
+
+                    }, 
+
+                    "backStackHistory": [], 
+
+                    "questions": [ 
+
+                          { 
+
+                                "qid": "3", 
+
+                                "type": "control_fullname", 
+
+                                "value": { 
+
+                                     "data": { 
+
+                                          "first": "fred", 
+
+                                          "last": "" 
+
+                                     } 
+
+                                } 
+
+                          }, 
+
+                          { 
+
+                                "qid": "6", 
+
+                                "type": "control_textbox", 
+
+                                "value": { 
+
+                                     "data": "bob" 
+
+                                } 
+
+                          } 
+
+                    ], 
+
+                    "params": [] 
+
+              }, 
+
+              "created_at": "2024-07-09 10:34:37", 
+
+              "updated_at": null 
+
+        }, 
+
+        "duration": "180.55ms",
+
+
+        "info": null 
+
+   } 
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                         46
+
+
+
+              Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Extern
+Delete Draft(s)
+
+
+POST /API/sacl/#form-id/draft/bulkDeleteFromSheet 
+
+
+
+
+Body Format: Form Data
+
+
+Key: conditions
+
+
+Value: JSON String with draft_id’s
+
+
+
+
+
+Example 
+
+
+
+
+
+   conditions: 
+
+
+   {"includes":
+
+   ["019097eafbae74d98d999d304d579xxxxx","019097e9bfd57b68970d683012
+
+   f6xxxxxx"]}
+
+
+
+
+Create Draft
+
+
+
+
+
+POST /API/sacl/#form_id/draft/create
+
+
+
+
+
+Form Data:
+
+
+Key: data
+
+
+Value : JSON String
+
+
+
+
+
+
+Example 
+
+
+
+
+
+   { 
+
+        "pageNo": 2, 
+
+        "visitedPages": { 
+
+              "1": true, 
+
+              "2": true 
+
+        }, 
+
+        "backStackHistory": [ 
+
+
+
+
+   "html>body>form.jotform-form[id='241903472900048']>div.form-all>ul.form-
+
+   section.page-section.js-non-displayed-page:nth-of-type(1)" 
+
+        ],
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise                          API D   ocumentation                              47
+
+
+               Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Extern
+       "questions": [ 
+             { 
+                   "qid": "3", 
+                   "type": "control_fullname", 
+                   "value": { 
+                        "data": { 
+                             "first": "Fred", 
+                             "last": "Test" 
+                        } 
+                   } 
+             }, 
+             { 
+                   "qid": "4", 
+                   "type": "control_email", 
+                   "value": { 
+                        "data": "test@example.com" 
+                   } 
+             }, 
+             { 
+                   "qid": "5", 
+                   "type": "control_phone", 
+                   "value": { 
+                        "data": { 
+                             "full": "(123) 453-2333" 
+                        } 
+                   } 
+             } 
+       ],
+
+       "params": {} 
+   }
+
+
+
+
+Pages                                          - Last page saved on, need previous pages visited too
+
+
+backStackHistory                               - to display last page
+ 
+
+
+
+Questions
+
+
+qid - question ID
+
+
+Type - question type
+
+
+Value - various inputs for each question type
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                             48
+
+                  Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Extern
+14 Action Buttons 
+
+
+Create an action button
+
+POST API/sheets/#formid/sheet/#formid/view/#formid/columns?withSubmissionColumns=1
+
+
+
+FormData Payload:
+
+
+
+Required fields:
+
+
+
+sheets: 1
+
+v2: 1
+
+column[type]: control_actionButton
+
+column[customFieldType]: enum of sendEmailButton | chargeNowButton | sendPDFButton |
+sendFormButton | requestEditButton | webhookButton
+
+column[buttonText]: String
+
+column[buttonVariantID]: 0
+
+column[buttonIcon]: /cardforms/assets/icons/icon-sets-v2/solid/Email/jfc_icon_solid-paper-airplane.svg
+
+column[text]: ColumnName
+
+column[order]: Int
+
+column[actions][0][type]: enum of sendFormEmail | sendPDFEmail | sendShareFormEmail |
+sendRequestEditEmail | integration
+
+column[sheetField]: Yes
+
+withData: 0
+
+dataSourceQid:
+
+
+
+There are then additional parameters depending on the selection of the customFieldType & the
+actions[index][type]
+
+
+
+For sendEmailButton & sendFormEmail
+
+column[actions][0][emailID]: 240314647011040
+
+
+
+For sendPDFButton & sendPDFEmail
+
+column[actions][0][to]: 
+
+column[actions][0][passwordEnabled]: false
+
+column[actions][0][password]: 
+
+column[actions][0][message]: 
+
+
+
+
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                    49
+         Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Extern
+For sendFormButton & sendShareFormEmail
+
+column[actions][0][to]: 
+
+column[actions][0][message]: 
+
+column[actions][0][prefillSettings]: {"provider":"automation","configuration":{"mapping":
+[{"target":"qid","jot":"sourcefieldUniqueName"}...],"fieldBehaviour":"edit"}}
+
+column[actions][0][shareFormID]:
+
+column[actions][0][prefillID]: null
+
+
+
+
+For requestEditButton & sendRequestEditEmail
+
+column[actions][0][to]: ed@jotform.com
+
+column[actions][0][message]: 
+
+column[sheetField]: Yes
+
+
+
+
+For webhookButton & integration
+
+column[actions][0][partner]: webhooks
+
+column[actions][0][integrationID]: 
+
+column[sheetField]: Yes
+
+
+
+
+Getting an action button
+
+GET API/sheets/#formid/sheet/#formid/view/#formid/columns
+
+
+
+
+Trigger an Action button
+
+POST API/sheets/#formid/form/#formid/automation/#automationid/run
+
+
+
+
+With a payload of (formData):
+
+
+
+
+details[submissionID]: #submissionID
+
+
+
+
+TBC: 3rd Party Data Integrations:
+
+allowedIntegrations = ['hubspot', 'onedrive', 'salesforceV2', 'constantContactV2', 'asana', 'mailerlite',
+'airtable', 'pipedrive', 'monday', 'clickup', 'box-sign', 'twilio'];
+
+
+
+
+POST /API/integrations/sheet_form/#formid
+
+
+
+
+
+
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                    50
+
+         Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Extern
+15 Other / Misc 
+
+
+Form Revisions 
+
+ /form/#formid/revisions
+
+
+List forms on Server
+
+GET /API/enterprise-dashboard/server/forms
+
+
+Some of the parameters available:
+
+limit - Limit number of forms returned
+
+offset - paging for limit
+
+sortBy - Sort by field value i.e id, count etc
+
+handleTeamResourceOwner - Show team details
+
+username - filter forms by username
+
+keyword - filter by keyword phrase (not case sensitive)
+
+
+
+
+
+
+
+
+
+JOTFORM ENTERPRISE I Jotform Enterprise API Documentation                                                    51
+        Provided to Huzaifa Dawasaz at Government of Dubai Media Office on 08-13-2025 - Forwarding This Document Extern
+

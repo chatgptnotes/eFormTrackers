@@ -5,6 +5,8 @@ const fs = require('fs');
 const crypto = require('crypto');
 const pool = require('../db/pool');
 const { requireAuth } = require('../middleware/auth');
+const { readKeyType } = require('../lib/key-type');
+const { recordWorkspaceSignUrl } = require('../lib/workspace-links');
 
 const router = Router();
 
@@ -119,6 +121,9 @@ router.post('/upload-signature', async (req, res, next) => {
        VALUES ($1, $2, $3, $4, $5) RETURNING id`,
       [submissionId, lvl, approverName || null, comment || null, signatureUrl]
     );
+    await recordWorkspaceSignUrl({
+      profileId: readKeyType(req), submissionId, level: lvl, signUrl: signatureUrl, source: 'local-upload',
+    });
 
     res.json({ signatureUrl, id: rows[0]?.id });
   } catch (err) { next(err); }

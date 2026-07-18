@@ -8,8 +8,10 @@
 
 // Pin the host BEFORE requiring env/prefill (dotenv won't overwrite a value
 // already present in process.env), so the expected URL is deterministic.
-process.env.JOTFORM_HOST = 'https://bettroi.jotform.com';
-process.env.JOTFORM_BASE = 'https://bettroi.jotform.com/API';
+process.env.JOTFORM_PREFILL_HOST = 'https://forms.example.test';
+process.env.JOTFORM_BASE = 'https://workspace.example.test/API';
+process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgres://unused';
+process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'unused';
 
 const assert = require('assert');
 
@@ -18,7 +20,7 @@ const FORM = '260825008947058';
 const SUB = '6571458336016798785';
 // REAL response shape: content[] = prefill TEMPLATES, each with the actual
 // per-submission URLs nested under urls[]. The resolver must flatten urls[].
-// Same submission, two assignees + a reminder duplicate (newest created_at wins).
+// Same submission, multiple URLs (newest created_at wins).
 const URLS = [
   { id: 'OLD_A', created_at: '2026-06-10 01:00:00', settings: { id: SUB, metadata: { email: 'a@gdmo.ae' } } },
   { id: 'NEW_A', created_at: '2026-06-13 03:43:56', settings: { id: SUB, metadata: { email: 'a@gdmo.ae' } } },
@@ -64,26 +66,26 @@ async function t(name, fn) {
   console.log('-- resolvePrefillUrl --');
   await t('builds the /prefill/ URL in the documented shape', async () => {
     const url = await resolvePrefillUrl({
-      formId: FORM, submissionId: SUB, taskId: 'T123', assigneeEmail: 'a@gdmo.ae',
+      formId: FORM, submissionId: SUB, taskId: 'T123',
     });
     assert.strictEqual(
       url,
-      `https://bettroi.jotform.com/${FORM}/prefill/NEW_A?workflowAssignFormTask=1&taskID=T123`,
+      `https://forms.example.test/${FORM}/prefill/NEWEST_B?workflowAssignFormTask=1&taskID=T123`,
     );
   });
 
-  await t('scopes to the assignee email (picks B\'s prefill for B)', async () => {
+  await t('matches only by parent submission id, not assignee email', async () => {
     const url = await resolvePrefillUrl({
       formId: FORM, submissionId: SUB, taskId: 'T9', assigneeEmail: 'b@gdmo.ae',
     });
     assert.ok(url.includes('/prefill/NEWEST_B?'), url);
   });
 
-  await t('picks newest by created_at among the assignee\'s prefills', async () => {
+  await t('picks newest by created_at among the submission prefills', async () => {
     const url = await resolvePrefillUrl({
       formId: FORM, submissionId: SUB, taskId: 'T1', assigneeEmail: 'a@gdmo.ae',
     });
-    assert.ok(url.includes('/prefill/NEW_A?') && !url.includes('OLD_A'), url);
+    assert.ok(url.includes('/prefill/NEWEST_B?') && !url.includes('OLD_A'), url);
   });
 
   await t('returns empty string when no prefill matches the submission', async () => {
@@ -97,22 +99,45 @@ async function t(name, fn) {
   await t('OVERWRITES a harvested /share/ accessLink with the /prefill/ link', async () => {
     const tasks = [{
       type: 'workflow_assign_form', status: 'ACTIVE',
-      accessLink: 'https://bettroi.jotform.com/share/SVdmVjBvVWtp',
+      accessLink: 'https://workspace.example.test/share/SVdmVjBvVWtp',
       internalFormID: FORM, taskId: 'T123', assigneeEmail: 'a@gdmo.ae',
     }];
     await enrichTasksWithPrefill(tasks, SUB, 'gdmo');
-    assert.ok(tasks[0].accessLink.includes('/prefill/NEW_A'), tasks[0].accessLink);
+    assert.ok(tasks[0].accessLink.includes('/prefill/NEWEST_B'), tasks[0].accessLink);
     assert.ok(!tasks[0].accessLink.includes('/share/'), tasks[0].accessLink);
   });
 
-  await t('keeps an existing /prefill/ accessLink untouched', async () => {
-    const existing = `https://bettroi.jotform.com/${FORM}/prefill/ALREADY?workflowAssignFormTask=1&taskID=T123`;
+  await t('keeps an existing eforms /prefill/ accessLink untouched', async () => {
+    const existing = `https://forms.example.test/${FORM}/prefill/ALREADY?workflowAssignFormTask=1&taskID=T123`;
     const tasks = [{
       type: 'workflow_assign_form', status: 'ACTIVE',
       accessLink: existing, internalFormID: FORM, taskId: 'T123', assigneeEmail: 'a@gdmo.ae',
     }];
     await enrichTasksWithPrefill(tasks, SUB, 'gdmo');
     assert.strictEqual(tasks[0].accessLink, existing);
+  });
+
+  await t('replaces old-host /prefill/ links with the eforms URL', async () => {
+    const tasks = [{
+      type: 'workflow_assign_form', status: 'ACTIVE',
+      accessLink: `https://workspace.example.test/${FORM}/prefill/OLDHOST?workflowAssignFormTask=1&taskID=T123`,
+      internalFormID: FORM, taskId: 'T123', assigneeEmail: 'a@gdmo.ae',
+    }];
+    await enrichTasksWithPrefill(tasks, SUB, 'gdmo');
+    assert.strictEqual(
+      tasks[0].accessLink,
+      `https://forms.example.test/${FORM}/prefill/NEWEST_B?workflowAssignFormTask=1&taskID=T123`,
+    );
+  });
+
+  await t('clears an unresolved /share/ link instead of preserving it', async () => {
+    const tasks = [{
+      type: 'workflow_assign_form', status: 'ACTIVE',
+      accessLink: 'https://workspace.example.test/share/STALE',
+      internalFormID: FORM, taskId: 'T123', assigneeEmail: 'a@gdmo.ae',
+    }];
+    await enrichTasksWithPrefill(tasks, 'NO_SUCH_SUB', 'gdmo');
+    assert.strictEqual(tasks[0].accessLink, '');
   });
 
   await t('ignores non-assign_form and non-ACTIVE tasks', async () => {

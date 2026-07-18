@@ -34,10 +34,11 @@ export default function Onboarding() {
   };
 
   return (
-    <div className="min-h-screen bg-navy-dark flex items-center justify-center p-6">
+    <div className="app-page bg-navy-dark flex items-center justify-center p-4 sm:p-6">
       <div className="w-full max-w-2xl">
         {/* Progress */}
-        <div className="flex items-center justify-between mb-12">
+        <div className="responsive-table mb-8 sm:mb-12">
+          <div className="flex min-w-max items-center justify-between">
           {STEPS.map((s, i) => (
             <div key={i} className="flex items-center">
               <div className={`w-10 h-10 rounded-full flex items-center justify-center ${i <= step ? 'gold-gradient text-navy-dark' : 'bg-navy-light/30 text-gray-500'}`}>
@@ -46,9 +47,10 @@ export default function Onboarding() {
               {i < STEPS.length - 1 && <div className={`w-16 md:w-24 h-0.5 mx-2 ${i < step ? 'bg-gold' : 'bg-navy-light/30'}`} />}
             </div>
           ))}
+          </div>
         </div>
 
-        <div className="glass-card p-8">
+        <div className="glass-card p-5 sm:p-8">
           <h2 className="text-2xl font-bold text-white mb-2">{STEPS[step].title}</h2>
           <p className="text-gray-400 mb-8">{STEPS[step].desc}</p>
 
@@ -89,7 +91,7 @@ export default function Onboarding() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-400 mb-2">Number of Approval Levels</label>
-                <div className="flex gap-3">
+                <div className="flex flex-wrap gap-3">
                   {[2, 3, 4, 5].map(n => (
                     <button key={n} onClick={() => setLevels(n)}
                       className={`px-6 py-3 rounded-xl font-semibold transition-all ${levels === n ? 'gold-gradient text-navy-dark' : 'border border-navy-light/30 text-gray-400 hover:border-gold/30'}`}>
@@ -126,8 +128,8 @@ export default function Onboarding() {
 
           {/* Navigation */}
           {step < 3 && (
-            <div className="flex items-center justify-between mt-8 pt-6 border-t border-navy-light/20">
-              <div className="flex gap-3">
+            <div className="flex flex-col gap-4 mt-8 pt-6 border-t border-navy-light/20 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap gap-3">
                 {step > 0 && (
                   <button onClick={() => setStep(step - 1)} className="btn-outline flex items-center gap-2">
                     <ArrowLeft className="w-4 h-4" /> Back

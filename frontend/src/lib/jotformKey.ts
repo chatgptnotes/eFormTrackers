@@ -1,6 +1,6 @@
 // The active JotForm API profile id (see backend lib/profiles.js). Was a fixed
 // 'default'|'gdmo' toggle; now any profile id the backend exposes via
-// GET /api/profiles. Kept as a string alias so existing imports still type-check.
+// GET /api/jotform-profiles. Kept as a string alias so existing imports still type-check.
 export type JotformKeyType = string;
 
 const ACTIVE_KEY = 'jotform_key_type';      // stores the active profile id

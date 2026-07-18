@@ -20,7 +20,6 @@
       "Bash(cp -r *)",
       "Bash(rm -rf *)",
       "Read(//tmp/**)",
-      "WebFetch(domain:eforms.mediaoffice.ae)",
       "WebFetch(domain:github.com)"
     ]
   },

@@ -103,7 +103,7 @@ export default function HelpSupport() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="app-page space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-3">
           <HelpCircle className="w-7 h-7 text-gold" /> Help & Support
@@ -142,7 +142,7 @@ export default function HelpSupport() {
           <p className="text-gray-400 text-sm mb-4">Universal keyboard shortcuts — work on all pages.</p>
           <div className="grid gap-4">
             {SHORTCUTS.map(s => (
-              <div key={s.desc} className="flex items-center justify-between">
+              <div key={s.desc} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-gray-300">{s.desc}</span>
                 <div className="flex gap-1">
                   {s.keys.map(k => (
@@ -178,7 +178,7 @@ export default function HelpSupport() {
       )}
 
       {activeTab === 'contact' && (
-        <div className="glass-card p-8 max-w-lg">
+        <div className="glass-card p-5 sm:p-8 max-w-lg">
           {sent ? (
             <div className="text-center py-8">
               <CheckCircle className="w-12 h-12 text-gold mx-auto mb-4" />

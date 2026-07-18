@@ -2,11 +2,11 @@ import { ReactNode, useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  LayoutDashboard, Table2, AlertTriangle, Settings, RefreshCw, Menu, X, Clock, Zap,
-  Users, FileText, CreditCard, HelpCircle, Building2, BarChart3, Kanban,
+  LayoutDashboard, Table2, AlertTriangle, RefreshCw, Menu, X, Clock, Zap,
+  Users, CreditCard, HelpCircle, Building2, BarChart3, Kanban,
   FolderOpen, Folder, ChevronRight, ChevronDown, LayoutGrid, Package,
   DollarSign, Monitor, Scale, Briefcase, Megaphone, ShieldCheck, PlusCircle,
-  ClipboardList, Layers, Sun, Moon, ExternalLink, CheckCircle2, Mail, Inbox,
+  Sun, Moon, ExternalLink, CheckCircle2,
 } from 'lucide-react';
 import { RefreshConfig, SidebarCategory } from '../types';
 import { JFFormMeta } from '../services/formDiscovery';
@@ -49,7 +49,7 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
   const location = useLocation();
   const navigate = useNavigate();
   const { orgRole, organization, hasPermission } = useAuth();
-  const { activeSidebarCategory, setActiveSidebarCategory, activeWorkflowId, setActiveWorkflowId, themeMode, toggleTheme } = useApp();
+  const { activeSidebarCategory, setActiveSidebarCategory, themeMode, toggleTheme } = useApp();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
@@ -109,31 +109,24 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
     { path: '/app/team', icon: Users, label: 'Team', roles: ['super_admin', 'admin'] },
     // { path: '/app/activity', icon: FileText, label: 'Activity Log', roles: ['super_admin', 'admin'] },
     // { path: '/app/billing', icon: CreditCard, label: 'Billing', roles: ['super_admin'] },
-    { path: '/app/org-settings', icon: Building2, label: 'Organization', roles: ['super_admin'] },
-    { path: '/app/settings', icon: Settings, label: 'Settings', roles: ['super_admin', 'admin', 'approver'] },
+    // Organization and Settings are intentionally hidden from sidebar navigation.
     // { path: '/app/help', icon: HelpCircle, label: 'Help & Support', roles: ['super_admin', 'admin', 'approver', 'viewer'] },
   ].filter(item => item.roles.includes(orgRole));
 
   const currentLabel = location.pathname === '/app/director'
-    ? "Modern Dashboard"
+    ? "Dashboard"
     : location.pathname === '/app/modern'
-    ? "Modern Dashboard"
+    ? "Dashboard"
     : location.pathname === '/app/completed'
     ? "Completed Requests"
     : location.pathname === '/app/pending-with'
     ? "Pending With"
-    : location.pathname === '/app/my-emails'
-    ? "My Workflow Emails"
-    : location.pathname === '/app/admin-emails'
-    ? "All Emails"
-    : location.pathname === '/app/admin-users'
-    ? "All Users"
     : TOOL_NAV.find(i => i.path === location.pathname)?.label || 'Dashboard';
 
   return (
-    <div className="min-h-screen flex" style={{ scrollbarGutter: 'stable' }}>
+    <div className="min-h-dvh flex overflow-x-hidden" style={{ scrollbarGutter: 'stable' }}>
       {/* Sidebar — bg-navy adapts: dark in dark mode, white in light mode */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-gradient-to-b from-blue-950 to-slate-800 border-r border-slate-800 transform transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-[80] w-64 max-w-[calc(100vw-2rem)] bg-gradient-to-b from-blue-950 to-slate-800 border-r border-slate-800 transform transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex flex-col h-full">
           {/* Logo — FlowAccel branding */}
           <div className="p-5 border-b border-slate-800">
@@ -191,7 +184,7 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
                 </Link>
               )}
 
-              {/* Modern Dashboard link */}
+              {/* Dashboard link */}
               <Link
                 to="/app/modern"
                 onClick={() => { setActiveSidebarCategory(null); setSidebarOpen(false); }}
@@ -202,7 +195,7 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
                 }`}
               >
                 <LayoutGrid className="w-4.5 h-4.5" />
-                <span className="text-sm font-medium">Modern Dashboard</span>
+                <span className="text-sm font-medium">Dashboard</span>
               </Link>
 
               {/* Completed Requests link */}
@@ -219,68 +212,27 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
                 <span className="text-sm font-medium">Completed</span>
               </Link>
 
-              {/* Pending With link */}
-              <Link
-                to="/app/pending-with"
-                onClick={() => { setActiveSidebarCategory(null); setSidebarOpen(false); }}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl mb-1 transition-all duration-200 ${
-                  location.pathname === '/app/pending-with'
-                    ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                    : 'text-white hover:bg-slate-800'
-                }`}
-              >
-                <Clock className="w-4.5 h-4.5" />
-                <span className="text-sm font-medium">Pending With</span>
-              </Link>
+              {orgRole === 'super_admin' && (
+                <>
+                  {/* Pending With link */}
+                  <Link
+                    to="/app/pending-with"
+                    onClick={() => { setActiveSidebarCategory(null); setSidebarOpen(false); }}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl mb-1 transition-all duration-200 ${
+                      location.pathname === '/app/pending-with'
+                        ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                        : 'text-white hover:bg-slate-800'
+                    }`}
+                  >
+                    <Clock className="w-4.5 h-4.5" />
+                    <span className="text-sm font-medium">Pending With</span>
+                  </Link>
 
-              {/* My Workflow Emails link */}
-              <Link
-                to="/app/my-emails"
-                onClick={() => { setActiveSidebarCategory(null); setSidebarOpen(false); }}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl mb-1 transition-all duration-200 ${
-                  location.pathname === '/app/my-emails'
-                    ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                    : 'text-white hover:bg-slate-800'
-                }`}
-              >
-                <Mail className="w-4.5 h-4.5" />
-                <span className="text-sm font-medium">My Emails</span>
-              </Link>
-
-              {/* All Emails (admin) — workspace-wide email archive */}
-              {(orgRole === 'super_admin' || orgRole === 'admin') && (
-                <Link
-                  to="/app/admin-emails"
-                  onClick={() => { setActiveSidebarCategory(null); setSidebarOpen(false); }}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl mb-1 transition-all duration-200 ${
-                    location.pathname === '/app/admin-emails'
-                      ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                      : 'text-white hover:bg-slate-800'
-                  }`}
-                >
-                  <Inbox className="w-4.5 h-4.5" />
-                  <span className="text-sm font-medium">All Emails</span>
-                </Link>
-              )}
-
-              {/* All Users (admin) — JotForm directory for the active API */}
-              {(orgRole === 'super_admin' || orgRole === 'admin') && (
-                <Link
-                  to="/app/admin-users"
-                  onClick={() => { setActiveSidebarCategory(null); setSidebarOpen(false); }}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl mb-1 transition-all duration-200 ${
-                    location.pathname === '/app/admin-users'
-                      ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                      : 'text-white hover:bg-slate-800'
-                  }`}
-                >
-                  <Users className="w-4.5 h-4.5" />
-                  <span className="text-sm font-medium">All Users</span>
-                </Link>
+                </>
               )}
 
               {/* Category items */}
-              {SIDEBAR_CATEGORIES.filter(cat => (cat.type === 'all' ? showAllAssetsTab : cat.filter?.departments && cat.filter.departments.some(d => activeDepartments.includes(d)))).map(cat => {
+              {orgRole !== 'super_admin' && SIDEBAR_CATEGORIES.filter(cat => (cat.type === 'all' ? showAllAssetsTab : cat.filter?.departments && cat.filter.departments.some(d => activeDepartments.includes(d)))).map(cat => {
                 const Icon = CATEGORY_ICONS[cat.id] || Folder;
                 const isActive = activeSidebarCategory?.id === cat.id;
                 const isExpanded = expandedCategories.has(cat.id);
@@ -337,57 +289,6 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
                       </div>
                     )}
                   </div>
-                );
-              })}
-            </div>
-
-            {/* Section 2: Workflows */}
-            <div className="mx-4 border-t border-slate-800 my-2" />
-            <div className="px-4 pb-2">
-              <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-2 px-2">Workflows</p>
-
-              {/* All Workflows */}
-              <button
-                onClick={() => {
-                  setActiveWorkflowId(null);
-                  setActiveSidebarCategory(null);
-                  navigate('/app/modern');
-                  setSidebarOpen(false);
-                }}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl mb-0.5 transition-all duration-200 ${
-                  !activeWorkflowId && location.pathname === '/app/modern'
-                    ? 'bg-gold/10 text-gold border border-gold/20'
-                    : 'text-white hover:bg-slate-800'
-                }`}
-              >
-                <Layers className="w-4 h-4" />
-                <span className="text-sm font-medium flex-1 text-left">All Workflows</span>
-              </button>
-
-              {(activeForms || []).map(f => ({ id: f.id, label: f.title })).map(wf => {
-                const lbl = wf.label.toLowerCase();
-                const Icon = lbl.includes('purchase') || lbl.includes('order') ? Package
-                  : lbl.includes('task') ? ClipboardList
-                  : FileText;
-                const isActive = activeWorkflowId === wf.id;
-                return (
-                  <button
-                    key={wf.id}
-                    onClick={() => {
-                      setActiveWorkflowId(isActive ? null : wf.id);
-                      setActiveSidebarCategory(null);
-                      navigate('/app/modern');
-                      setSidebarOpen(false);
-                    }}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl mb-0.5 transition-all duration-200 ${
-                      isActive
-                        ? 'bg-gold/10 text-gold border border-gold/20'
-                        : 'text-white hover:bg-slate-800'
-                    }`}
-                  >
-                    <Icon className="w-4 h-4" />
-                    <span className="text-sm font-medium flex-1 text-left leading-tight">{wf.label}</span>
-                  </button>
                 );
               })}
             </div>
@@ -455,24 +356,24 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
 
       {/* Overlay */}
       {sidebarOpen && (
-        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
+        <div className="fixed inset-0 bg-black/50 z-[70] lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
       {/* Main */}
-      <div className="flex-1 lg:ml-72 h-screen overflow-y-scroll">
+      <div className="min-w-0 flex-1 lg:ml-64 h-dvh overflow-y-auto overflow-x-hidden">
         {/* Top bar */}
         <header className="sticky top-0 z-[60] bg-slate-900/80 backdrop-blur-xl border-b border-slate-800">
-          <div className="flex items-center justify-between px-6 py-4">
-            <div className="flex items-center gap-4">
+          <div className="flex items-center justify-between gap-3 px-3 py-4 sm:px-6">
+            <div className="flex min-w-0 items-center gap-3 sm:gap-4">
               <button onClick={() => setSidebarOpen(!sidebarOpen)} className="lg:hidden text-gray-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded-lg p-1 cursor-pointer">
                 {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
               </button>
-              <div>
-                <h2 className="text-lg font-semibold text-white">{currentLabel}</h2>
-                <p className="text-xs text-gray-500">{organization?.name || 'Dubai Government Entity'} • Workflow Management</p>
+              <div className="min-w-0">
+                <h2 className="truncate text-lg font-semibold text-white">{currentLabel}</h2>
+                <p className="truncate text-xs text-gray-500">{organization?.name || 'Dubai Government Entity'} • Workflow Management</p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-shrink-0 items-center gap-2 sm:gap-3">
               <a
                 href={JOTFORM_WORKSPACE_URL}
                 target="_blank"
@@ -515,7 +416,7 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
         </header>
 
         {/* Page Content */}
-        <main className="p-6">
+        <main className="p-3 sm:p-6">
           <motion.div
             key={location.pathname}
             initial={{ opacity: 0, y: 20 }}

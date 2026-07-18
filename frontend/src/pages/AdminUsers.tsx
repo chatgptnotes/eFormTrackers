@@ -126,8 +126,8 @@ export default function AdminUsers() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="app-page max-w-3xl mx-auto space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <Users className="w-6 h-6 text-indigo-600" />

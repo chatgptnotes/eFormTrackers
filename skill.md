@@ -308,12 +308,12 @@ Match criteria (any one = included):
 
 **Rule:** All "View in JotForm" links MUST use `sub.approvalUrl` — the email-style direct URL format:
 ```
-https://bettroi.jotform.com/{internalFormID}?workflowAssignFormTask=1&taskID={taskId}
+{JOTFORM_HOST}/{internalFormID}?workflowAssignFormTask=1&taskID={taskId}
 ```
 
 **Never** use the inbox URL format:
 ```
-https://bettroi.jotform.com/inbox/{formId}/{submissionId}
+{JOTFORM_HOST}/inbox/{formId}/{submissionId}
 ```
 
 - `sub.approvalUrl` is computed in `useSubmissions.ts` from the workflow instance's `accessLink` or constructed from `internalFormID + taskID`

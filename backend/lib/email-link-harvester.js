@@ -3,6 +3,7 @@ const { jotformFetch } = require('./jotform');
 const { pMapLimit } = require('./concurrency');
 const { getDefaultProfile } = require('./profiles');
 const { normalizeTaskLink } = require('./jotform-link');
+const { upsertWorkspaceLinks } = require('./workspace-links');
 
 // JotForm's workflow API only exposes a task's /share/{token} accessLink to
 // the API key's OWN account — other assignees' links exist only in the emails
@@ -26,7 +27,7 @@ function extractShareLink(html) {
   return null;
 }
 
-async function harvestFromInboxThread(submissionId, tasksByAssignee, profileId) {
+async function harvestFromInboxThread(submissionId, formId, tasksByAssignee, profileId) {
   let updated = 0;
   try {
     const threadData = await jotformFetch(`inbox/submission/${submissionId}/thread`,
@@ -45,9 +46,7 @@ async function harvestFromInboxThread(submissionId, tasksByAssignee, profileId) 
       const c = emailData.content || emailData;
       const link = extractShareLink(String(c.body || ''));
       if (!link) continue;
-      // assign-form tasks must use the /prefill/ link (lib/prefill.js); a
-      // /share/ link opens the form without pre-filled data. Never let it win.
-      if (String(task.type) === 'workflow_assign_form' && !link.includes('/prefill/')) continue;
+      if (String(task.type) === 'workflow_assign_form') continue;
       const normalized = normalizeTaskLink(link, task);
       const accessLink = normalized.normalizedUrl || link;
       const { rowCount } = await pool.query(
@@ -74,6 +73,9 @@ async function harvestFromInboxThread(submissionId, tasksByAssignee, profileId) 
           [submissionId, String(task.taskId), accessLink, profileId],
         );
         task.accessLink = accessLink;
+        await upsertWorkspaceLinks({
+          profileId, submissionId, formId, workflowTasks: [task], approvalUrl: accessLink,
+        });
         updated++;
       }
     }
@@ -88,7 +90,7 @@ async function harvestEmailLinks(opts = {}) {
 
   // 1. Submissions with a non-completed task that has no accessLink yet
   const { rows } = await pool.query(
-    `SELECT jotform_submission_id, workflow_tasks
+    `SELECT jotform_submission_id, form_id, workflow_tasks
      FROM jf_submissions
      WHERE profile_id = $1
        AND jsonb_typeof(workflow_tasks) = 'array'
@@ -100,7 +102,7 @@ async function harvestEmailLinks(opts = {}) {
     [profileId]
   );
   if (rows.length === 0) return { updated: 0 };
-  const bySubmission = new Map(rows.map(r => [String(r.jotform_submission_id), r.workflow_tasks]));
+  const bySubmission = new Map(rows.map(r => [String(r.jotform_submission_id), r]));
 
   // 2. Recent enterprise email log (full ~6-day retention)
   const logsData = await jotformFetch('enterprise/system-logs', {
@@ -128,7 +130,8 @@ async function harvestEmailLinks(opts = {}) {
       if (!link) return;
       const toAddr = String(c.to || '').toLowerCase();
       const submissionId = String(entry.submissionID);
-      const tasks = bySubmission.get(submissionId) || [];
+      const submission = bySubmission.get(submissionId);
+      const tasks = submission?.workflow_tasks || [];
 
       const task = tasks.find(t =>
         ['ACTIVE', 'PENDING'].includes(String(t.status)) &&
@@ -136,9 +139,7 @@ async function harvestEmailLinks(opts = {}) {
         t.assigneeEmail && toAddr.includes(String(t.assigneeEmail).toLowerCase())
       );
       if (!task || !task.taskId) return;
-      // assign-form tasks must use the /prefill/ link (lib/prefill.js); a
-      // /share/ link opens the form without pre-filled data. Never let it win.
-      if (String(task.type) === 'workflow_assign_form' && !link.includes('/prefill/')) return;
+      if (String(task.type) === 'workflow_assign_form') return;
       const normalized = normalizeTaskLink(link, task);
       const accessLink = normalized.normalizedUrl || link;
 
@@ -164,6 +165,10 @@ async function harvestEmailLinks(opts = {}) {
           [submissionId, String(task.taskId), accessLink, profileId],
         );
         task.accessLink = accessLink; // keep in-memory copy current for this run
+        await upsertWorkspaceLinks({
+          profileId, submissionId, formId: submission.form_id,
+          workflowTasks: [task], approvalUrl: accessLink,
+        });
         updated++;
       }
     } catch {
@@ -178,7 +183,7 @@ async function harvestEmailLinks(opts = {}) {
     );
     if (!emptyTasks.length) return;
     const byEmail = new Map(emptyTasks.map(t => [String(t.assigneeEmail).toLowerCase(), t]));
-    updated += await harvestFromInboxThread(String(r.jotform_submission_id), byEmail, profileId);
+    updated += await harvestFromInboxThread(String(r.jotform_submission_id), r.form_id, byEmail, profileId);
   });
 
   if (updated > 0) console.log(`[email-harvester] persisted ${updated} access link(s) from sent emails`);

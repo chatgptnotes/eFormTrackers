@@ -110,7 +110,7 @@ function buildJotformUrl(path, keyType) {
   const url = new URL(`${profile.baseUrl}/${effectivePath}`);
   // 'user'-scope profiles (regular accounts / single team) get teamID when set;
   // enterprise admin keys are org-wide and take no teamID.
-  if (!isEnterprise && profile.teamId) url.searchParams.set('teamID', profile.teamId);
+  if (!isEnterprise && profile.teamId && path !== 'team/user/me') url.searchParams.set('teamID', profile.teamId);
   return url;
 }
 

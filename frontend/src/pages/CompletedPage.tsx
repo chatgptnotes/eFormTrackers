@@ -11,6 +11,8 @@ import { isSubmissionVisible, getMyWorkflowRole } from '../config/currentUser';
 import { Submission, WorkflowTask, ApprovalEntry } from '../types';
 import WorkflowDetailsSidebar from '../components/WorkflowDetailsSidebar';
 import { apiFetch } from '../lib/api';
+import WorkflowPicker from '../components/WorkflowPicker';
+import TeamProfilePicker from '../components/TeamProfilePicker';
 
 interface Props {
   data: ReturnType<typeof import('../hooks/useSubmissions').useSubmissions>;
@@ -39,6 +41,7 @@ function ApprovalChain({ history }: { history: ApprovalEntry[] }) {
 }
 
 type ViewMode = 'grid' | 'list' | 'compact' | 'timeline' | 'calendar' | 'masonry' | 'split';
+type WorkflowFilter = 'all' | 'with' | 'without';
 
 const VIEW_OPTIONS: { mode: ViewMode; icon: React.ComponentType<{ className?: string }>; label: string }[] = [
   { mode: 'grid', icon: LayoutGrid, label: 'Grid' },
@@ -54,6 +57,15 @@ function getLastApprover(sub: Submission) {
   return [...(sub.approvalHistory || [])].reverse().find(h => h.status === 'approved');
 }
 
+function hasApprovalWorkflow(sub: Submission) {
+  return Boolean(
+    sub.workflowTasks?.some(t => String(t.type || '').toLowerCase() === 'workflow_approval') ||
+    sub.approvalUrl ||
+    sub.needsSync ||
+    sub.approvalHistory?.some(h => h.status === 'approved' || h.status === 'pending' || h.status === 'rejected')
+  );
+}
+
 interface CardProps {
   submission: Submission;
   idx: number;
@@ -64,6 +76,7 @@ interface CardProps {
 const CompletedCard = memo(function CompletedCard({ submission, idx, onClick, userEmail }: CardProps) {
   const lastApprover = getLastApprover(submission);
   const myRole = getMyWorkflowRole(submission, userEmail);
+  const workflowBacked = hasApprovalWorkflow(submission);
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.9 }}
@@ -83,6 +96,13 @@ const CompletedCard = memo(function CompletedCard({ submission, idx, onClick, us
             <p className="text-sm font-black text-black font-mono">ID: {submission.id.slice(0, 8).toUpperCase()}</p>
             <span className="inline-block text-xs font-bold px-2.5 py-1 rounded-lg text-white bg-gradient-to-r from-emerald-400 to-green-500">Completed</span>
           </div>
+          <span className={`inline-block mt-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+            workflowBacked
+              ? 'bg-blue-50 text-blue-700 border-blue-200'
+              : 'bg-slate-50 text-slate-600 border-slate-200'
+          }`}>
+            {workflowBacked ? 'Approval workflow' : 'No approval workflow'}
+          </span>
           {myRole ? <span className="inline-block mt-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">You: {myRole}</span> : null}
         </div>
         <div className="flex items-center gap-2 py-2 border-t border-gray-200">
@@ -138,10 +158,11 @@ function getCalendarDays(year: number, month: number) {
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export default function CompletedPage({ data }: Props) {
-  const { user } = useAuth();
-  const { activeWorkflowId } = useApp();
+  const { user, orgRole } = useAuth();
+  const { activeWorkflowId, setActiveWorkflowId } = useApp();
 
   const [search, setSearch] = useState('');
+  const [workflowFilter, setWorkflowFilter] = useState<WorkflowFilter>('all');
   const [sidebarSubmission, setSidebarSubmission] = useState<Submission | null>(null);
   const [expandedTasks, setExpandedTasks] = useState<WorkflowTask[]>([]);
   const [workflowLoading, setWorkflowLoading] = useState(false);
@@ -157,28 +178,43 @@ export default function CompletedPage({ data }: Props) {
   const ITEMS_PER_PAGE = 9;
   const [currentPage, setCurrentPage] = useState(1);
 
-  const completedSubmissions = useMemo(() => {
+  const baseCompletedSubmissions = useMemo(() => {
     return data.allSubmissions.filter(s =>
       s.currentApprovalLevel === 'completed' &&
-      (!activeWorkflowId || s.formId === activeWorkflowId) &&
-      isSubmissionVisible(s, user?.email)
+      isSubmissionVisible(s, user?.email, orgRole)
     );
-  }, [data.allSubmissions, activeWorkflowId, user?.email]);
+  }, [data.allSubmissions, user?.email, orgRole]);
+
+  const workflowOptions = useMemo(() => {
+    const byId = new Map<string, string>();
+    baseCompletedSubmissions.forEach(s => byId.set(s.formId, s.formTitle || s.formId));
+    return [...byId].map(([id, title]) => ({ id, title })).sort((a, b) => a.title.localeCompare(b.title));
+  }, [baseCompletedSubmissions]);
+
+  const completedSubmissions = useMemo(
+    () => baseCompletedSubmissions.filter(s => !activeWorkflowId || s.formId === activeWorkflowId),
+    [baseCompletedSubmissions, activeWorkflowId],
+  );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return completedSubmissions;
-    return completedSubmissions.filter(s =>
-      s.formTitle?.toLowerCase().includes(q) ||
-      s.id?.toLowerCase().includes(q) ||
-      s.submittedBy.name?.toLowerCase().includes(q) ||
-      s.submittedBy.department?.toLowerCase().includes(q)
-    );
-  }, [completedSubmissions, search]);
+    return completedSubmissions.filter(s => {
+      const workflowBacked = hasApprovalWorkflow(s);
+      if (workflowFilter === 'with' && !workflowBacked) return false;
+      if (workflowFilter === 'without' && workflowBacked) return false;
+      if (!q) return true;
+      return (
+        s.formTitle?.toLowerCase().includes(q) ||
+        s.id?.toLowerCase().includes(q) ||
+        s.submittedBy.name?.toLowerCase().includes(q) ||
+        s.submittedBy.department?.toLowerCase().includes(q)
+      );
+    });
+  }, [completedSubmissions, search, workflowFilter]);
 
   // Pagination — 9 cards per page. Reset to page 1 whenever the filter
   // criteria change so the user never lands on a now-empty page.
-  useEffect(() => { setCurrentPage(1); }, [search, activeWorkflowId]);
+  useEffect(() => { setCurrentPage(1); }, [search, activeWorkflowId, workflowFilter]);
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const paginated = useMemo(
     () => filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE),
@@ -296,7 +332,7 @@ export default function CompletedPage({ data }: Props) {
   );
 
   const renderGrid = () => (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="responsive-card-grid">
       <AnimatePresence>
         {paginated.map((sub, idx) => (
           <CompletedCard key={sub.id} submission={sub} idx={idx} onClick={openSidebarWithTasks} userEmail={user?.email} />
@@ -307,8 +343,8 @@ export default function CompletedPage({ data }: Props) {
 
   const renderList = () => (
     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-      <div className="overflow-x-auto">
-        <table className="w-full">
+      <div className="responsive-table">
+        <table className="w-full min-w-[900px]">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50">
               <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest w-12">#</th>
@@ -346,8 +382,8 @@ export default function CompletedPage({ data }: Props) {
 
   const renderCompact = () => (
     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-      <div className="overflow-x-auto">
-        <table className="w-full">
+      <div className="responsive-table">
+        <table className="w-full min-w-[760px]">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50">
               <th className="px-2 py-1.5 text-left text-[9px] font-bold text-gray-400 uppercase tracking-wider w-8">#</th>
@@ -485,9 +521,9 @@ export default function CompletedPage({ data }: Props) {
     const selected = splitSelected || filtered[0];
     const la = selected ? getLastApprover(selected) : null;
     return (
-      <div className="flex gap-4 h-[calc(100vh-220px)] min-h-[500px]">
+      <div className="flex flex-col gap-4 min-h-[500px] lg:h-[calc(100dvh-220px)] lg:flex-row">
         {/* Left: compact list */}
-        <div className="w-72 flex-shrink-0 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
+        <div className="w-full bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col lg:w-72 lg:flex-shrink-0">
           <div className="px-3 py-2 border-b border-gray-100 bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-wider">{filtered.length} submissions</div>
           <div className="flex-1 overflow-y-auto">
             {paginated.map((sub, idx) => (
@@ -503,7 +539,7 @@ export default function CompletedPage({ data }: Props) {
         </div>
         {/* Right: detail card */}
         {selected && (
-          <div className="flex-1 bg-white rounded-2xl border border-gray-200 shadow-sm p-6 overflow-y-auto">
+          <div className="min-w-0 flex-1 bg-white rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6 overflow-y-auto">
             <div className="flex items-center gap-2 mb-4">
               <span className="inline-block text-xs font-bold px-2.5 py-1 rounded-lg text-white bg-gradient-to-r from-emerald-400 to-green-500">Completed</span>
               <p className="text-xs text-gray-400 font-mono">{selected.id.slice(0, 8).toUpperCase()}</p>
@@ -513,7 +549,7 @@ export default function CompletedPage({ data }: Props) {
               })()}
             </div>
             <h2 className="text-lg font-bold text-gray-900 mb-4">{selected.formTitle || 'Form Submission'}</h2>
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="responsive-panel-grid text-sm">
               <div><p className="text-xs text-gray-400 uppercase mb-0.5">Submitted By</p><p className="font-semibold text-gray-800">{selected.submittedBy.name}</p><p className="text-xs text-gray-500">{selected.submittedBy.email}</p></div>
               <div><p className="text-xs text-gray-400 uppercase mb-0.5">Department</p><p className="font-semibold text-gray-800">{selected.submittedBy.department || '—'}</p></div>
               <div><p className="text-xs text-gray-400 uppercase mb-0.5">Final Approver</p><p className="font-semibold text-gray-800">{la?.approverName || '—'}</p></div>
@@ -551,8 +587,8 @@ export default function CompletedPage({ data }: Props) {
   })();
 
   return (
-    <div className="relative w-full min-h-screen">
-      <div className={`space-y-6 w-full transition-all duration-300 ${sidebarSubmission ? 'md:pr-[620px]' : ''}`}>
+    <div className="app-page relative">
+      <div className={`space-y-6 w-full transition-all duration-300 ${sidebarSubmission ? '2xl:pr-[500px]' : ''}`}>
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
@@ -560,7 +596,7 @@ export default function CompletedPage({ data }: Props) {
               <CheckCircle2 className="w-5 h-5 text-emerald-500" />
               <h1 className="text-xl font-bold text-gray-900">Completed Requests</h1>
             </div>
-            <p className="text-sm text-gray-500">{completedSubmissions.length} workflow{completedSubmissions.length !== 1 ? 's' : ''} fully completed</p>
+            <p className="text-sm text-gray-500">{filtered.length} of {completedSubmissions.length} completed submissions</p>
           </div>
           {/* View Switcher Dropdown */}
           <div className="relative" ref={dropdownRef}>
@@ -604,16 +640,50 @@ export default function CompletedPage({ data }: Props) {
           </div>
         </div>
 
-        {/* Search */}
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search by form, ID, name, department…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400/40 focus:border-emerald-400"
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <TeamProfilePicker />
+          <WorkflowPicker
+            value={activeWorkflowId}
+            options={workflowOptions}
+            onChange={id => { setActiveWorkflowId(id); setCurrentPage(1); }}
+            accent="emerald"
           />
+          <div className="relative w-full sm:max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search form, ID, name, department"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400/40 focus:border-emerald-400"
+            />
+          </div>
+          <fieldset className="flex flex-wrap items-center gap-2">
+            {([
+              ['all', 'All'],
+              ['with', 'Approval workflow'],
+              ['without', 'No approval workflow'],
+            ] as const).map(([value, label]) => (
+              <label
+                key={value}
+                className={`cursor-pointer rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                  workflowFilter === value
+                    ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                    : 'border-gray-200 bg-white text-gray-700 hover:border-emerald-300'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="completed-workflow-filter"
+                  value={value}
+                  checked={workflowFilter === value}
+                  onChange={() => setWorkflowFilter(value)}
+                  className="sr-only"
+                />
+                {label}
+              </label>
+            ))}
+          </fieldset>
         </div>
 
         {/* Main Content Area */}

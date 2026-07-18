@@ -76,10 +76,10 @@ export default function WorkflowTracker({ data }: Props) {
   const hasActiveFilters = filters.approvalLevel || filters.department || filters.status || filters.dateFrom || filters.dateTo;
 
   return (
-    <div className="space-y-4">
+    <div className="app-page space-y-4">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex-1 min-w-[200px] relative">
+        <div className="relative min-w-0 flex-1 basis-64">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
           <input
             ref={searchRef}
@@ -108,7 +108,7 @@ export default function WorkflowTracker({ data }: Props) {
             <h4 className="text-sm font-semibold text-gray-300">Filters</h4>
             <button onClick={() => setFilters({ approvalLevel: '', department: '', status: '', dateFrom: '', dateTo: '', search: filters.search })} className="text-xs text-gold hover:underline">Clear All</button>
           </div>
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="responsive-panel-grid">
             <select value={filters.approvalLevel} onChange={e => setFilters(prev => ({ ...prev, approvalLevel: e.target.value }))} className="bg-navy-dark border border-navy-light/30 rounded-lg px-3 py-2 text-sm text-gray-300">
               {LEVELS.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
             </select>
@@ -160,7 +160,7 @@ export default function WorkflowTracker({ data }: Props) {
       )}
 
       {/* Results Count */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-gray-500">{filteredSubmissions.length.toLocaleString()} submissions found</p>
         <select
           value={pagination.perPage}
@@ -175,8 +175,8 @@ export default function WorkflowTracker({ data }: Props) {
 
       {/* Table */}
       <div className="glass-card overflow-hidden">
-        <div className="overflow-x-auto max-h-[65vh]">
-          <table className="w-full">
+        <div className="responsive-table max-h-[65dvh]">
+          <table className="w-full min-w-[1200px]">
             <thead className="sticky top-0 z-10 bg-navy">
               <tr className="border-b border-navy-light/20">
                 {[
@@ -303,7 +303,7 @@ export default function WorkflowTracker({ data }: Props) {
         </div>
 
         {/* Pagination */}
-        <div className="flex items-center justify-between px-4 py-3 border-t border-navy-light/20">
+        <div className="flex flex-col gap-3 px-4 py-3 border-t border-navy-light/20 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-gray-500">
             Showing {((pagination.page - 1) * pagination.perPage) + 1}–{Math.min(pagination.page * pagination.perPage, filteredSubmissions.length)} of {filteredSubmissions.length}
           </p>

@@ -13,6 +13,7 @@ const signupBodySchema = z.object({
 const loginBodySchema = z.object({
   email: z.string().email('Invalid email address'),
   password: z.string().min(1, 'Password is required').max(128),
+  adminLogin: z.boolean().optional(),
 });
 
 // POST /api/auth/reset-password

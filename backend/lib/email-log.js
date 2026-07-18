@@ -27,7 +27,13 @@ async function upsertEmailLogs(submissionId, formId, formTitle, workflowTasks, p
         assignee_name=$7, assignee_email=$8, task_status=$9,
         assigned_at=COALESCE($10, email_logs.assigned_at),
         submitted_by_name=$11, submitted_by_email=$12,
-        access_link=CASE WHEN $13 = '' THEN email_logs.access_link ELSE $13 END,
+        access_link=CASE
+          WHEN $6 = 'workflow_assign_task' AND ($13 LIKE '%/share/%' OR $13 LIKE '%/approval-form/%') THEN $13
+          WHEN $6 = 'workflow_assign_task' AND (email_logs.access_link LIKE '%/share/%' OR email_logs.access_link LIKE '%/approval-form/%') THEN email_logs.access_link
+          WHEN $6 = 'workflow_assign_task' THEN ''
+          WHEN $13 = '' THEN email_logs.access_link
+          ELSE $13
+        END,
         updated_at=now(), profile_id=$14`,
       [
         submissionId, formId, formTitle,

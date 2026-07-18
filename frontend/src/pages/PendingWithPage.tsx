@@ -10,6 +10,8 @@ import WorkflowDetailsSidebar from '../components/WorkflowDetailsSidebar';
 import SubmissionModal from '../components/SubmissionModal';
 import { apiFetch } from '../lib/api';
 import { getUsableTaskAccessLink } from '../lib/jotformLinks';
+import WorkflowPicker from '../components/WorkflowPicker';
+import TeamProfilePicker from '../components/TeamProfilePicker';
 
 interface Props {
   data: ReturnType<typeof import('../hooks/useSubmissions').useSubmissions>;
@@ -96,8 +98,8 @@ const PendingWithCard = memo(function PendingWithCard({ submission, idx, onClick
 });
 
 export default function PendingWithPage({ data }: Props) {
-  const { user } = useAuth();
-  const { activeWorkflowId } = useApp();
+  const { user, orgRole } = useAuth();
+  const { activeWorkflowId, setActiveWorkflowId } = useApp();
 
   const [search, setSearch] = useState('');
   const [sidebarSubmission, setSidebarSubmission] = useState<Submission | null>(null);
@@ -115,12 +117,8 @@ export default function PendingWithPage({ data }: Props) {
     if (sidebarSubmission) setModalSubmission(sidebarSubmission);
   }, [sidebarSubmission]);
 
-  // Open Task / Fill Form: resolve the access-token URL server-side, then open.
-  // CRITICAL: do NOT pass 'noopener'/'noreferrer' on the placeholder open —
-  // those force window.open to return null, leaving the new tab stuck at
-  // about:blank. Sever pop.opener after navigation for equivalent security.
+  // Open tasks that have a real task form, or assigned forms with a prefill URL.
   const openTaskLink = useCallback(async (task: WorkflowTask) => {
-    const pop = window.open('about:blank', '_blank');
     const sub = sidebarSubmission;
     let url = '';
     let reason = '';
@@ -140,63 +138,35 @@ export default function PendingWithPage({ data }: Props) {
     if (!url) url = getUsableTaskAccessLink(task);
 
     if (!url) {
-      if (pop && !pop.closed) pop.close();
       // eslint-disable-next-line no-console
       console.warn('[openTaskLink] no URL resolved:', { reason, taskId: task.taskId, type: task.type });
       alert(`Couldn't open the JotForm task: ${reason || 'this step has no accessible link'}`);
       return;
     }
 
-    if (pop && !pop.closed) {
-      try {
-        pop.location.href = url;
-        try { pop.opener = null; } catch { /* cross-origin once navigated */ }
-      } catch {
-        pop.close();
-        window.open(url, '_blank', 'noopener,noreferrer');
-      }
-    } else {
-      window.open(url, '_blank', 'noopener,noreferrer');
-    }
+    window.open(url, '_blank', 'noopener,noreferrer');
   }, [sidebarSubmission]);
-
-  const completeTaskFromSidebar = useCallback(async (task: WorkflowTask) => {
-    const sub = sidebarSubmission;
-    if (!sub) return;
-    const taskId = task.taskId;
-    if (!taskId) {
-      alert('Could not find the active JotForm task ID for this submission.');
-      return;
-    }
-    try {
-      await apiFetch('/api/workflow-action', {
-        method: 'POST',
-        body: JSON.stringify({ submissionId: sub.id, taskId, action: 'complete' }),
-      });
-      setWorkflowCache(prev => {
-        const next = new Map(prev);
-        next.delete(sub.id);
-        return next;
-      });
-      setSidebarSubmission(null);
-      setExpandedTasks([]);
-      data.refresh?.({ force: true });
-      data.scheduleRefreshAfterAction?.();
-    } catch (e: unknown) {
-      alert(`Complete failed: ${(e as { message?: string })?.message || 'unknown error'}`);
-    }
-  }, [sidebarSubmission, data]);
 
   // Workflows still in flight that involve the logged-in email. This page is a
   // personal queue: admins do not get an all-workflows bypass here.
-  const pendingWithSubmissions = useMemo(() => {
+  const basePendingWithSubmissions = useMemo(() => {
     return data.allSubmissions.filter(s =>
       s.currentApprovalLevel !== 'completed' &&
       s.currentApprovalLevel !== 'rejected' &&
-      (!activeWorkflowId || s.formId === activeWorkflowId) &&
-      isSubmissionVisible(s, user?.email)
+      isSubmissionVisible(s, user?.email, orgRole)
     );
-  }, [data.allSubmissions, activeWorkflowId, user?.email]);
+  }, [data.allSubmissions, user?.email, orgRole]);
+
+  const workflowOptions = useMemo(() => {
+    const byId = new Map<string, string>();
+    basePendingWithSubmissions.forEach(s => byId.set(s.formId, s.formTitle || s.formId));
+    return [...byId].map(([id, title]) => ({ id, title })).sort((a, b) => a.title.localeCompare(b.title));
+  }, [basePendingWithSubmissions]);
+
+  const pendingWithSubmissions = useMemo(
+    () => basePendingWithSubmissions.filter(s => !activeWorkflowId || s.formId === activeWorkflowId),
+    [basePendingWithSubmissions, activeWorkflowId],
+  );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -247,8 +217,8 @@ export default function PendingWithPage({ data }: Props) {
 
   if (data.loading && data.allSubmissions.length === 0) {
     return (
-      <div className="w-full px-4 py-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      <div className="app-page w-full px-4 py-6">
+        <div className="responsive-card-grid">
           {Array.from({ length: 6 }).map((_, i) => <SkeletonSubmissionCard key={i} />)}
         </div>
       </div>
@@ -256,18 +226,25 @@ export default function PendingWithPage({ data }: Props) {
   }
 
   return (
-    <div className="relative w-full min-h-screen">
-      <div className="space-y-6 w-full px-4 py-2">
+    <div className="app-page relative">
+      <div className={`space-y-6 w-full px-4 py-2 transition-all duration-300 ${sidebarSubmission ? '2xl:pr-[500px]' : ''}`}>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex items-center gap-2 text-gray-600">
             <Clock className="w-5 h-5 text-amber-500" />
             <span className="text-sm font-semibold">{filtered.length} workflow{filtered.length === 1 ? '' : 's'} pending</span>
           </div>
+          <TeamProfilePicker />
+          <WorkflowPicker
+            value={activeWorkflowId}
+            options={workflowOptions}
+            onChange={id => { setActiveWorkflowId(id); setCurrentPage(1); }}
+            accent="amber"
+          />
           <div className="relative w-full sm:w-80">
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Search by ID, title, or person..."
+              placeholder="Search ID, title, or person"
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-gray-300 text-black placeholder-gray-500 text-sm focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all"
@@ -285,7 +262,7 @@ export default function PendingWithPage({ data }: Props) {
           </div>
         ) : (
           <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="responsive-card-grid">
               <AnimatePresence>
                 {paginated.map((sub, idx) => (
                   <PendingWithCard key={sub.id} submission={sub} idx={idx} onClick={openSidebarWithTasks} userEmail={user?.email} />
@@ -328,7 +305,6 @@ export default function PendingWithPage({ data }: Props) {
         onTaskApprove={openApproveModal}
         onSetTaskRejecting={openApproveModal}
         onOpenTaskLink={openTaskLink}
-        onCompleteTask={completeTaskFromSidebar}
       />
 
       <AnimatePresence>

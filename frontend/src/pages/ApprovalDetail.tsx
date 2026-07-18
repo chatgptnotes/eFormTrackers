@@ -31,9 +31,9 @@ export default function ApprovalDetail({ data }: Props) {
     : 0;
 
   return (
-    <div className="space-y-6">
+    <div className="app-page space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-start gap-3 sm:items-center sm:gap-4">
         <button onClick={() => navigate('/app')} className="p-2 rounded-xl hover:bg-navy-light/30 text-gray-400 hover:text-white">
           <ArrowLeft className="w-5 h-5" />
         </button>
@@ -70,8 +70,8 @@ export default function ApprovalDetail({ data }: Props) {
             onClick={() => setSelectedSubmission(sub)}
             className="glass-card-hover p-4 cursor-pointer"
           >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4 flex-1 min-w-0">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 flex-1 items-center gap-4">
                 <div className={`w-12 h-12 rounded-xl ${info.bg} flex items-center justify-center`}>
                   <Clock className={`w-5 h-5 ${info.color}`} />
                 </div>
@@ -90,7 +90,7 @@ export default function ApprovalDetail({ data }: Props) {
                   </div>
                 </div>
               </div>
-              <div className="text-right ml-4">
+              <div className="text-left sm:ml-4 sm:text-right">
                 <p className={`text-2xl font-bold ${sub.daysAtCurrentLevel > 14 ? 'text-rose-500' : sub.daysAtCurrentLevel > 7 ? 'text-amber-500' : 'text-white'}`}>
                   {sub.daysAtCurrentLevel}d
                 </p>

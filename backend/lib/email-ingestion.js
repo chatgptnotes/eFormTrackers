@@ -2,6 +2,7 @@ const pool = require('../db/pool');
 const { extractActionLinks } = require('./email-parse');
 const { normalizeTaskLink } = require('./jotform-link');
 const { resolvePrefillUrl } = require('./prefill');
+const { upsertWorkspaceLinks } = require('./workspace-links');
 
 const EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
 const recipientUserCache = new Map();
@@ -437,6 +438,22 @@ async function persistArchivedEmailActionLinks({
       [profileId, String(task.task_id), url, active, String(submissionId)],
     );
     updatedSubmissionTasks += submission.rowCount || 0;
+
+    await upsertWorkspaceLinks({
+      profileId,
+      submissionId,
+      formId: task.parent_form_id || formId,
+      workflowTasks: [{
+        taskId: task.task_id,
+        name: task.task_name,
+        type: task.task_type,
+        status: task.task_status,
+        assigneeEmail: task.assignee_email,
+        internalFormID: task.task_form_id,
+        accessLink: url,
+      }],
+      approvalUrl: active ? url : '',
+    }).catch(err => console.warn(`[email-ingestion] workspace task URL upsert failed: ${err.message}`));
   }
 
   return { updatedEmailLogs, updatedSubmissionTasks };

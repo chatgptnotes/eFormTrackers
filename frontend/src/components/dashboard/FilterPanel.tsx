@@ -76,7 +76,7 @@ function FilterPanelImpl({
                 </button>
               </div>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+            <div className="responsive-panel-grid">
               {/* Level */}
               <div>
                 <label className="block text-xs text-gray-400 mb-1">Level</label>

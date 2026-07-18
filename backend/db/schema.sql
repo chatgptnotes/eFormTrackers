@@ -689,3 +689,178 @@ ON CONFLICT (profile_id, mailid) DO UPDATE SET
   ),
   last_email_id = COALESCE(NULLIF(EXCLUDED.last_email_id, ''), allowlist_user.last_email_id),
   updated_at = now();
+
+-- ============================================================
+-- 20. Team-workspace form and URL projections
+-- ============================================================
+-- `jf_submissions.workflow_tasks` is retained for the dashboard payload, but
+-- URLs need independent rows so they can be queried and retained per selected
+-- team workspace instead of being buried in JSON.
+CREATE TABLE IF NOT EXISTS team_workspace_forms (
+  team_workspace_id TEXT NOT NULL,
+  form_id           TEXT NOT NULL,
+  title             TEXT DEFAULT '',
+  form_url          TEXT DEFAULT '',
+  creator_username  TEXT DEFAULT '',
+  status            TEXT DEFAULT '',
+  created_at_jf     TIMESTAMPTZ,
+  updated_at_jf     TIMESTAMPTZ,
+  updated_at        TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (team_workspace_id, form_id)
+);
+
+CREATE TABLE IF NOT EXISTS team_workspace_task_urls (
+  team_workspace_id TEXT NOT NULL,
+  submission_id     TEXT NOT NULL,
+  task_id           TEXT NOT NULL,
+  form_id           TEXT DEFAULT '',
+  task_form_id      TEXT DEFAULT '',
+  task_type         TEXT DEFAULT '',
+  task_status       TEXT DEFAULT '',
+  assignee_email    TEXT DEFAULT '',
+  task_url          TEXT NOT NULL,
+  url_type          TEXT NOT NULL DEFAULT 'form',
+  source            TEXT NOT NULL DEFAULT 'workflow',
+  created_at        TIMESTAMPTZ DEFAULT now(),
+  updated_at        TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (team_workspace_id, submission_id, task_id)
+);
+CREATE INDEX IF NOT EXISTS idx_team_workspace_task_urls_submission
+  ON team_workspace_task_urls (team_workspace_id, submission_id);
+
+CREATE TABLE IF NOT EXISTS team_workspace_prefill_form_urls (
+  team_workspace_id TEXT NOT NULL,
+  submission_id     TEXT NOT NULL,
+  task_id           TEXT NOT NULL,
+  form_id           TEXT DEFAULT '',
+  prefill_id        TEXT DEFAULT '',
+  prefill_url       TEXT NOT NULL,
+  source            TEXT NOT NULL DEFAULT 'prefill-api',
+  created_at        TIMESTAMPTZ DEFAULT now(),
+  updated_at        TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (team_workspace_id, submission_id, task_id)
+);
+
+CREATE TABLE IF NOT EXISTS team_workspace_approval_urls (
+  team_workspace_id TEXT NOT NULL,
+  submission_id     TEXT NOT NULL,
+  task_id           TEXT NOT NULL DEFAULT '',
+  form_id           TEXT DEFAULT '',
+  approval_url      TEXT NOT NULL,
+  source            TEXT NOT NULL DEFAULT 'workflow',
+  created_at        TIMESTAMPTZ DEFAULT now(),
+  updated_at        TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (team_workspace_id, submission_id, task_id)
+);
+
+CREATE TABLE IF NOT EXISTS team_workspace_sign_urls (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_workspace_id TEXT NOT NULL,
+  submission_id     TEXT NOT NULL,
+  task_id           TEXT NOT NULL DEFAULT '',
+  level             SMALLINT NOT NULL DEFAULT 0,
+  sign_url          TEXT NOT NULL,
+  source            TEXT NOT NULL DEFAULT 'workflow',
+  created_at        TIMESTAMPTZ DEFAULT now(),
+  updated_at        TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (team_workspace_id, submission_id, task_id, level, sign_url)
+);
+CREATE INDEX IF NOT EXISTS idx_team_workspace_sign_urls_submission
+  ON team_workspace_sign_urls (team_workspace_id, submission_id);
+
+-- Backfill the normalized projections from the current schema. Re-running the
+-- migration is safe because each projection has a workspace-scoped key.
+INSERT INTO team_workspace_forms
+  (team_workspace_id, form_id, title, form_url, creator_username, status, created_at_jf, updated_at_jf)
+SELECT profile_id, form_id, title, 'https://eforms.mediaoffice.ae/' || form_id,
+       creator_username, status, created_at_jf, updated_at_jf
+FROM jf_forms
+ON CONFLICT (team_workspace_id, form_id) DO UPDATE SET
+  title=EXCLUDED.title, form_url=EXCLUDED.form_url, creator_username=EXCLUDED.creator_username, status=EXCLUDED.status,
+  created_at_jf=EXCLUDED.created_at_jf, updated_at_jf=EXCLUDED.updated_at_jf, updated_at=now();
+
+-- Keep each projection type-specific. Earlier versions mixed form, task and
+-- approval links in the same tables.
+DELETE FROM team_workspace_task_urls
+WHERE task_type <> 'workflow_assign_task'
+   OR task_url NOT LIKE '%/approval-form/%/task/%/access-token/%';
+DELETE FROM team_workspace_prefill_form_urls WHERE prefill_url NOT LIKE '%/prefill/%';
+DELETE FROM team_workspace_approval_urls a
+USING jf_submissions s
+WHERE a.team_workspace_id = s.profile_id
+  AND a.submission_id = s.jotform_submission_id
+  AND EXISTS (
+    SELECT 1 FROM jsonb_array_elements(
+      CASE WHEN jsonb_typeof(s.workflow_tasks) = 'array' THEN s.workflow_tasks ELSE '[]'::jsonb END
+    ) t
+    WHERE t->>'taskId' = a.task_id AND t->>'type' <> 'workflow_approval'
+  );
+
+WITH tasks AS (
+  SELECT s.profile_id AS team_workspace_id, s.jotform_submission_id AS submission_id,
+         s.form_id, t
+  FROM jf_submissions s
+  CROSS JOIN LATERAL jsonb_array_elements(
+    CASE WHEN jsonb_typeof(s.workflow_tasks) = 'array' THEN s.workflow_tasks ELSE '[]'::jsonb END
+  ) t
+)
+INSERT INTO team_workspace_task_urls
+  (team_workspace_id, submission_id, task_id, form_id, task_form_id, task_type,
+   task_status, assignee_email, task_url, url_type, source)
+SELECT team_workspace_id, submission_id, t->>'taskId', form_id, t->>'internalFormID',
+       t->>'type', t->>'status', t->>'assigneeEmail', t->>'accessLink',
+       'task',
+       'legacy-workflow-tasks'
+FROM tasks
+WHERE t->>'type' = 'workflow_assign_task'
+  AND COALESCE(t->>'taskId', '') <> ''
+  AND t->>'accessLink' LIKE '%/approval-form/%/task/%/access-token/%'
+ON CONFLICT (team_workspace_id, submission_id, task_id) DO UPDATE SET
+  task_url=EXCLUDED.task_url, url_type=EXCLUDED.url_type, updated_at=now();
+
+INSERT INTO team_workspace_prefill_form_urls
+  (team_workspace_id, submission_id, task_id, form_id, prefill_id, prefill_url, source)
+SELECT s.profile_id, s.jotform_submission_id, t->>'taskId',
+       COALESCE(t->>'internalFormID', s.form_id),
+       COALESCE(substring(t->>'accessLink' FROM '/prefill/([^?]+)'), ''),
+       t->>'accessLink', 'legacy-workflow-tasks'
+FROM jf_submissions s
+CROSS JOIN LATERAL jsonb_array_elements(
+  CASE WHEN jsonb_typeof(s.workflow_tasks) = 'array' THEN s.workflow_tasks ELSE '[]'::jsonb END
+) t
+WHERE COALESCE(t->>'taskId', '') <> '' AND t->>'accessLink' LIKE '%/prefill/%'
+ON CONFLICT (team_workspace_id, submission_id, task_id) DO UPDATE SET
+  prefill_url=EXCLUDED.prefill_url, prefill_id=EXCLUDED.prefill_id, updated_at=now();
+
+INSERT INTO team_workspace_approval_urls
+  (team_workspace_id, submission_id, task_id, form_id, approval_url, source)
+SELECT s.profile_id, s.jotform_submission_id, t->>'taskId',
+       COALESCE(NULLIF(t->>'internalFormID', ''), s.form_id),
+       t->>'accessLink', 'legacy-workflow-tasks'
+FROM jf_submissions s
+CROSS JOIN LATERAL jsonb_array_elements(
+  CASE WHEN jsonb_typeof(s.workflow_tasks) = 'array' THEN s.workflow_tasks ELSE '[]'::jsonb END
+) t
+WHERE t->>'type' = 'workflow_approval'
+  AND COALESCE(t->>'taskId', '') <> ''
+  AND t->>'accessLink' LIKE '%/approval-form/%/task/%/access-token/%'
+ON CONFLICT (team_workspace_id, submission_id, task_id) DO UPDATE SET
+  approval_url=EXCLUDED.approval_url, updated_at=now();
+
+INSERT INTO team_workspace_sign_urls (team_workspace_id, submission_id, task_id, level, sign_url, source)
+SELECT s.profile_id, s.jotform_submission_id, COALESCE(t->>'taskId', ''),
+       CASE WHEN (t->>'level') ~ '^[0-9]+$' THEN (t->>'level')::smallint ELSE 0 END,
+       t->>'signatureUrl', 'legacy-workflow-tasks'
+FROM jf_submissions s
+CROSS JOIN LATERAL jsonb_array_elements(
+  CASE WHEN jsonb_typeof(s.workflow_tasks) = 'array' THEN s.workflow_tasks ELSE '[]'::jsonb END
+) t
+WHERE COALESCE(t->>'signatureUrl', '') <> ''
+ON CONFLICT (team_workspace_id, submission_id, task_id, level, sign_url) DO NOTHING;
+
+-- Local signatures predate team-workspace tagging; existing rows belong to the
+-- default workspace until an explicit workspace is available on the request.
+INSERT INTO team_workspace_sign_urls (team_workspace_id, submission_id, level, sign_url, source)
+SELECT 'gdmo', submission_id, level, signature_url, 'legacy-local-signatures'
+FROM jf_signatures
+ON CONFLICT (team_workspace_id, submission_id, task_id, level, sign_url) DO NOTHING;

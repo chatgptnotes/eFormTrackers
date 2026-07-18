@@ -10,11 +10,9 @@ const router = Router();
 const ORG_ID = env.ORG_ID;
 
 // ── Microsoft OAuth (MSAL) config ──
-// Use tenant-specific authority when TENANT_ID is set — blocks personal Microsoft
-// accounts and non-GDMO users before they even reach the JotForm workspace gate.
-const MS_AUTHORITY = env.MICROSOFT_TENANT_ID
-  ? `https://login.microsoftonline.com/${env.MICROSOFT_TENANT_ID}`
-  : 'https://login.microsoftonline.com/common';
+// JotForm workspace membership is the access gate. `common` also supports
+// assigned external Microsoft accounts, which are not Bettroi tenant members.
+const MS_AUTHORITY = 'https://login.microsoftonline.com/common';
 
 const msalConfig = {
   auth: {
@@ -164,10 +162,22 @@ router.get('/microsoft/callback', async (req, res) => {
       // Update display name + department from latest Graph data on every login.
       // Never overwrite a manually-set role to a weaker one.
       const updatedRole = roleFromAccountType(jfAccountType, userRow.role);
-      await pool.query(
+      const profileUpdate = await pool.query(
         `UPDATE profiles SET full_name = $1, department = CASE WHEN $2 = '' THEN department ELSE $2 END,
          role = $3, updated_at = now() WHERE user_id = $4`,
         [displayName, department, updatedRole, userRow.id]
+      );
+      if (profileUpdate.rowCount === 0) {
+        await pool.query(
+          `INSERT INTO profiles (user_id, full_name, department, role, org_id, preferences)
+           VALUES ($1, $2, $3, $4, $5, '{"theme":"dark","language":"en"}')`,
+          [userRow.id, displayName, department, updatedRole, ORG_ID]
+        );
+      }
+      await pool.query(
+        `INSERT INTO org_members (org_id, user_id, role) VALUES ($1, $2, $3)
+         ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
+        [ORG_ID, userRow.id, updatedRole]
       );
       // Sync display name on users table too
       await pool.query(

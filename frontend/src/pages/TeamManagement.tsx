@@ -1,8 +1,13 @@
-import { useState, useEffect } from 'react';
-import { Users, Shield, Loader2, RefreshCw, AlertTriangle, UserPlus, Mail, Lock, X, CheckCircle2 } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { Users, Shield, Loader2, RefreshCw, AlertTriangle, UserPlus, Mail, Lock, X, CheckCircle2, Search, ChevronDown, Check } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { apiFetch } from '../lib/api';
 import { ApiError, messageFromStatus, humanizeError } from '../lib/errors';
+import { Submission } from '../types';
+
+interface Props {
+  data?: ReturnType<typeof import('../hooks/useSubmissions').useSubmissions>;
+}
 
 interface TeamMember {
   id: string;
@@ -12,6 +17,12 @@ interface TeamMember {
   avatarUrl: string;
   joinedAt: string;
   accountType: string;
+  source?: 'workspace' | 'assigned';
+}
+
+interface FilterOption {
+  id: string;
+  label: string;
 }
 
 const ROLE_OPTIONS = [
@@ -32,6 +43,8 @@ function getRoleBadge(role: string, accountType: string): { label: string; class
     return { label: 'Read & Write', className: 'bg-blue-500/20 text-blue-400 border-blue-500/30' };
   if (r.includes('read') || r === 'viewer' || r === 'readonly' || r === 'data_only_user')
     return { label: 'View Only', className: 'bg-gray-500/20 text-gray-400 border-gray-500/30' };
+  if (r === 'external_assignee')
+    return { label: 'Assigned User', className: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' };
   if (r === 'user' || r === 'member')
     return { label: 'Member', className: 'bg-purple-500/20 text-purple-400 border-purple-500/30' };
   return { label: role || accountType || 'Member', className: 'bg-gray-500/20 text-gray-400 border-gray-500/30' };
@@ -41,11 +54,98 @@ function getAccountTypeBadge(accountType: string): { label: string; className: s
   const t = (accountType || '').toLowerCase();
   if (t === 'admin') return { label: 'Admin', className: 'bg-gold/20 text-gold' };
   if (t === 'user') return { label: 'User', className: 'bg-blue-500/20 text-blue-400' };
+  if (t === 'assigned') return { label: 'Assigned', className: 'bg-cyan-500/20 text-cyan-400' };
   if (t === 'data_only_user') return { label: 'Data Only', className: 'bg-gray-500/20 text-gray-400' };
   return { label: accountType || '-', className: 'bg-gray-500/20 text-gray-400' };
 }
 
-export default function TeamManagement() {
+function collectAssignedUsers(submissions: Submission[], members: TeamMember[]): TeamMember[] {
+  const seen = new Set(members.map(m => m.email?.trim().toLowerCase()).filter(Boolean));
+  const assigned = new Map<string, TeamMember>();
+  const add = (email?: string, name?: string) => {
+    const e = email?.trim().toLowerCase();
+    if (!e || seen.has(e) || assigned.has(e)) return;
+    assigned.set(e, {
+      id: `assigned-${e}`,
+      name: name?.trim() || email!.split('@')[0],
+      email: email!.trim(),
+      role: 'external_assignee',
+      avatarUrl: '',
+      joinedAt: '',
+      accountType: 'assigned',
+      source: 'assigned',
+    });
+  };
+
+  submissions.forEach(sub => {
+    add(sub.pendingApproverEmail, sub.pendingApproverName);
+    sub.workflowTasks?.forEach(task => add(task.assigneeEmail, task.assigneeName));
+  });
+
+  return [...assigned.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function TeamFilterDropdown({ value, options, onChange }: { value: string; options: FilterOption[]; onChange: (value: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = options.find(o => o.id === value) || options[0];
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? options.filter(o => o.label.toLowerCase().includes(q)) : options;
+  }, [options, query]);
+
+  useEffect(() => {
+    const close = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative w-full sm:w-72">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="flex w-full items-center justify-between gap-2 rounded-xl border border-navy-light/30 bg-navy-dark px-3 py-2.5 text-left text-sm font-medium text-white hover:border-gold/50"
+      >
+        <span className="truncate">{selected?.label || 'All users'}</span>
+        <ChevronDown className={`h-4 w-4 flex-shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute left-0 z-50 mt-2 w-full overflow-hidden rounded-xl border border-navy-light/30 bg-navy-dark shadow-2xl">
+          <div className="relative border-b border-navy-light/20">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+            <input
+              autoFocus
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search filters..."
+              className="w-full bg-transparent px-9 py-2.5 text-sm text-white outline-none placeholder:text-gray-500"
+            />
+          </div>
+          <div className="max-h-64 overflow-y-auto py-1">
+            {filtered.map(option => (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => { onChange(option.id); setQuery(''); setOpen(false); }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-300 hover:bg-navy-light/30 hover:text-white"
+              >
+                <Check className={`h-4 w-4 flex-shrink-0 ${value === option.id ? 'opacity-100' : 'opacity-0'}`} />
+                <span className="truncate">{option.label}</span>
+              </button>
+            ))}
+            {filtered.length === 0 && <div className="px-3 py-4 text-sm text-gray-500">No filters found</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function TeamManagement({ data }: Props) {
   const { user, orgRole } = useAuth();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,8 +161,50 @@ export default function TeamManagement() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [createSuccess, setCreateSuccess] = useState<string | null>(null);
+  const [teamFilter, setTeamFilter] = useState('all');
+  const [teamSearch, setTeamSearch] = useState('');
 
   const canCreateUser = orgRole === 'super_admin' || orgRole === 'admin';
+  const assignedUsers = useMemo(
+    () => collectAssignedUsers(data?.allSubmissions || [], members),
+    [data?.allSubmissions, members],
+  );
+  const displayedMembers = useMemo(
+    () => [...members.map(m => ({ ...m, source: 'workspace' as const })), ...assignedUsers],
+    [members, assignedUsers],
+  );
+  const filterOptions = useMemo(() => {
+    const roles = new Map<string, string>();
+    displayedMembers.forEach(m => {
+      const label = getRoleBadge(m.role, m.accountType).label;
+      roles.set(`role:${label.toLowerCase()}`, label);
+    });
+    return [
+      { id: 'all', label: 'All users' },
+      { id: 'source:workspace', label: 'Member' },
+      { id: 'source:assigned', label: 'Assigned User' },
+      ...[...roles].map(([id, label]) => ({ id, label })).sort((a, b) => a.label.localeCompare(b.label)),
+    ];
+  }, [displayedMembers]);
+  const filteredMembers = useMemo(() => {
+    const q = teamSearch.trim().toLowerCase();
+    return displayedMembers.filter(m => {
+      const roleLabel = getRoleBadge(m.role, m.accountType).label;
+      const matchesFilter =
+        teamFilter === 'all' ||
+        (teamFilter === 'source:workspace' && m.source === 'workspace') ||
+        (teamFilter === 'source:assigned' && m.source === 'assigned') ||
+        (teamFilter.startsWith('role:') && teamFilter === `role:${roleLabel.toLowerCase()}`);
+      if (!matchesFilter) return false;
+      if (!q) return true;
+      return (
+        m.name?.toLowerCase().includes(q) ||
+        m.email?.toLowerCase().includes(q) ||
+        roleLabel.toLowerCase().includes(q) ||
+        getAccountTypeBadge(m.accountType).label.toLowerCase().includes(q)
+      );
+    });
+  }, [displayedMembers, teamFilter, teamSearch]);
 
   const loadMembers = async () => {
     setLoading(true);
@@ -120,16 +262,16 @@ export default function TeamManagement() {
   }, []);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="app-page space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-3">
             <Users className="w-7 h-7 text-gold" /> Team Management
-            {!loading && members.length > 0 && (
-              <span className="text-base font-normal text-gray-400">({members.length} members)</span>
+            {!loading && filteredMembers.length > 0 && (
+              <span className="text-base font-normal text-gray-400">({filteredMembers.length} users)</span>
             )}
           </h1>
-          <p className="text-gray-400 mt-1">Workspace team members and their roles</p>
+          <p className="text-gray-400 mt-1">Workspace members plus users assigned to workflow tasks or forms</p>
         </div>
         <div className="flex items-center gap-3">
           {false && canCreateUser && (
@@ -181,7 +323,7 @@ export default function TeamManagement() {
           )}
 
           <form onSubmit={handleCreateUser} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="responsive-panel-grid">
               <div>
                 <label className="block text-sm text-gray-400 mb-1">Email *</label>
                 <div className="relative">
@@ -234,7 +376,7 @@ export default function TeamManagement() {
             </div>
             <div>
               <label className="block text-sm text-gray-400 mb-2">Role *</label>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="responsive-panel-grid">
                 {ROLE_OPTIONS.map(opt => (
                   <button
                     key={opt.value}
@@ -281,13 +423,27 @@ export default function TeamManagement() {
         </div>
       )}
 
-      <div className="glass-card overflow-hidden">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <TeamFilterDropdown value={teamFilter} options={filterOptions} onChange={setTeamFilter} />
+        <div className="relative w-full sm:max-w-md">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+          <input
+            type="text"
+            value={teamSearch}
+            onChange={e => setTeamSearch(e.target.value)}
+            placeholder="Search name, email, role"
+            className="w-full rounded-xl border border-navy-light/30 bg-navy-dark py-2.5 pl-9 pr-3 text-sm text-white placeholder:text-gray-500 focus:border-gold/50 focus:outline-none"
+          />
+        </div>
+      </div>
+
+      <div className="glass-card responsive-table">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-8 h-8 text-gold animate-spin" />
           </div>
         ) : (
-          <table className="w-full">
+          <table className="w-full min-w-[820px]">
             <thead>
               <tr className="border-b border-navy-light/20">
                 <th className="text-left px-6 py-4 text-sm font-medium text-gray-400">Member</th>
@@ -298,7 +454,7 @@ export default function TeamManagement() {
               </tr>
             </thead>
             <tbody>
-              {members.map((m, idx) => {
+              {filteredMembers.map((m, idx) => {
                 const badge = getRoleBadge(m.role, m.accountType);
                 const acctBadge = getAccountTypeBadge(m.accountType);
                 return (
@@ -328,10 +484,10 @@ export default function TeamManagement() {
                   </tr>
                 );
               })}
-              {members.length === 0 && !error && (
+              {filteredMembers.length === 0 && !error && (
                 <tr>
                   <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
-                    No team members found in the JotForm workspace
+                    No users match the current filter
                   </td>
                 </tr>
               )}

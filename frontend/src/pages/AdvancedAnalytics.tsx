@@ -154,7 +154,7 @@ export default function AdvancedAnalytics({ data }: Props) {
   }, [drillDown, allSubmissions]);
 
   return (
-    <div className="space-y-6">
+    <div className="app-page space-y-6">
       {/* Tabs */}
       <div className="flex flex-wrap gap-2">
         {tabs.map(tab => (
@@ -195,7 +195,7 @@ export default function AdvancedAnalytics({ data }: Props) {
 
       {/* Department Scorecards */}
       {activeTab === 'scorecards' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="responsive-card-grid">
           {scorecards.map((dept, i) => (
             <motion.div
               key={dept.department}
@@ -261,7 +261,7 @@ export default function AdvancedAnalytics({ data }: Props) {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.03 }}
                 onClick={() => setDrillDown({ type: 'approver', value: approver.name })}
-                className="flex items-center gap-4 p-3 rounded-xl hover:bg-navy-light/20 cursor-pointer transition-colors"
+                className="flex flex-col gap-3 rounded-xl p-3 hover:bg-navy-light/20 cursor-pointer transition-colors sm:flex-row sm:items-center sm:gap-4"
               >
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
                   i === 0 ? 'bg-gold/20 text-gold' : i === 1 ? 'bg-gray-300/20 text-gray-300' : i === 2 ? 'bg-amber-700/20 text-amber-600' : 'bg-navy-light/30 text-gray-400'
@@ -277,8 +277,8 @@ export default function AdvancedAnalytics({ data }: Props) {
                     {approver.pending > 0 && <><span>•</span><span className="text-amber-400">{approver.pending} pending</span></>}
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-32 h-2 rounded-full bg-navy-light/30 overflow-hidden">
+                <div className="flex w-full items-center gap-3 sm:w-auto">
+                  <div className="h-2 flex-1 rounded-full bg-navy-light/30 overflow-hidden sm:w-32 sm:flex-none">
                     <motion.div
                       initial={{ width: 0 }}
                       animate={{ width: `${Math.min(100, (approver.approved / Math.max(1, approverStats[0]?.approved || 1)) * 100)}%` }}
@@ -297,7 +297,7 @@ export default function AdvancedAnalytics({ data }: Props) {
       {/* Predictive Analytics */}
       {activeTab === 'predictive' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="responsive-card-grid">
             {[
               { label: 'Avg Completion Time', value: `${predictions.avgCompletionDays}d`, icon: Clock, color: 'text-blue-400' },
               { label: 'Daily Throughput', value: `${predictions.dailyRate}/day`, icon: Zap, color: 'text-emerald-400' },
@@ -351,7 +351,7 @@ export default function AdvancedAnalytics({ data }: Props) {
       {activeTab === 'heatmap' && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card p-6">
           <h3 className="text-lg font-bold text-white mb-4">Submission Volume — Past Year</h3>
-          <div className="overflow-x-auto">
+          <div className="responsive-table">
             <div className="flex gap-0.5" style={{ minWidth: '800px' }}>
               {calendarData.map((week, wi) => (
                 <div key={wi} className="flex flex-col gap-0.5">
@@ -409,8 +409,8 @@ export default function AdvancedAnalytics({ data }: Props) {
             </motion.div>
           </div>
 
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card overflow-hidden">
-            <table className="w-full">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card responsive-table">
+            <table className="w-full min-w-[720px]">
               <thead>
                 <tr className="border-b border-navy-light/20">
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">Form</th>
@@ -447,7 +447,7 @@ export default function AdvancedAnalytics({ data }: Props) {
 
       {/* Time Comparison */}
       {activeTab === 'timeCompare' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="responsive-card-grid">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6">
             <h3 className="text-lg font-bold text-white mb-4">This Week vs Last Week</h3>
             <div className="space-y-4">

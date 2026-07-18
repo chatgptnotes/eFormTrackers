@@ -10,7 +10,7 @@ export default function SubmitRequest({ activeForms }: Props) {
   const forms = activeForms || [];
 
   return (
-    <div className="max-w-3xl mx-auto">
+    <div className="app-page max-w-3xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-white mb-1">Submit a New Request</h1>
         <p className="text-gray-400 text-sm">Choose a form below. It will open in JotForm where you can fill and submit your request. Once submitted, it will appear in the approvers' dashboard automatically.</p>
@@ -29,7 +29,7 @@ export default function SubmitRequest({ activeForms }: Props) {
                 key={form.id}
                 className={`glass-card p-6 border ${isGold ? 'border-gold/20' : 'border-blue-500/20'} rounded-2xl`}
               >
-                <div className="flex items-start gap-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
                   <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${isGold ? 'bg-gold/20' : 'bg-blue-500/20'}`}>
                     <FileText className={`w-6 h-6 ${isGold ? 'text-gold' : 'text-blue-400'}`} />
                   </div>

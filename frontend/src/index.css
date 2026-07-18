@@ -35,9 +35,20 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
   body {
     @apply bg-navy-dark text-white font-sans antialiased;
     font-family: 'Plus Jakarta Sans', Inter, system-ui, sans-serif;
+    overflow-x: hidden;
+  }
+
+  #root {
+    min-height: 100dvh;
   }
 
   /* ── Light mode: body ── */
@@ -73,6 +84,38 @@
 
 /* ── Components ───────────────────────────────────────────────────────────── */
 @layer components {
+  .app-page {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    min-height: 100dvh;
+    overflow-x: hidden;
+  }
+
+  @supports not (min-height: 100dvh) {
+    .app-page {
+      min-height: 100vh;
+    }
+  }
+
+  .responsive-table {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .responsive-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+    gap: 1rem;
+  }
+
+  .responsive-panel-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+    gap: 1rem;
+  }
 
   /* ─ Glass card (dark default) ─ */
   .glass-card {

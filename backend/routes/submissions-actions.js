@@ -5,7 +5,7 @@ const { readKeyType } = require('../lib/key-type');
 const { validate } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { insertNotification } = require('../lib/notifications');
-const { extractTask } = require('../lib/workflow-task');
+const { extractTask, deriveWorkflowStatus } = require('../lib/workflow-task');
 const {
   workflowActionBodySchema,
   deleteSubmissionQuerySchema,
@@ -21,27 +21,30 @@ router.use(requireAuth);
 // ── GET /api/workflow-tasks?submissionId=xxx&workflowInstanceId=yyy ──
 router.get('/workflow-tasks', async (req, res, next) => {
   try {
-    // Use 'default' keyType so teamID is appended — same as the poller.
-    // The request's x-jotform-key-type header is for UI account switching,
-    // not for internal workflow API calls.
-    const keyType = 'default';
-    if (!resolveApiKey(keyType)) return res.status(500).json({ error: `JotForm API key for "${keyType}" not set` });
-
     const submissionId = req.query.submissionId;
     if (!submissionId) return res.status(400).json({ error: 'submissionId required' });
 
     let workflowInstanceID = req.query.workflowInstanceId;
+    let keyType = readKeyType(req);
 
     if (!workflowInstanceID) {
       const { rows: wRows } = await pool.query(
-        `SELECT COALESCE(raw_data->>'workflowInstanceID', raw_data->>'workflow_instance_id') AS wid
+        `SELECT COALESCE(raw_data->>'workflowInstanceID', raw_data->>'workflow_instance_id') AS wid,
+                profile_id
          FROM jf_submissions WHERE jotform_submission_id = $1`,
         [submissionId]
       );
       workflowInstanceID = wRows[0]?.wid || null;
+      keyType = wRows[0]?.profile_id || keyType;
     }
+    if (!resolveApiKey(keyType)) return res.status(500).json({ error: `JotForm API key for "${keyType}" not set` });
 
-    if (!workflowInstanceID) {
+    const taskData = await jotformFetch(`workflow/submission/${submissionId}/tasks`, { keyType });
+    let rawTaskList = Array.isArray(taskData?.content) ? taskData.content
+      : Array.isArray(taskData?.content?.taskList) ? taskData.content.taskList
+      : [];
+
+    if (rawTaskList.length === 0 && !workflowInstanceID) {
       try {
         const subData = await jotformFetch(`submission/${submissionId}`, {
           params: { addWorkflowStatus: '1' },
@@ -54,10 +57,10 @@ router.get('/workflow-tasks', async (req, res, next) => {
       }
     }
 
-    if (!workflowInstanceID) return res.json({ tasks: [] });
-
-    const instData = await jotformFetch(`workflow/instance/${workflowInstanceID}`, { keyType });
-    const rawTaskList = instData?.content?.taskList || instData?.taskList || [];
+    if (rawTaskList.length === 0 && workflowInstanceID) {
+      const instData = await jotformFetch(`workflow/instance/${workflowInstanceID}`, { keyType });
+      rawTaskList = instData?.content?.taskList || instData?.taskList || [];
+    }
 
     const filteredTasks = rawTaskList.filter((t) => {
       const { name, status, assigneeEmail } = extractTask(t);
@@ -202,6 +205,50 @@ router.post('/workflow-action', validate(workflowActionBodySchema), async (req, 
       throw new Error(`Workflow task complete failed: ${completeRes.status} — ${errText}`);
     }
     const result = await completeRes.json();
+    const instanceCompleted = !!result?.content?.instanceCompleted;
+
+    let updatedTaskList = [];
+    try {
+      const updatedTaskData = await jotformFetch(`workflow/submission/${submissionId}/tasks`, { keyType });
+      updatedTaskList = Array.isArray(updatedTaskData?.content) ? updatedTaskData.content
+        : Array.isArray(updatedTaskData?.content?.taskList) ? updatedTaskData.content.taskList
+        : [];
+    } catch (e) {
+      req.log.warn({ err: e }, '[workflow-action] updated task fetch failed');
+    }
+    if (updatedTaskList.length === 0) {
+      try {
+        const updatedInstData = await jotformFetch(`workflow/instance/${instanceId}`, { keyType });
+        updatedTaskList = updatedInstData?.content?.taskList || [];
+      } catch (e) {
+        req.log.warn({ err: e }, '[workflow-action] updated instance fetch failed');
+      }
+    }
+
+    const updatedTasks = updatedTaskList.map((t, index) => ({ ...extractTask(t), level: index + 1 }));
+    const activeFlat = updatedTasks.find(t => t.status === 'ACTIVE' && t.assigneeEmail)
+      || updatedTasks.find(t => t.status === 'ACTIVE');
+    const nextStatus = instanceCompleted ? 'completed' : (deriveWorkflowStatus('', updatedTasks) || 'pending');
+    await pool.query(
+      `UPDATE jf_submissions
+          SET status = $2,
+              current_level = CASE WHEN $2 = 'pending' THEN COALESCE($3, current_level) ELSE current_level END,
+              pending_approver_name = CASE WHEN $2 = 'pending' THEN $4 ELSE NULL END,
+              pending_approver_email = CASE WHEN $2 = 'pending' THEN $5 ELSE NULL END,
+              workflow_tasks = CASE WHEN $6::jsonb = '[]'::jsonb THEN workflow_tasks ELSE $6::jsonb END,
+              jotform_status = CASE WHEN $2 = 'completed' THEN 'Completed' WHEN $2 = 'rejected' THEN 'Rejected' ELSE 'In Progress' END,
+              last_synced = now(),
+              needs_sync = false
+        WHERE jotform_submission_id = $1`,
+      [
+        submissionId,
+        nextStatus,
+        activeFlat?.level || null,
+        activeFlat?.assigneeName || '',
+        activeFlat?.assigneeEmail || '',
+        JSON.stringify(updatedTasks),
+      ],
+    );
 
     // Save to jf_approval_history
     try {
@@ -231,7 +278,7 @@ router.post('/workflow-action', validate(workflowActionBodySchema), async (req, 
       const submissionTitle = subRow?.title || subRow?.form_title || 'Request';
 
       if (action === 'approve' && submitterEmail) {
-        const isFinal = result?.content?.instanceCompleted || false;
+        const isFinal = instanceCompleted;
         await insertNotification({
           userEmail: submitterEmail,
           type: 'submission',
@@ -246,8 +293,6 @@ router.post('/workflow-action', validate(workflowActionBodySchema), async (req, 
         // Notify next approver if not final
         if (!isFinal) {
           try {
-            const updatedInstData = await jotformFetch(`workflow/instance/${instanceId}`, { keyType });
-            const updatedTaskList = updatedInstData?.content?.taskList || [];
             const nextTask = updatedTaskList.find(t => t.status === 'ACTIVE');
             if (nextTask) {
               const props = nextTask.properties || {};
@@ -288,7 +333,7 @@ router.post('/workflow-action', validate(workflowActionBodySchema), async (req, 
     emitToAll('submissions:updated', { source: 'action', submissionId, action });
     res.json({
       ok: true, action, taskId, taskName, taskType, outcomeID,
-      instanceCompleted: result?.content?.instanceCompleted || false,
+      instanceCompleted,
     });
   } catch (err) { next(err); }
 });

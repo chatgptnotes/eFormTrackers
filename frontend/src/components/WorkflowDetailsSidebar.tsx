@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, CheckCircle2, XCircle, Clock, Eye, Lock, ClipboardList, FileEdit, Loader2, Copy } from 'lucide-react';
+import { X, CheckCircle2, XCircle, Clock, Eye, Lock, ClipboardList, FileEdit, Loader2 } from 'lucide-react';
 import { Submission, WorkflowTask } from '../types';
 
 interface Props {
@@ -21,8 +21,6 @@ interface Props {
   onTaskReject?: (submissionId: string, reason: string) => void;
   onFetchSignature?: (submissionId: string, level: number, taskId: string) => void;
   onOpenTaskLink?: (task: WorkflowTask) => void;
-  onCompleteTask?: (task: WorkflowTask) => void;
-  onCopyTaskLink?: (task: WorkflowTask) => void;
   onSetTaskRejecting?: (taskId: string | null) => void;
   onSetTaskRejectReason?: (reason: string) => void;
   onSetTaskConfirmReject?: (taskId: string | null) => void;
@@ -72,18 +70,19 @@ export default function WorkflowDetailsSidebar({
   onTaskReject,
   onFetchSignature,
   onOpenTaskLink,
-  onCompleteTask,
-  onCopyTaskLink,
   onSetTaskRejecting,
   onSetTaskRejectReason,
   onSetTaskConfirmReject,
 }: Props) {
+  const overlayClass = isAbsolute ? '2xl:hidden' : '';
+  const panelClass = isAbsolute ? 'fixed 2xl:absolute h-dvh 2xl:h-full z-[70] 2xl:z-50' : 'fixed h-dvh z-[70]';
+
   return (
     <AnimatePresence>
       {isOpen && (
         <>
           {/* Overlay - Optional */}
-          {showOverlay && (
+          {(showOverlay || isAbsolute) && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -93,23 +92,23 @@ export default function WorkflowDetailsSidebar({
                 e.stopPropagation();
                 onClose();
               }}
-              className="fixed inset-0 bg-black/30 z-40 cursor-pointer pointer-events-auto"
+              className={`fixed inset-0 bg-black/30 z-[65] cursor-pointer pointer-events-auto ${overlayClass}`}
             />
           )}
 
           {/* Sidebar - Responsive width, absolute or fixed */}
           <motion.div
-            initial={{ x: 600 }}
+            initial={{ x: 480 }}
             animate={{ x: 0 }}
-            exit={{ x: 600 }}
+            exit={{ x: 480 }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className={`${isAbsolute ? 'absolute' : 'fixed'} right-0 top-0 h-full w-[600px] md:w-[600px] sm:w-full bg-white border-l border-slate-200 z-50 overflow-y-auto shadow-xl`}
+            className={`${panelClass} right-0 top-0 w-screen max-w-[480px] bg-white border-l border-slate-200 overflow-y-auto shadow-xl`}
           >
             {/* Header */}
-            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-5 flex items-center justify-between z-50">
-              <div>
-                <h2 className="text-lg font-bold text-slate-900">Workflow Details</h2>
-                <p className="text-xs text-slate-500 mt-1">{submission?.referenceNumber}</p>
+            <div className="sticky top-0 bg-white border-b border-slate-200 px-4 py-5 sm:px-6 flex items-center justify-between gap-3 z-50">
+              <div className="min-w-0">
+                <h2 className="truncate text-lg font-bold text-slate-900">Workflow Details</h2>
+                <p className="truncate text-xs text-slate-500 mt-1">{submission?.referenceNumber}</p>
               </div>
               <button
                 type="button"
@@ -122,16 +121,16 @@ export default function WorkflowDetailsSidebar({
                   e.stopPropagation();
                   onClose();
                 }}
-                className="relative p-1 hover:bg-slate-100 rounded transition-colors cursor-pointer pointer-events-auto"
+                className="relative flex-shrink-0 p-1 hover:bg-slate-100 rounded transition-colors cursor-pointer pointer-events-auto"
               >
                 <X className="w-5 h-5 text-slate-400 hover:text-slate-600" />
               </button>
             </div>
 
             {/* Content */}
-            <div className="p-6 space-y-6 bg-gradient-to-b from-slate-50 to-white">
+            <div className="p-4 sm:p-6 space-y-6 bg-gradient-to-b from-slate-50 to-white">
               {/* Pending With — surfaces current approver name + email at the
-                  top of the sidebar (most useful on Modern Dashboard where the
+                  top of the sidebar (most useful on Dashboard where the
                   user is looking at pending submissions). Hidden for completed/
                   rejected rows (no one is currently pending) and for rows from
                   data-collection forms with no approval workflow. */}
@@ -281,23 +280,16 @@ export default function WorkflowDetailsSidebar({
                                   <div className="flex items-center gap-1.5 flex-wrap">
                                     {emailMatch ? (
                                       <button
-                                        onClick={() => onCompleteTask?.(task)}
+                                        onClick={() => onOpenTaskLink?.(task)}
                                         className="text-[11px] px-3 py-1.5 rounded-md bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors cursor-pointer font-medium"
                                       >
-                                        <ClipboardList className="w-3.5 h-3.5 inline mr-1" /> Complete Task
+                                        <ClipboardList className="w-3.5 h-3.5 inline mr-1" /> Open Task
                                       </button>
                                     ) : (
                                       <span className="text-[11px] px-3 py-1.5 rounded-md bg-slate-100 text-slate-600 font-medium flex items-center gap-1">
                                         <Lock className="w-3.5 h-3.5" /> Not Assigned
                                       </span>
                                     )}
-                                    <button
-                                      onClick={() => onCopyTaskLink?.(task)}
-                                      title="Copy magic link for assignee"
-                                      className="text-[11px] px-2.5 py-1.5 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer font-medium flex items-center gap-1"
-                                    >
-                                      <Copy className="w-3 h-3" /> Copy Link
-                                    </button>
                                   </div>
                                 ) : isActive && task.type === 'workflow_assign_form' ? (
                                   emailMatch ? (

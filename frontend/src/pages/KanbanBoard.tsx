@@ -42,13 +42,13 @@ export default function KanbanBoard({ data }: Props) {
   }, [allSubmissions]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="app-page space-y-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-lg font-bold text-white">Kanban Board — Approval Pipeline</h2>
         <div className="text-xs text-gray-500">Showing top 30 per column • Drag to simulate movement</div>
       </div>
 
-      <div className="flex gap-4 overflow-x-auto pb-4" style={{ minHeight: 'calc(100vh - 200px)' }}>
+      <div className="responsive-table flex gap-4 pb-4" style={{ minHeight: 'calc(100dvh - 200px)' }}>
         {columns.map((col, ci) => (
           <motion.div
             key={col.key}

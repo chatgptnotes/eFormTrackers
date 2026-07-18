@@ -82,7 +82,7 @@ workflow task assignments.
 
 3.2 URL Pattern (Confirmed Across Multiple Forms, Assignees, and Dates)
 
-  https://eforms.mediaoffice.ae/{formID}/prefill/{prefillID}?
+  {JOTFORM_PREFILL_HOST}/{formID}/prefill/{prefillID}?
   workflowAssignFormTask=1&taskID={taskID}
 
 
@@ -509,7 +509,7 @@ From GET /workflow/submission/{id}/tasks :
 
 Constructed URL
 
- https://eforms.mediaoffice.ae/260825008947058/prefill/6a2d0a3c6636339464804f0fd288?
+ {JOTFORM_PREFILL_HOST}/{formID}/prefill/{prefillID}?
  workflowAssignFormTask=1&taskID=18271261631343598463
 
 
