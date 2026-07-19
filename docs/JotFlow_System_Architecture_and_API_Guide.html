@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>JotFlow System Architecture and API Guide</title>
+  <style>
+    @page { size: A4; margin: 16mm; }
+    body { font: 10.5pt Arial, sans-serif; color: #1d2939; line-height: 1.42; }
+    h1 { color: #0b4f6c; font-size: 25pt; margin: 0 0 5px; }
+    h2 { color: #0b4f6c; font-size: 16pt; border-bottom: 1px solid #b8d5e3; padding-bottom: 4px; margin-top: 25px; }
+    h3 { color: #155e75; font-size: 12pt; margin: 18px 0 5px; }
+    p, li { margin: 5px 0; }
+    .sub { color: #52616b; font-size: 12pt; margin-bottom: 18px; }
+    .notice { background: #fff7d6; border-left: 4px solid #d69e2e; padding: 10px; margin: 13px 0; }
+    .good { background: #eaf7ef; border-left: 4px solid #2f855a; padding: 10px; margin: 13px 0; }
+    .flow { background: #f1f7fa; border: 1px solid #c9e0ea; padding: 12px; font-family: Menlo, Consolas, monospace; white-space: pre-wrap; font-size: 9pt; }
+    code, pre { font-family: Menlo, Consolas, monospace; font-size: 8.7pt; }
+    pre { background: #172b36; color: #edf8fc; padding: 10px; white-space: pre-wrap; word-break: break-word; }
+    table { border-collapse: collapse; width: 100%; margin: 9px 0 15px; font-size: 9pt; }
+    th { background: #0b4f6c; color: white; text-align: left; }
+    th, td { border: 1px solid #cbd5dc; padding: 6px; vertical-align: top; }
+    tr:nth-child(even) { background: #f7fafb; }
+    .page-break { page-break-before: always; }
+    .small { font-size: 8.6pt; }
+  </style>
+</head>
+<body>
+  <h1>JotFlow</h1>
+  <div class="sub">System Architecture and API Guide &mdash; Junior Developer Edition<br>Prepared 19 July 2026</div>
+
+  <div class="notice"><strong>Security rule:</strong> Do not put a real JotForm API key in this document, source code, browser URL, screenshot, Git repository, or frontend application. Keep it only in <code>backend/.env</code>. If a key was shared publicly, rotate it in JotForm immediately.</div>
+
+  <h2>1. What this project does</h2>
+  <p>JotFlow is an internal dashboard for JotForm Enterprise workflows. It reads forms, submissions, workflow tasks, and assigned-form prefills from JotForm; stores a usable copy in PostgreSQL; and lets the correct signed-in user approve, reject, complete, or fill a task.</p>
+  <p><strong>Simple language:</strong> JotForm is the workflow engine. JotFlow is the secure control panel that makes the workflow easy to see and operate.</p>
+
+  <h2>2. Architecture at a glance</h2>
+  <div class="flow">Browser (React dashboard)
+        | session cookie; never receives JotForm API key
+        v
+Express backend (Node.js)
+  |-- validates user, role, request body and task ownership
+  |-- calls JotForm Enterprise API with APIKEY request header
+  |-- reads/writes PostgreSQL
+  |-- sends Socket.IO updates to the browser
+  v
+JotForm Enterprise API                    PostgreSQL
+forms / submissions / workflow / prefills    cached dashboard data, users,
+                                               workflow tasks, history, sessions</div>
+
+  <table>
+    <tr><th>Layer</th><th>Technology</th><th>Responsibility</th></tr>
+    <tr><td>Frontend</td><td>React, TypeScript, Vite, Tailwind, Socket.IO client</td><td>Shows the dashboard and sends requests to the backend.</td></tr>
+    <tr><td>Backend</td><td>Express, Zod, Socket.IO, Pino</td><td>Security boundary; integrates with JotForm and the database.</td></tr>
+    <tr><td>Database</td><td>PostgreSQL</td><td>Stores synchronized submissions, task lists, sessions, users, notifications and history.</td></tr>
+    <tr><td>Workflow provider</td><td>JotForm Enterprise</td><td>Owns forms, submissions, workflow instances, tasks, outcomes and prefill records.</td></tr>
+    <tr><td>Deployment</td><td>Windows IIS + ARR reverse proxy + Node backend</td><td>IIS exposes the site; Node normally listens on port 3001; PostgreSQL normally uses 5432.</td></tr>
+  </table>
+
+  <h2>3. The important IDs</h2>
+  <table>
+    <tr><th>ID</th><th>Meaning</th><th>Where it comes from</th><th>Example use</th></tr>
+    <tr><td>Parent form ID</td><td>The form a requester initially submits.</td><td><code>GET /user/forms</code>, then <code>content[].id</code>.</td><td>List its submissions.</td></tr>
+    <tr><td>Submission ID</td><td>One request submitted to a parent form.</td><td><code>GET /form/{formId}/submissions</code>, then <code>content[].id</code>.</td><td>Find its workflow tasks.</td></tr>
+    <tr><td>Workflow instance ID</td><td>One running copy of the workflow for a submission.</td><td><code>GET /submission/{submissionId}?addWorkflowStatus=1</code>, then <code>content.workflowInstanceID</code>.</td><td>Inspect the full workflow task list.</td></tr>
+    <tr><td>Task ID</td><td>One action assigned to a person.</td><td><code>GET /workflow/submission/{submissionId}/tasks</code> or instance task list, then <code>task.id</code>.</td><td>Build assigned-form link or complete the task.</td></tr>
+    <tr><td>Assigned task form ID</td><td>The child form used by an <code>workflow_assign_form</code> step.</td><td>Workflow task: <code>element.internalFormID</code>.</td><td>Read the prefill records.</td></tr>
+    <tr><td>Prefill URL ID</td><td>The per-submission token used in the child-form URL.</td><td><code>GET /form/{assignedFormId}/prefills</code>, nested <code>urls[].id</code>.</td><td>Build the form-fill link.</td></tr>
+  </table>
+
+  <div class="good"><strong>The starting point:</strong> The first API call in a full project sync is <code>GET /user/forms</code>. It returns form IDs. From a form ID, JotFlow obtains submissions. From a submission, it obtains tasks. Do not start by guessing a workflow ID.</div>
+
+  <h2>4. Base URL and authentication</h2>
+  <p>Configured API base URL for this deployment:</p>
+  <pre>https://eforms.mediaoffice.ae/API</pre>
+  <p>Configured browser/form host:</p>
+  <pre>https://eforms.mediaoffice.ae</pre>
+  <p>Every direct JotForm API request in Postman uses this header:</p>
+  <pre>APIKEY: &lt;PUT_YOUR_JOTFORM_API_KEY_HERE&gt;</pre>
+  <p>For the configured team-scoped user profile, use <code>teamID</code> as a query parameter where shown below. The backend adds it automatically. Some endpoints also accept the following header in the current integration:</p>
+  <pre>jf-team-id: 260541093809054</pre>
+  <div class="notice"><strong>Never add <code>APIKEY</code> to a browser task URL.</strong> API keys authorize server-to-server API calls. A task recipient URL has a different authorization model: a prefill ID for assigned forms, or an issued access/share token for approval/task links.</div>
+
+  <h2 class="page-break">5. Full discovery flow: from zero to a task URL</h2>
+  <h3>Step 1 &mdash; List all forms (first call)</h3>
+  <pre>GET https://eforms.mediaoffice.ae/API/user/forms?limit=1000&amp;teamID=260541093809054
+APIKEY: &lt;YOUR_API_KEY&gt;</pre>
+  <p>Find the parent workflow form. Save its <code>content[].id</code> as <code>PARENT_FORM_ID</code>. In an enterprise-scoped JotForm API profile, the equivalent path may be <code>/API/enterprise/forms</code>; this project automatically chooses the correct scope from its profile configuration.</p>
+
+  <h3>Step 2 &mdash; List submissions for the parent form</h3>
+  <pre>GET https://eforms.mediaoffice.ae/API/form/{PARENT_FORM_ID}/submissions?limit=1000&amp;offset=0&amp;orderby=created_at&amp;direction=DESC&amp;addWorkflowStatus=1
+APIKEY: &lt;YOUR_API_KEY&gt;</pre>
+  <p>Each <code>content[].id</code> is a <code>SUBMISSION_ID</code>. The descending order requests newest first. Do not assume <code>content[0]</code> is the right request without confirming the requester, date, and form answers.</p>
+
+  <h3>Step 3 &mdash; Get task list for one submission</h3>
+  <pre>GET https://eforms.mediaoffice.ae/API/workflow/submission/{SUBMISSION_ID}/tasks
+APIKEY: &lt;YOUR_API_KEY&gt;</pre>
+  <p>This is the preferred task lookup. Find a task where <code>status</code> is <code>ACTIVE</code> and its assignee email matches the person who should act. The task ID is <code>id</code>.</p>
+  <pre>{
+  "id": "TASK_ID_TO_USE",
+  "status": "ACTIVE",
+  "element": { "type": "workflow_assign_form", "internalFormID": "CHILD_FORM_ID" },
+  "properties": { "assigneeEmail": "person@example.com" }
+}</pre>
+
+  <h3>Optional Step 3b &mdash; Get workflow instance detail</h3>
+  <p>Use this when you need the full instance, resource shares, or the submission endpoint did not return tasks.</p>
+  <pre>GET https://eforms.mediaoffice.ae/API/submission/{SUBMISSION_ID}?addWorkflowStatus=1
+APIKEY: &lt;YOUR_API_KEY&gt;
+
+Then read content.workflowInstanceID, and call:
+GET https://eforms.mediaoffice.ae/API/workflow/instance/{WORKFLOW_INSTANCE_ID}</pre>
+
+  <h3>Step 4 &mdash; Get prefill records for an assigned-form task</h3>
+  <pre>GET https://eforms.mediaoffice.ae/API/form/{CHILD_FORM_ID}/prefills?limit=1000&amp;offset=0
+APIKEY: &lt;YOUR_API_KEY&gt;
+jf-team-id: 260541093809054</pre>
+  <p>The response contains prefill templates in <code>content[]</code>, with per-submission records nested in <code>content[].urls[]</code>. Select the record where:</p>
+  <pre>urls[].settings.id === SUBMISSION_ID</pre>
+  <p>Use its nested <code>urls[].id</code>, not the outer <code>content[].id</code> and not <code>urls[].prefill_id</code>.</p>
+
+  <h3>Step 5 &mdash; Build the assigned-form browser URL</h3>
+  <pre>https://eforms.mediaoffice.ae/{CHILD_FORM_ID}/prefill/{PREFILL_URL_ID}?workflowAssignFormTask=1&amp;taskID={TASK_ID}</pre>
+  <p>Example structure only:</p>
+  <pre>https://eforms.mediaoffice.ae/260825008947058/prefill/6a5b77c3663633bf7e959cde9126?workflowAssignFormTask=1&amp;taskID=TASK_ID</pre>
+  <p>This is a <strong>browser URL</strong>, not a Postman API endpoint. It is valid only for an active <code>workflow_assign_form</code> task and the matching parent submission.</p>
+
+  <h2>6. Task types and what URL can be created</h2>
+  <table>
+    <tr><th>Task type</th><th>What to open</th><th>Can it be built from IDs alone?</th></tr>
+    <tr><td><code>workflow_assign_form</code></td><td>Prefilled child form URL.</td><td>Yes, when the Prefills API provides a matching nested <code>urls[].id</code>.</td></tr>
+    <tr><td><code>workflow_approval</code></td><td>JotForm approval page.</td><td>No. It normally requires the access/share token JotForm issued. API key must not be put in the URL.</td></tr>
+    <tr><td><code>workflow_assign_task</code></td><td>JotForm task link.</td><td>Usually no. Use JotForm's returned access/share link or the app's email-link resolver.</td></tr>
+  </table>
+
+  <h2>7. Completing, approving, or rejecting a task</h2>
+  <p>The browser calls the app, not JotForm directly:</p>
+  <pre>POST /api/workflow-action
+Content-Type: application/json
+
+{
+  "submissionId": "SUBMISSION_ID",
+  "taskId": "TASK_ID",
+  "action": "approve",
+  "comment": "Optional comment",
+  "signature": "Optional signature value"
+}</pre>
+  <p>The backend verifies the user session, finds the active task assigned to that user, determines the JotForm outcome ID, then sends this protected server-to-server request:</p>
+  <pre>POST https://eforms.mediaoffice.ae/API/workflow/task/{TASK_ID}/complete
+APIKEY: &lt;SERVER_SIDE_API_KEY&gt;
+Content-Type: application/json
+
+{ "outcomeID": 1, "comment": "Optional comment", "signature": "Optional signature value" }</pre>
+  <p><strong>Do not let the frontend call this completion API with the API key.</strong> It would expose a powerful secret to every browser user.</p>
+
+  <h2 class="page-break">8. Application APIs used by the React dashboard</h2>
+  <table>
+    <tr><th>Method and route</th><th>Who can use it</th><th>Purpose</th></tr>
+    <tr><td><code>GET /api/health</code></td><td>Public</td><td>Basic liveness check.</td></tr>
+    <tr><td><code>GET /api/health/ready</code></td><td>Public</td><td>Checks PostgreSQL as well as the server.</td></tr>
+    <tr><td><code>GET /api/jotform?path=user/forms</code></td><td>Signed-in user</td><td>Safe backend proxy for a small allowlist of JotForm metadata routes.</td></tr>
+    <tr><td><code>GET /api/submissions</code></td><td>Signed-in user</td><td>Reads stored, permission-filtered dashboard submissions from PostgreSQL.</td></tr>
+    <tr><td><code>GET /api/workflow-tasks?submissionId=...</code></td><td>Signed-in user</td><td>Gets and flattens current workflow tasks for one submission.</td></tr>
+    <tr><td><code>GET /api/email-url?formId=...&amp;submissionId=...&amp;taskId=...</code></td><td>Signed-in user</td><td>Resolves a safe task/action link, including stored email/share links where available.</td></tr>
+    <tr><td><code>POST /api/workflow-action</code></td><td>Signed-in assigned user</td><td>Approve, reject, or complete the active task.</td></tr>
+    <tr><td><code>POST /api/admin/sync-all</code></td><td>Admin</td><td>Re-sync forms and submissions from JotForm.</td></tr>
+    <tr><td><code>GET /api/admin/sync-all-stream</code></td><td>Admin</td><td>Same sync with server-sent progress events.</td></tr>
+  </table>
+
+  <h2>9. Background synchronization and live updates</h2>
+  <ol>
+    <li>JotForm can send a webhook when a submission is created or changed.</li>
+    <li>The backend fetches the authoritative submission and workflow task state.</li>
+    <li>The poller also periodically lists forms and submissions, so the app can recover if a webhook is missed.</li>
+    <li>The backend saves normalized data to PostgreSQL.</li>
+    <li>The backend emits <code>submissions:updated</code> through Socket.IO.</li>
+    <li>The React dashboard reloads its database-backed view.</li>
+  </ol>
+  <p>For assigned-form tasks, JotForm may create the prefill record shortly after the task appears. The backend checks the Prefills API and marks the task <code>pending</code>, <code>ready</code>, or <code>not_required</code>. It does not open a normal bare child-form URL while a configured prefill is still pending.</p>
+
+  <h2>10. Postman checklist</h2>
+  <ol>
+    <li>Create a request with method <strong>GET</strong>.</li>
+    <li>Use the exact API URL from the relevant step.</li>
+    <li>Add <code>APIKEY</code> under Headers. Do not use Authorization Bearer unless JotForm explicitly requires it.</li>
+    <li>For team-scoped calls, add <code>teamID=260541093809054</code> to the query string. For the prefill endpoint, also use <code>jf-team-id</code> if your account requires it.</li>
+    <li>Do not test from a browser-only API client if it reports CORS/network errors; use Postman desktop, Hoppscotch Proxy/Agent, or curl. This is a browser restriction, not necessarily a bad URL.</li>
+    <li>Never paste a live key into a chat, screenshot, ticket, or shared collection.</li>
+  </ol>
+
+  <h2>11. Troubleshooting map</h2>
+  <table>
+    <tr><th>Symptom</th><th>Likely cause</th><th>Check first</th></tr>
+    <tr><td>401 or 403 from JotForm</td><td>Wrong/expired key, wrong team scope, or insufficient permission.</td><td>APIKEY header; profile scope; <code>teamID</code>.</td></tr>
+    <tr><td>Task list is empty</td><td>Wrong submission ID, workflow is not created yet, or endpoint shape differs.</td><td><code>/workflow/submission/{submissionId}/tasks</code>, then instance lookup fallback.</td></tr>
+    <tr><td>No matching prefill</td><td>Prefill is still being created or the wrong parent submission was used.</td><td>Match <code>urls[].settings.id</code> exactly to the parent submission ID; retry shortly.</td></tr>
+    <tr><td>Assigned-form URL opens wrong data</td><td>Used the outer prefill template ID instead of nested URL ID.</td><td>Use <code>urls[].id</code> only.</td></tr>
+    <tr><td>Approval link has access denied</td><td>Approval/task link needs JotForm-issued access token or share link.</td><td>Use <code>/api/email-url</code> or stored JotForm access link; do not append APIKEY.</td></tr>
+    <tr><td>Hoppscotch says network/CORS error</td><td>Browser cannot call the API cross-origin.</td><td>Use Postman desktop or Hoppscotch Proxy/Agent.</td></tr>
+  </table>
+
+  <h2>12. Key source files</h2>
+  <table class="small">
+    <tr><th>File</th><th>Why a junior should know it</th></tr>
+    <tr><td><code>backend/lib/jotform.js</code></td><td>One shared JotForm HTTP client; adds APIKEY header, profile scope, team ID and timeout.</td></tr>
+    <tr><td><code>backend/lib/profiles.js</code></td><td>Defines which JotForm host, API base URL, team and secret each profile uses.</td></tr>
+    <tr><td><code>backend/lib/prefill.js</code></td><td>Reads Prefills API, matches nested URL records to a submission, and builds assigned-form URLs.</td></tr>
+    <tr><td><code>backend/lib/workflow-task.js</code></td><td>Converts JotForm's nested task JSON into fields used by the frontend.</td></tr>
+    <tr><td><code>backend/routes/submissions-actions.js</code></td><td>Reads tasks and safely completes approve/reject actions.</td></tr>
+    <tr><td><code>backend/routes/admin-sync.js</code></td><td>Full data synchronization from forms to submissions to workflow tasks.</td></tr>
+    <tr><td><code>backend/routes/forms-workflow.js</code></td><td>Resolves browser-safe action and task links.</td></tr>
+    <tr><td><code>backend/app.js</code></td><td>Express middleware, security controls and all route mounting.</td></tr>
+    <tr><td><code>frontend/src/pages/ModernDashboard.tsx</code></td><td>Main personal action queue.</td></tr>
+  </table>
+
+  <h2>13. Final rule of thumb</h2>
+  <div class="good"><strong>Use IDs to discover data. Use the backend to protect secrets. Use issued task links to open tasks.</strong><br>
+  Form ID &rarr; Submission ID &rarr; Task ID &rarr; (for assigned forms) Prefill URL ID &rarr; Browser URL.</div>
+</body>
+</html>

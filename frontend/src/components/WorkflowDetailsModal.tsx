@@ -270,10 +270,10 @@ export default function WorkflowDetailsModal({
                           ) : isActive && task.type === 'workflow_assign_task' ? (
                             emailMatch ? (
                               <button
-                                onClick={() => onOpenTaskLink?.(task)}
+                                onClick={() => onTaskApprove?.(submission.id)}
                                 className="px-3.5 py-1.5 rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200 disabled:opacity-50 text-xs font-semibold flex items-center gap-1.5 border border-amber-200 transition-colors cursor-pointer"
                               >
-                                <ClipboardList className="w-3.5 h-3.5" /> Open Task
+                                <ClipboardList className="w-3.5 h-3.5" /> Mark Complete
                               </button>
                             ) : (
                               <span className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-semibold flex items-center gap-1.5 border border-slate-200">
@@ -346,8 +346,8 @@ export default function WorkflowDetailsModal({
                                     <FileEdit className="w-3 h-3" /> Complete Form
                                   </button>
                                 ) : task.type === 'workflow_assign_task' ? (
-                                  <button onClick={() => onOpenTaskLink?.(task)} className="text-xs text-gold hover:underline inline-flex items-center gap-1">
-                                    <ClipboardList className="w-3 h-3" /> Open Task
+                                  <button onClick={() => onTaskApprove?.(submission.id)} className="text-xs text-gold hover:underline inline-flex items-center gap-1">
+                                    <ClipboardList className="w-3 h-3" /> Mark Complete
                                   </button>
                                 ) : (
                                   <a href={task.accessLink} target="_blank" rel="noopener noreferrer" className="text-xs text-gold hover:underline inline-flex items-center gap-1">

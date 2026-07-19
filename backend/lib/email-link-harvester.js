@@ -9,7 +9,7 @@ const { upsertWorkspaceLinks } = require('./workspace-links');
 // the API key's OWN account — other assignees' links exist only in the emails
 // JotForm sends them. The enterprise email log retains ~6 days, so this
 // harvester runs after each poll cycle: it scans recent sent emails for tasks
-// whose stored accessLink is empty, extracts the share link, and persists it
+// whose stored accessLink is empty, extracts the task link, and persists it
 // into jf_submissions.workflow_tasks before the email expires from the log.
 
 const seenEmailIds = new Set(); // emailq ids already inspected this process
@@ -46,7 +46,8 @@ async function harvestFromInboxThread(submissionId, formId, tasksByAssignee, pro
       const c = emailData.content || emailData;
       const link = extractShareLink(String(c.body || ''));
       if (!link) continue;
-      if (String(task.type) === 'workflow_assign_form') continue;
+      const isAssignedForm = String(task.type) === 'workflow_assign_form';
+      if (isAssignedForm !== /\/prefill\//i.test(link)) continue;
       const normalized = normalizeTaskLink(link, task);
       const accessLink = normalized.normalizedUrl || link;
       const { rowCount } = await pool.query(
@@ -97,7 +98,10 @@ async function harvestEmailLinks(opts = {}) {
        AND EXISTS (
          SELECT 1 FROM jsonb_array_elements(workflow_tasks) t
          WHERE t->>'status' IN ('ACTIVE', 'PENDING')
-           AND COALESCE(t->>'accessLink', '') = ''
+           AND (
+             COALESCE(t->>'accessLink', '') = ''
+             OR (t->>'type' = 'workflow_assign_form' AND t->>'accessLink' LIKE '%/share/%')
+           )
        )`,
     [profileId]
   );
@@ -135,11 +139,12 @@ async function harvestEmailLinks(opts = {}) {
 
       const task = tasks.find(t =>
         ['ACTIVE', 'PENDING'].includes(String(t.status)) &&
-        !t.accessLink &&
+        (!t.accessLink || (String(t.type) === 'workflow_assign_form' && /\/share\//.test(String(t.accessLink)))) &&
         t.assigneeEmail && toAddr.includes(String(t.assigneeEmail).toLowerCase())
       );
       if (!task || !task.taskId) return;
-      if (String(task.type) === 'workflow_assign_form') return;
+      const isAssignedForm = String(task.type) === 'workflow_assign_form';
+      if (isAssignedForm !== /\/prefill\//i.test(link)) return;
       const normalized = normalizeTaskLink(link, task);
       const accessLink = normalized.normalizedUrl || link;
 
@@ -179,7 +184,9 @@ async function harvestEmailLinks(opts = {}) {
   // Secondary: inbox thread — catches external user emails not in enterprise/system-logs
   await pMapLimit(rows, 4, async (r) => {
     const emptyTasks = (r.workflow_tasks || []).filter(
-      t => ['ACTIVE', 'PENDING'].includes(String(t.status)) && !t.accessLink && t.assigneeEmail
+      t => ['ACTIVE', 'PENDING'].includes(String(t.status)) &&
+        (!t.accessLink || (String(t.type) === 'workflow_assign_form' && /\/share\//.test(String(t.accessLink)))) &&
+        t.assigneeEmail
     );
     if (!emptyTasks.length) return;
     const byEmail = new Map(emptyTasks.map(t => [String(t.assigneeEmail).toLowerCase(), t]));

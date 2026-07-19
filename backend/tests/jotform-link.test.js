@@ -195,10 +195,13 @@ async function t(name, fn) {
     );
   });
 
-  await t('does not fall back to a bare URL for assigned forms', () => {
+  await t('constructs a normal assigned-form URL only when JSON says prefill is not required', () => {
     assert.strictEqual(buildWorkflowTaskUrl({
       type: 'workflow_assign_form', taskId: 'T1', internalFormID: 'F1', accessLink: '',
     }), '');
+    assert.strictEqual(buildWorkflowTaskUrl({
+      type: 'workflow_assign_form', taskId: 'T1', internalFormID: 'F1', accessLink: '', prefillState: 'not_required',
+    }), 'https://workspace.example.test/F1?workflowAssignFormTask=1&taskID=T1');
   });
 
   console.log(`\n=== ${pass} passed, ${fail} failed ===\n`);

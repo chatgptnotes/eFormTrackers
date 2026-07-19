@@ -280,10 +280,10 @@ export default function WorkflowDetailsSidebar({
                                   <div className="flex items-center gap-1.5 flex-wrap">
                                     {emailMatch ? (
                                       <button
-                                        onClick={() => onOpenTaskLink?.(task)}
+                                        onClick={() => onTaskApprove?.(submission?.id || '')}
                                         className="text-[11px] px-3 py-1.5 rounded-md bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors cursor-pointer font-medium"
                                       >
-                                        <ClipboardList className="w-3.5 h-3.5 inline mr-1" /> Open Task
+                                        <ClipboardList className="w-3.5 h-3.5 inline mr-1" /> Mark Complete
                                       </button>
                                     ) : (
                                       <span className="text-[11px] px-3 py-1.5 rounded-md bg-slate-100 text-slate-600 font-medium flex items-center gap-1">

@@ -2,7 +2,7 @@ const { Router } = require('express');
 const env = require('../config/env');
 const pool = require('../db/pool');
 const { jotformFetch, resolveApiKey } = require('../lib/jotform');
-const { resolvePrefillUrl } = require('../lib/prefill');
+const { isPrefillConfigured, resolvePrefillUrl } = require('../lib/prefill');
 const { readKeyType } = require('../lib/key-type');
 const { storageProfileId } = require('../lib/profiles');
 const { validate } = require('../middleware/validate');
@@ -157,9 +157,9 @@ async function resolveSentShareLink({ submissionId, userEmail, profileId, taskTo
   return taskToken ? buildShareUrl(taskToken) : '';
 }
 
-async function resolveEmailTokenLink(submissionId, formId, userEmail, profileId, requestedTaskId = '') {
+async function resolveEmailTokenLink(submissionId, formId, userEmail, profileId, requestedTaskId = '', requirePrefill = false) {
   const archivedLink = await resolveArchivedEmailTokenLink(submissionId, userEmail, profileId, requestedTaskId);
-  if (archivedLink) return archivedLink;
+  if (archivedLink && (!requirePrefill || /\/prefill\//i.test(archivedLink))) return archivedLink;
 
   const logsData = await jotformFetch('enterprise/system-logs', {
     params: { 'event[0]': 'email', limit: 50, sortWay: 'DESC' },
@@ -198,6 +198,7 @@ async function resolveEmailTokenLink(submissionId, formId, userEmail, profileId,
     const preferred = links.find(l => {
       const u = l.url.toLowerCase();
       const t = l.text.toLowerCase();
+      if (requirePrefill) return u.includes('/prefill/');
       return u.includes('/share/') || u.includes('/approval-form/')
         || t.includes('fill') || t.includes('complete') || t.includes('open task')
         || t.includes('view task') || t.includes('start');
@@ -516,14 +517,14 @@ router.get('/email-url', validate(formAndSubmissionQuerySchema, 'query'), async 
     // Shared email-token lookup (cached). The /share/{token} URL for any user
     // other than the API key's own account exists ONLY in the email JotForm
     // sent them — the workflow API returns an empty accessLink for everyone else.
-    const lookupEmailLink = async () => {
+    const lookupEmailLink = async (requirePrefill = false) => {
       const userEmail = (req.session.email || '').toLowerCase();
       if (!userEmail) return null;
-      const cacheKey = `${profileId}:${userEmail}:${submissionId}:${requestedTaskId || 'active'}`;
+      const cacheKey = `${profileId}:${userEmail}:${submissionId}:${requestedTaskId || 'active'}:${requirePrefill ? 'prefill' : 'any'}`;
       const cached = emailTokenCache.get(cacheKey);
       if (cached && Date.now() - cached.at < EMAIL_TOKEN_TTL) return cached.link || null;
       try {
-        const link = await resolveEmailTokenLink(submissionId, formId, userEmail, profileId, requestedTaskId);
+        const link = await resolveEmailTokenLink(submissionId, formId, userEmail, profileId, requestedTaskId, requirePrefill);
         emailTokenCache.set(cacheKey, { link, at: Date.now() });
         return link;
       } catch (emailErr) {
@@ -581,6 +582,21 @@ router.get('/email-url', validate(formAndSubmissionQuerySchema, 'query'), async 
       };
     };
 
+    const persistPrefillUrl = (task, url) => pool.query(
+      `UPDATE jf_submissions
+          SET workflow_tasks = (
+            SELECT jsonb_agg(CASE WHEN t->>'taskId' = $3
+              THEN jsonb_set(t, '{accessLink}', to_jsonb($4::text), true)
+              ELSE t END)
+            FROM jsonb_array_elements(
+              CASE WHEN jsonb_typeof(workflow_tasks) = 'array'
+                THEN workflow_tasks ELSE '[]'::jsonb END
+            ) t
+          ), last_synced = now()
+        WHERE jotform_submission_id = $1 AND form_id = $2`,
+      [submissionId, formId, task.taskId || '', url],
+    ).catch(err => req.log?.warn({ err, submissionId, taskId: task.taskId }, '[email-url] prefill URL persistence failed'));
+
     const resolveTaskResponse = async (task, sourcePrefix = 'db') => {
       const effectiveTask = await hydrateTaskFromLive(task);
       if (effectiveTask.type === 'workflow_assign_task') {
@@ -613,10 +629,8 @@ router.get('/email-url', validate(formAndSubmissionQuerySchema, 'query'), async 
           effectiveTask,
         );
       }
-      // For assign-form tasks the /prefill/ link is authoritative — resolve it
-      // BEFORE honouring any stored accessLink, because a harvested /share/ link
-      // opens the form without pre-filled data. Prefill first, stored link
-      // (only if it's already a prefill URL) next, bare form URL last.
+      // For assigned forms, only a /prefill/ link is safe to open: it carries
+      // the parent submission's data and prevents a second, unlinked form.
       if (effectiveTask.type === 'workflow_assign_form' && effectiveTask.internalFormID) {
         const taskId = effectiveTask.taskId || '';
         const prefillUrl = await resolvePrefillUrl({
@@ -624,10 +638,22 @@ router.get('/email-url', validate(formAndSubmissionQuerySchema, 'query'), async 
           assigneeEmail: effectiveTask.assigneeEmail, profileId,
         });
         if (prefillUrl) {
+          await persistPrefillUrl(effectiveTask, prefillUrl);
+          effectiveTask.accessLink = prefillUrl;
           return linkResponse({ url: prefillUrl, source: `${sourcePrefix}-prefill-url`, formId, submissionId, task: effectiveTask });
+        }
+        const emailPrefillUrl = await lookupEmailLink(true);
+        if (emailPrefillUrl && /\/prefill\//i.test(emailPrefillUrl)) {
+          await persistPrefillUrl(effectiveTask, emailPrefillUrl);
+          effectiveTask.accessLink = emailPrefillUrl;
+          return linkResponse({ url: emailPrefillUrl, source: `${sourcePrefix}-email-prefill-url`, formId, submissionId, task: effectiveTask });
         }
         if (String(effectiveTask.accessLink || '').includes('/prefill/')) {
           return linkResponse({ url: effectiveTask.accessLink, source: `${sourcePrefix}-access-link`, formId, submissionId, task: effectiveTask });
+        }
+        if (await isPrefillConfigured(effectiveTask.internalFormID, profileId) === false) {
+          const url = buildWorkflowTaskUrl({ ...effectiveTask, prefillState: 'not_required' }, formId);
+          return linkResponse({ url, source: `${sourcePrefix}-form-url`, formId, submissionId, task: effectiveTask });
         }
         return noLinkResponse(
           `${sourcePrefix}-prefill-missing`,

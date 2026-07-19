@@ -111,6 +111,9 @@ function buildWorkflowTaskUrl(task = {}, formId = '') {
     if (parsed.prefillId) {
       return `${env.JOTFORM_PREFILL_HOST}/${taskFormId}/prefill/${parsed.prefillId}?workflowAssignFormTask=1&taskID=${taskId}`;
     }
+    if (task.prefillState === 'not_required') {
+      return `${env.JOTFORM_HOST}/${taskFormId}?workflowAssignFormTask=1&taskID=${taskId}`;
+    }
     return '';
   }
   if (type === 'workflow_approval') {

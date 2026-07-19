@@ -120,6 +120,10 @@ export default function PendingWithPage({ data }: Props) {
   // Open tasks that have a real task form, or assigned forms with a prefill URL.
   const openTaskLink = useCallback(async (task: WorkflowTask) => {
     const sub = sidebarSubmission;
+    if (task.type === 'workflow_assign_task') {
+      if (sub) setModalSubmission(sub);
+      return;
+    }
     let url = '';
     let reason = '';
     if (sub) {

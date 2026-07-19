@@ -287,6 +287,11 @@ export default function DirectorDashboard({ data }: Props) {
       data.allSubmissions.find(s => s.id === expandedRowId) ||
       null;
 
+    if (task.type === 'workflow_assign_task') {
+      if (sub) openModal(sub);
+      return;
+    }
+
     if (sub) {
       try {
         const taskParam = task.taskId ? `&taskId=${encodeURIComponent(task.taskId)}` : '';
@@ -1030,7 +1035,7 @@ export default function DirectorDashboard({ data }: Props) {
                               onClick={() => openTaskUrl(sub)}
                               className="px-2.5 py-1.5 rounded-lg bg-gold/20 text-gold hover:bg-gold/35 disabled:opacity-50 text-xs font-medium flex items-center gap-1 border border-gold/40 transition-colors shadow-sm"
                             >
-                              <ClipboardList className="w-3.5 h-3.5" /> Open Task
+                              <ClipboardList className="w-3.5 h-3.5" /> Mark Complete
                             </button>
                           ) : (
                             <span className="px-2.5 py-1.5 rounded-lg bg-gray-500/10 text-gray-600 text-xs font-medium flex items-center gap-1 border border-gray-500/10" title="This task is assigned to someone else">
@@ -1276,7 +1281,7 @@ export default function DirectorDashboard({ data }: Props) {
                                               onClick={() => openTaskLink(task, sub)}
                                               className="px-2.5 py-1 rounded-md bg-gold/20 text-gold hover:bg-gold/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1 transition-colors"
                                             >
-                                              <ClipboardList className="w-3 h-3" /> Open Task
+                                              <ClipboardList className="w-3 h-3" /> Mark Complete
                                             </button>
                                           ) : (
                                             <span className="px-2 py-1 rounded-md bg-gray-500/10 text-gray-600 text-xs font-medium flex items-center gap-1 border border-gray-500/10" title="This step is assigned to someone else">
@@ -1394,7 +1399,7 @@ export default function DirectorDashboard({ data }: Props) {
                                                 </button>
                                               ) : task.type === 'workflow_assign_task' ? (
                                                 <button onClick={() => openTaskLink(task, sub)} className="text-xs text-gold hover:underline inline-flex items-center gap-1">
-                                                  <ClipboardList className="w-3 h-3" /> Open Task
+                                                  <ClipboardList className="w-3 h-3" /> Mark Complete
                                                 </button>
                                               ) : (
                                                 <span className="text-[10px] text-gray-500">—</span>
@@ -1544,7 +1549,7 @@ export default function DirectorDashboard({ data }: Props) {
                           onClick={() => openTaskUrl(sub)}
                           className="w-full px-2.5 py-1.5 rounded-lg bg-gold/20 text-gold hover:bg-gold/30 disabled:opacity-50 text-xs font-medium flex items-center justify-center gap-1 transition-colors"
                         >
-                          <ClipboardList className="w-3.5 h-3.5" /> Open Task
+                          <ClipboardList className="w-3.5 h-3.5" /> Mark Complete
                         </button>
                       ) : (
                         <span className="px-2.5 py-1.5 rounded-lg bg-gray-500/10 text-gray-600 text-xs font-medium flex items-center justify-center gap-1 border border-gray-500/10 w-full">

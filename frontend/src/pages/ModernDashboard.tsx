@@ -134,12 +134,21 @@ const SubmissionCard = memo(function SubmissionCard({ submission, idx, user, onV
   const status = getSubmissionStatus(submission);
   const sc = statusConfig[status];
   const StatusIcon = sc.icon;
+  const myAction = getMyActionType(submission, user?.email);
+  const myActiveFormTask = submission.workflowTasks?.find(t =>
+    String(t.status).toUpperCase() === 'ACTIVE'
+      && t.type === 'workflow_assign_form'
+      && t.assigneeEmail?.toLowerCase() === user?.email?.toLowerCase(),
+  );
+  const isPreparingPrefill = myAction === 'form'
+    && myActiveFormTask?.prefillState !== 'not_required'
+    && !getUsableTaskAccessLink(myActiveFormTask);
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
       transition={{ delay: idx * 0.05 }}
-      onClick={() => onOpenModal(submission)}
-      className={`group relative overflow-hidden rounded-2xl p-6 border-2 transition-all duration-300 cursor-pointer shadow-md hover:shadow-xl ${status === 'pending' ? 'border-cyan-400 hover:border-cyan-500' : status === 'approved' ? 'border-blue-400 hover:border-blue-500' : status === 'rejected' ? 'border-red-400 hover:border-red-500' : 'border-cyan-300 hover:border-cyan-400'}`}
+      onClick={() => !isPreparingPrefill && onOpenModal(submission)}
+      className={`group relative overflow-hidden rounded-2xl p-6 border-2 transition-all duration-300 ${isPreparingPrefill ? 'cursor-wait' : 'cursor-pointer hover:shadow-xl'} shadow-md ${status === 'pending' ? 'border-cyan-400 hover:border-cyan-500' : status === 'approved' ? 'border-blue-400 hover:border-blue-500' : status === 'rejected' ? 'border-red-400 hover:border-red-500' : 'border-cyan-300 hover:border-cyan-400'}`}
       style={{ background: '#ffffff' }}
     >
       <div className="relative z-10 space-y-3">
@@ -182,15 +191,17 @@ const SubmissionCard = memo(function SubmissionCard({ submission, idx, user, onV
             // their prefill URL; task forms open externally, while text-only
             // tasks complete inside JotFlow.
             const btnClass = `w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-gradient-to-r ${sc.color} text-white font-semibold text-sm transition-all hover:shadow-lg border border-transparent`;
-            const myAction = getMyActionType(submission, user?.email);
             if (myAction === 'approval') {
               return <motion.button whileHover={{ scale: 1.02 }} onClick={() => onViewDetails(submission)} className={btnClass}><CheckCircle2 className="w-4 h-4" /><span>Review &amp; Approve</span></motion.button>;
             }
             if (myAction === 'form') {
+              if (isPreparingPrefill) {
+                return <button disabled className={`${btnClass} opacity-75 cursor-wait`}><Loader2 className="w-4 h-4 animate-spin" /><span>Fetching pre-filled form…</span></button>;
+              }
               return <motion.button whileHover={{ scale: 1.02 }} onClick={(e) => { e.stopPropagation(); onOpenTask(submission); }} className={btnClass}><FileText className="w-4 h-4" /><span>Fill Form</span></motion.button>;
             }
             if (myAction === 'task') {
-              return <motion.button whileHover={{ scale: 1.02 }} onClick={(e) => { e.stopPropagation(); onOpenTask(submission); }} className={btnClass}><CheckSquare className="w-4 h-4" /><span>Open Task</span></motion.button>;
+              return <motion.button whileHover={{ scale: 1.02 }} onClick={(e) => { e.stopPropagation(); onCompleteTask(submission); }} className={btnClass}><CheckSquare className="w-4 h-4" /><span>Mark Complete</span></motion.button>;
             }
             return <motion.button whileHover={{ x: 4 }} onClick={(e) => { e.stopPropagation(); onOpenModal(submission); }} className={`${btnClass} group/btn`}><span>View Details</span><span className="group-hover/btn:translate-x-1 transition-transform">→</span></motion.button>;
           })()}
@@ -353,7 +364,10 @@ export default function ModernDashboard({ data }: Props) {
 
   const openTaskLink = useCallback(async (task: WorkflowTask) => {
     const sub = workflowSidebarSubmission;
-    if (task.type === 'workflow_assign_task') return sub ? openCardTaskLink(sub) : undefined;
+    if (task.type === 'workflow_assign_task') {
+      if (sub) setSelectedSubmission(sub);
+      return;
+    }
     let url = '';
     let reason = '';
     if (sub) {

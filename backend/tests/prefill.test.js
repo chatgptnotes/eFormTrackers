@@ -45,7 +45,7 @@ require.cache[jotformPath] = {
   },
 };
 
-const { resolvePrefillUrl, enrichTasksWithPrefill, getPrefills } = require('../lib/prefill');
+const { resolvePrefillUrl, enrichTasksWithPrefill, getPrefills, isPrefillConfigured } = require('../lib/prefill');
 
 let pass = 0, fail = 0;
 async function t(name, fn) {
@@ -61,6 +61,10 @@ async function t(name, fn) {
     const flat = await getPrefills(FORM, 'gdmo');
     assert.strictEqual(flat.length, URLS.length, `expected ${URLS.length} flattened entries, got ${flat.length}`);
     assert.ok(flat.every(p => p.settings && p.settings.id), 'every entry must expose settings.id');
+  });
+
+  await t('recognizes a configured prefill template before its URL is ready', async () => {
+    assert.strictEqual(await isPrefillConfigured(FORM, 'gdmo'), true);
   });
 
   console.log('-- resolvePrefillUrl --');
@@ -93,6 +97,15 @@ async function t(name, fn) {
       formId: FORM, submissionId: 'NO_SUCH_SUB', taskId: 'T1', assigneeEmail: 'a@gdmo.ae',
     });
     assert.strictEqual(url, '');
+  });
+
+  await t('marks forms with no prefill template as not requiring one', async () => {
+    const tasks = [{
+      type: 'workflow_assign_form', status: 'ACTIVE', accessLink: '',
+      internalFormID: 'NO_PREFILL_FORM', taskId: 'T1', assigneeEmail: 'a@gdmo.ae',
+    }];
+    await enrichTasksWithPrefill(tasks, SUB, 'gdmo');
+    assert.strictEqual(tasks[0].prefillState, 'not_required');
   });
 
   console.log('-- enrichTasksWithPrefill (precedence) --');
@@ -158,6 +171,15 @@ async function t(name, fn) {
     await enrichTasksWithPrefill(tasks, SUB, 'gdmo');
     assert.strictEqual(tasks[0].accessLink, '');
     assert.strictEqual(tasks[1].accessLink, '');
+  });
+
+  await t('enriches a pending assign_form task', async () => {
+    const tasks = [{
+      type: 'workflow_assign_form', status: 'PENDING', accessLink: '',
+      internalFormID: FORM, taskId: 'T123', assigneeEmail: 'a@gdmo.ae',
+    }];
+    await enrichTasksWithPrefill(tasks, SUB, 'gdmo');
+    assert.ok(tasks[0].accessLink.includes('/prefill/NEWEST_B'), tasks[0].accessLink);
   });
 
   console.log(`\n=== ${pass} passed, ${fail} failed ===\n`);

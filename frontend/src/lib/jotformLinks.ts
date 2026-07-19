@@ -1,10 +1,12 @@
-type TaskLink = { type?: string; accessLink?: string };
+type TaskLink = { type?: string; accessLink?: string; prefillState?: string };
 
 export function isUsableTaskAccessLink(task?: TaskLink | null): boolean {
   if (!task?.accessLink) return false;
   const link = task.accessLink.toLowerCase();
   if (task.type === 'workflow_assign_task') return link.includes('/approval-form/') && link.includes('/access-token/');
-  if (task.type === 'workflow_assign_form') return link.includes('/prefill/');
+  if (task.type === 'workflow_assign_form') {
+    return link.includes('/prefill/') || (task.prefillState === 'not_required' && link.includes('workflowassignformtask=1'));
+  }
   return !link.includes('/share/') && !link.includes('/inbox/');
 }
 

@@ -141,6 +141,8 @@ export interface WorkflowTask {
   taskId: string;
   internalFormID: string;
   accessLink: string;
+  /** Whether JotForm configured a prefill URL for this assigned form. */
+  prefillState?: 'ready' | 'pending' | 'not_required';
   submittedBy: string;
   submittedByEmail: string;
   formData?: Record<string, { label: string; value: string }>;
