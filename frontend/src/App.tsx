@@ -32,6 +32,9 @@ const CompletedPage = lazy(() => import('./pages/CompletedPage'));
 const PendingWithPage = lazy(() => import('./pages/PendingWithPage'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const MyEmails = lazy(() => import('./pages/MyEmails'));
+const AdminEmails = lazy(() => import('./pages/AdminEmails'));
+const AdminUsers = lazy(() => import('./pages/AdminUsers'));
 
 function PageLoader() {
   return (
@@ -82,6 +85,9 @@ function ProtectedApp() {
           <Route path="/submit-request" element={<SubmitRequest activeForms={data.activeForms} />} />
           <Route path="/completed" element={<CompletedPage data={data} />} />
           <Route path="/pending-with" element={<RoleGuard allowed={['super_admin']}><PendingWithPage data={data} /></RoleGuard>} />
+          <Route path="/emails" element={<RoleGuard allowed={['super_admin', 'admin', 'approver', 'viewer', 'user']}><MyEmails /></RoleGuard>} />
+          <Route path="/admin/emails" element={<RoleGuard allowed={['super_admin', 'admin']}><AdminEmails /></RoleGuard>} />
+          <Route path="/admin/users" element={<RoleGuard allowed={['super_admin', 'admin']}><AdminUsers /></RoleGuard>} />
         </Routes>
       </Suspense>
     </Layout>

@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, ArrowRight, Loader2, Eye, EyeOff, AlertCircle, ShieldCheck, BookOpen } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Loader2, Eye, EyeOff, AlertCircle, ShieldCheck, Building2, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { humanizeError } from '../lib/errors';
-import { JOTFORM_LOGO_URL } from '../config/jotform';
+import workflowIllustration from '../assets/workflow-login-illustration.png';
 
 export default function Login({ adminMode = false }: { adminMode?: boolean }) {
-  const { signIn, signInWithMicrosoft } = useAuth();
+  const { signIn } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -16,36 +16,24 @@ export default function Login({ adminMode = false }: { adminMode?: boolean }) {
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
-    // Handle OAuth error redirects from query params
     const params = new URLSearchParams(window.location.search);
     const oauthError = params.get('error');
-    if (oauthError === 'microsoft_auth_failed') {
-      setError('Microsoft sign-in failed. Please try again or use email and password.');
-    } else if (oauthError === 'microsoft_no_email') {
-      setError('Could not retrieve your email from Microsoft. Please use email and password.');
-    } else if (oauthError === 'microsoft_not_configured') {
-      setError('Microsoft sign-in is not configured. Please use email and password.');
-    } else if (oauthError === 'not_workspace_member') {
-      setError('Access denied. Your Microsoft account is not a member of the GDMO - Bettroi JotForm workspace. Contact admin@bettroi.com to request access.');
-    } else if (oauthError === 'workspace_check_failed') {
-      setError('Could not verify your JotForm workspace membership. Please try again or contact admin@bettroi.com.');
-    }
+    const oauthMessages: Record<string, string> = {
+      microsoft_auth_failed: 'Microsoft sign-in failed. Please try again or use email and password.',
+      microsoft_no_email: 'Could not retrieve your email from Microsoft. Please use email and password.',
+      microsoft_not_configured: 'Microsoft sign-in is not configured. Please use email and password.',
+      not_workspace_member: 'Access denied. Your Microsoft account is not a member of the GDMO – Bettroi workspace.',
+      workspace_check_failed: 'Could not verify your workspace membership. Please try again.',
+    };
     if (oauthError) {
+      setError(oauthMessages[oauthError] || 'Sign-in failed. Please try again.');
       window.history.replaceState({}, '', window.location.pathname);
     }
-
-    // Handle session-based rejections
     const rejection = sessionStorage.getItem('auth_rejection');
     const rejectedEmail = sessionStorage.getItem('auth_rejection_email');
-    if (rejection === 'not_workspace_member') {
-      setError(
-        `Access denied. ${rejectedEmail ? `"${rejectedEmail}" is` : 'Your account is'} not a member of the GDMO - Bettroi workspace. Contact admin@bettroi.com to request access.`
-      );
-    } else if (rejection === 'verification_error') {
-      setError('Could not verify workspace membership. Please try again or contact admin@bettroi.com.');
-    } else if (rejection === 'idle_timeout') {
-      setError('You have been signed out due to 30 minutes of inactivity. Please sign in again.');
-    }
+    if (rejection === 'not_workspace_member') setError(`Access denied. ${rejectedEmail ? `“${rejectedEmail}” is` : 'Your account is'} not a workspace member.`);
+    if (rejection === 'verification_error') setError('Could not verify workspace membership. Please try again.');
+    if (rejection === 'idle_timeout') setError('You have been signed out after 30 minutes of inactivity.');
     sessionStorage.removeItem('auth_rejection');
     sessionStorage.removeItem('auth_rejection_email');
   }, []);
@@ -58,9 +46,7 @@ export default function Login({ adminMode = false }: { adminMode?: boolean }) {
     if (err) {
       setError(humanizeError(err, 'Sign in failed. Please check your details and try again.'));
       setLoading(false);
-    } else {
-      navigate('/app');
-    }
+    } else navigate('/app');
   };
 
   const handleMicrosoft = () => {
@@ -70,136 +56,58 @@ export default function Login({ adminMode = false }: { adminMode?: boolean }) {
   };
 
   return (
-    <div className="app-page bg-gradient-to-br from-slate-50 via-blue-50 to-sky-100 flex items-center justify-center p-4 relative">
-      <div className="absolute top-20 -left-20 w-72 h-72 bg-blue-200/20 rounded-full blur-3xl motion-safe:animate-pulse" />
-      <div className="absolute bottom-20 -right-20 w-72 h-72 bg-sky-200/20 rounded-full blur-3xl motion-safe:animate-pulse" style={{ animationDelay: '1s' }} />
-
-      <div className="w-full max-w-md relative z-10">
-        <div className="text-center mb-8 sm:mb-10">
-          <Link to="/" className="inline-flex items-center justify-center gap-2 mb-8">
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 bg-gradient-to-br from-blue-600 to-sky-500 p-2 shadow-xl">
-              <img src={JOTFORM_LOGO_URL} alt="FlowAccel Logo" className="w-full h-full object-contain" />
-            </div>
-            <span className="text-3xl font-black text-slate-900">Eform <span className="text-blue-600">Tracker</span></span>
+    <main className="min-h-dvh bg-slate-100 p-3 sm:p-6 lg:p-8">
+      <div className="mx-auto grid min-h-[calc(100dvh-1.5rem)] max-w-[1440px] overflow-hidden rounded-[2rem] bg-white shadow-2xl shadow-slate-900/10 sm:min-h-[calc(100dvh-3rem)] lg:grid-cols-[1.05fr_.95fr]">
+        <section className="auth-hero relative hidden overflow-hidden bg-slate-950 p-10 text-white lg:flex lg:flex-col lg:justify-between">
+          <img src={workflowIllustration} alt="" className="absolute inset-0 h-full w-full object-cover object-center opacity-80" />
+          <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/90 to-slate-950/20" />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-slate-950/25" />
+          <Link to="/" className="relative inline-flex items-center gap-3 self-start">
+            <span className="grid h-11 w-11 place-items-center rounded-xl bg-blue-600 text-sm font-black shadow-lg shadow-blue-500/30">ET</span>
+            <span className="text-lg font-bold tracking-tight">eForm<span className="text-cyan-300">Tracker</span></span>
           </Link>
-          <h1 className="text-4xl sm:text-5xl font-black text-slate-900 mb-2">{adminMode ? 'Admin login' : 'Welcome back'}</h1>
-          <p className="text-slate-600 text-base font-semibold">{adminMode ? 'Sign in with the test admin account' : 'Sign in to continue'}</p>
-        </div>
-
-        <div className="backdrop-blur-2xl bg-white/80 border border-white/50 rounded-3xl p-5 sm:p-8 shadow-2xl">
-          {error && (
-            <div className="mb-6 flex items-start gap-3 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-2xl">
-              <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0 text-red-600" />
-              <p className="text-sm font-medium leading-relaxed">{error}</p>
-            </div>
-          )}
-
-          {!adminMode && <button
-            onClick={handleMicrosoft}
-            disabled={msLoading || loading}
-            className="w-full flex items-center justify-center gap-3 px-4 py-3.5 rounded-2xl bg-white border-2 border-slate-300 text-slate-900 hover:border-blue-500 hover:bg-blue-50 hover:shadow-lg transition-all font-bold text-base disabled:opacity-50 disabled:cursor-not-allowed mb-6 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-          >
-            {msLoading ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : (
-              <svg className="w-5 h-5" viewBox="0 0 21 21">
-                <rect x="1" y="1" width="9" height="9" fill="#f25022" />
-                <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
-                <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
-                <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
-              </svg>
-            )}
-            {msLoading ? 'Signing in...' : 'Sign in with Microsoft'}
-          </button>}
-
-          {!adminMode && <div className="flex items-center gap-4 mb-6">
-            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-slate-300 to-transparent" />
-            <span className="text-xs text-slate-500 uppercase tracking-widest font-semibold">or</span>
-            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-slate-300 to-transparent" />
-          </div>}
-
-          <form onSubmit={handlePasswordSubmit} className="space-y-5">
-            <div>
-              <label className="block text-sm font-bold text-slate-800 mb-2.5 tracking-wide">Email</label>
-              <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-500" />
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  className="w-full pl-12 pr-4 py-3.5 rounded-2xl bg-slate-50 border border-slate-300 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none transition-all duration-300 font-medium"
-                  placeholder="you@company.com"
-                />
-              </div>
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-2.5">
-                <label className="block text-sm font-bold text-slate-800 tracking-wide">Password</label>
-                <Link to="/forgot-password" className="text-xs text-blue-600 hover:text-blue-700 font-semibold transition-colors">Forgot password?</Link>
-              </div>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-500" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  className="w-full pl-12 pr-12 py-3.5 rounded-2xl bg-slate-50 border border-slate-300 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none transition-all duration-300 font-medium"
-                  placeholder="••••••••"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-blue-500 transition-colors duration-300"
-                >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                </button>
-              </div>
-            </div>
-            <button
-              type="submit"
-              disabled={loading || msLoading}
-              className="w-full py-3.5 mt-2 flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold rounded-2xl hover:shadow-lg hover:shadow-blue-500/40 transition-all duration-300 disabled:opacity-50 text-base focus:outline-none focus:ring-2 focus:ring-blue-500/50 cursor-pointer"
-            >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Sign In <ArrowRight className="w-5 h-5" /></>}
-            </button>
-          </form>
-
-          {!adminMode && (
-            <p className="mt-4 text-center text-sm text-slate-600">
-              Assigned user without an account? <Link to="/signup" className="font-semibold text-blue-600 hover:text-blue-700">Create an account</Link>
-            </p>
-          )}
-
-          <div className="mt-6 flex items-start gap-2 text-xs text-slate-500 leading-relaxed border-t border-slate-200 pt-4">
-            <ShieldCheck className="w-4 h-4 mt-0.5 flex-shrink-0 text-emerald-600" />
-            <p>
-              Access restricted to <span className="font-semibold text-slate-700">GDMO - Bettroi</span> workspace members. Both sign-in methods verify your JotForm workspace membership.
-            </p>
+          <div className="relative max-w-lg">
+            <p className="mb-5 text-xs font-bold uppercase tracking-[.22em] text-cyan-300">Workflow operations</p>
+            <h1 className="text-5xl font-semibold leading-[1.05] tracking-tight">Move every approval forward with confidence.</h1>
+            <p className="mt-6 max-w-md text-base leading-7 text-slate-300">One secure workspace for assigned forms, approvals, audit history, and workflow visibility.</p>
+            <ul className="mt-10 space-y-4 text-sm text-slate-200">
+              {['Review only the work assigned to you', 'Sign approvals once, with a complete audit trail', 'Open secure pre-filled task forms directly'].map(item => <li key={item} className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-cyan-300" />{item}</li>)}
+            </ul>
           </div>
-        </div>
+          <div className="relative flex items-center gap-3 border-t border-white/10 pt-6 text-xs text-slate-400"><ShieldCheck className="h-4 w-4 text-cyan-300" />GDMO – Bettroi secure workspace</div>
+        </section>
 
-        <p className="text-center text-slate-500 mt-6 text-xs">
-          Need access? Contact <a href="mailto:admin@bettroi.com" className="text-blue-600 hover:text-blue-700 font-semibold">admin@bettroi.com</a>
-        </p>
+        <section className="flex items-center justify-center p-6 sm:p-10 lg:p-16">
+          <div className="w-full max-w-md">
+            <Link to="/" className="mb-12 inline-flex items-center gap-3 lg:hidden">
+              <span className="grid h-10 w-10 place-items-center rounded-xl bg-blue-600 text-xs font-black text-white">ET</span>
+              <span className="text-lg font-bold tracking-tight text-slate-950">eForm<span className="text-blue-600">Tracker</span></span>
+            </Link>
+            <div className="mb-8">
+              <span className="mb-5 grid h-11 w-11 place-items-center rounded-xl bg-blue-50 text-blue-600"><Building2 className="h-5 w-5" /></span>
+              <p className="text-xs font-bold uppercase tracking-[.18em] text-blue-600">Secure sign in</p>
+              <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">{adminMode ? 'Administrator access' : 'Welcome back'}</h1>
+              <p className="mt-2 text-sm leading-6 text-slate-500">{adminMode ? 'Sign in with your administrator account.' : 'Use your workspace account to continue.'}</p>
+            </div>
 
-        <a
-          href="/installer/FlowAccel-Manual-IIS-Deployment.html"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-6 w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl bg-white/70 backdrop-blur border border-slate-300 text-slate-800 hover:border-indigo-500 hover:bg-white hover:shadow-md transition-all font-semibold text-sm"
-        >
-          <BookOpen className="w-4 h-4 text-indigo-600" />
-          Manual IIS Deployment Guide
-        </a>
-        <p className="text-center text-slate-400 mt-2 text-[11px]">
-          Enable IIS · Default Web Site → 8081, FlowAccel → 80 · copy files to E:\ · grant IIS user permissions · load PostgreSQL dump.
-        </p>
-        <p className="text-center text-slate-400 mt-1 text-[10px] italic">
-          IIS v1.1 · Updated 2026-05-21 12:43 IST
-        </p>
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+              {error && <div className="mb-6 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-800"><AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600" /><p className="text-sm font-medium leading-relaxed">{error}</p></div>}
+              {!adminMode && <button onClick={handleMicrosoft} disabled={msLoading || loading} className="auth-microsoft mb-6 flex w-full items-center justify-center gap-3 rounded-xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">
+                {msLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <svg className="h-5 w-5" viewBox="0 0 21 21"><rect x="1" y="1" width="9" height="9" fill="#f25022" /><rect x="11" y="1" width="9" height="9" fill="#7fba00" /><rect x="1" y="11" width="9" height="9" fill="#00a4ef" /><rect x="11" y="11" width="9" height="9" fill="#ffb900" /></svg>}
+                {msLoading ? 'Signing in…' : 'Continue with Microsoft'}
+              </button>}
+              {!adminMode && <div className="mb-6 flex items-center gap-3"><div className="h-px flex-1 bg-slate-200" /><span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">or email</span><div className="h-px flex-1 bg-slate-200" /></div>}
+              <form onSubmit={handlePasswordSubmit} className="space-y-5">
+                <div><label className="mb-2 block text-sm font-semibold text-slate-700">Email address</label><div className="relative"><Mail className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-blue-500" /><input type="email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 font-medium text-slate-900 placeholder-slate-400 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10" placeholder="you@company.com" /></div></div>
+                <div><label className="mb-2 block text-sm font-semibold text-slate-700">Password</label><div className="relative"><Lock className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-blue-500" /><input type={showPassword ? 'text' : 'password'} required value={password} onChange={e => setPassword(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-12 font-medium text-slate-900 placeholder-slate-400 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10" placeholder="••••••••" /><button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-blue-600">{showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}</button></div></div>
+                <button type="submit" disabled={loading || msLoading} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 hover:shadow-lg hover:shadow-blue-500/20 disabled:opacity-50">{loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <>Sign in <ArrowRight className="h-4 w-4" /></>}</button>
+              </form>
+              <div className="mt-6 flex items-start gap-2 border-t border-slate-100 pt-4 text-xs leading-relaxed text-slate-500"><ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-600" /><p>Access is restricted to GDMO – Bettroi workspace members.</p></div>
+            </div>
+            <p className="mt-6 text-center text-xs text-slate-500">Need access? Contact <a href="mailto:admin@bettroi.com" className="font-semibold text-blue-600 hover:text-blue-700">admin@bettroi.com</a></p>
+          </div>
+        </section>
       </div>
-    </div>
+    </main>
   );
 }

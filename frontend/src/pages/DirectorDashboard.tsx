@@ -4,7 +4,7 @@ import {
   CheckCircle2, XCircle, MessageSquare, Clock, AlertTriangle, User,
   Search, ArrowUpDown, ChevronDown, ChevronUp, FileText, Loader2,
   TrendingUp, Shield, ExternalLink, ClipboardList, FileEdit, Lock,
-  ChevronLeft, ChevronRight, UserCheck, Eye, Trash2, Filter, Download, X,
+  ChevronLeft, ChevronRight, UserCheck, Eye, Trash2, Filter, Download, X, PenLine,
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useSubmissions } from '../hooks/useSubmissions';
@@ -1223,53 +1223,12 @@ export default function DirectorDashboard({ data }: Props) {
                                           </span>
                                         ) : isActive && task.type === 'workflow_approval' ? (
                                           emailMatch ? (
-                                            <div className="flex items-center gap-1.5">
-                                              {taskConfirmRejectId === task.taskId ? (
-                                                <div className="flex items-center gap-1 rounded-lg bg-red-500/10 border border-red-500/30 px-2 py-1">
-                                                  <span className="text-[11px] text-red-400">Confirm reject?</span>
-                                                  <button
-                                                    onClick={() => { if (expandedRowId) handleTaskReject(expandedRowId, taskRejectReason.trim()); }}
-                                                    disabled={taskActionLoading === expandedRowId}
-                                                    className="px-2 py-0.5 rounded bg-red-600 text-white text-xs hover:bg-red-500 disabled:opacity-50 flex items-center gap-1"
-                                                  >
-                                                    {taskActionLoading === expandedRowId ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-                                                    Yes
-                                                  </button>
-                                                  <button onClick={() => { setTaskConfirmRejectId(null); setTaskRejectReason(''); setTaskRejectingId(null); }} className="px-2 py-0.5 rounded bg-gray-700 text-gray-300 text-xs hover:bg-gray-600">No</button>
-                                                </div>
-                                              ) : taskRejectingId === task.taskId ? (
-                                                <div className="flex items-center gap-1">
-                                                  <input
-                                                    type="text"
-                                                    value={taskRejectReason}
-                                                    onChange={e => setTaskRejectReason(e.target.value)}
-                                                    placeholder="Reason (optional)"
-                                                    className="bg-navy-dark/50 border border-red-500/30 rounded px-2 py-0.5 text-xs text-gray-300 w-36 focus:outline-none focus:border-red-500/60"
-                                                    onKeyDown={e => { if (e.key === 'Enter') setTaskConfirmRejectId(task.taskId); }}
-                                                  />
-                                                  <button onClick={() => setTaskConfirmRejectId(task.taskId)} className="px-2 py-0.5 rounded bg-red-600/80 text-white text-xs hover:bg-red-500">OK</button>
-                                                  <button onClick={() => { setTaskRejectingId(null); setTaskRejectReason(''); }} className="text-xs text-gray-500 hover:text-gray-300">Cancel</button>
-                                                </div>
-                                              ) : (
-                                                <>
-                                                  <button
-                                                    onClick={() => { if (expandedRowId) handleTaskApprove(expandedRowId); }}
-                                                    disabled={taskActionLoading === expandedRowId}
-                                                    className="px-2.5 py-1 rounded-md bg-gold/20 text-gold hover:bg-gold/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1 transition-colors"
-                                                  >
-                                                    {taskActionLoading === expandedRowId ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
-                                                    Approve
-                                                  </button>
-                                                  <button
-                                                    onClick={() => setTaskRejectingId(task.taskId)}
-                                                    disabled={taskActionLoading === expandedRowId}
-                                                    className="px-2.5 py-1 rounded-md bg-red-500/20 text-red-400 hover:bg-red-500/30 disabled:opacity-50 text-xs font-medium flex items-center gap-1 transition-colors"
-                                                  >
-                                                    <XCircle className="w-3 h-3" /> Reject
-                                                  </button>
-                                                </>
-                                              )}
-                                            </div>
+                                            <button
+                                              onClick={() => openModal(sub)}
+                                              className="px-2.5 py-1 rounded-md bg-gold/20 text-gold hover:bg-gold/30 text-xs font-medium flex items-center gap-1 transition-colors"
+                                            >
+                                              <PenLine className="w-3 h-3" /> Review &amp; Sign
+                                            </button>
                                           ) : (
                                             <span className="px-2 py-1 rounded-md bg-gray-500/10 text-gray-600 text-xs font-medium flex items-center gap-1 border border-gray-500/10" title="This step is assigned to someone else">
                                               <Lock className="w-3 h-3" /> Not assigned to you
@@ -1699,8 +1658,8 @@ export default function DirectorDashboard({ data }: Props) {
             sigLoading={sigLoading || undefined}
             user={user}
             onClose={() => setWorkflowModalSubmission(null)}
-            onTaskApprove={(submissionId) => handleTaskApprove(submissionId)}
-            onTaskReject={(submissionId, reason) => handleTaskReject(submissionId, reason)}
+            onTaskApprove={() => { if (workflowModalSubmission) openModal(workflowModalSubmission); }}
+            onTaskReject={() => { if (workflowModalSubmission) openModal(workflowModalSubmission); }}
             onFetchSignature={fetchAndShowSignature}
             onOpenTaskLink={openTaskLink}
             onSetTaskRejecting={setTaskRejectingId}

@@ -81,8 +81,6 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
   const [pushResult, setPushResult] = useState<{ success: boolean; message: string } | null>(null);
   const [comment, setComment] = useState('');
   const [signature, setSignature] = useState('');
-  // Two-click confirmation: 'approve' | 'reject' | null
-  const [confirmPending, setConfirmPending] = useState<'approve' | 'reject' | null>(null);
 
   const [ensuringFields, setEnsuringFields] = useState(false);
   // Dynamically resolved field map (from ensureFields API) — used when form has no built-in fields
@@ -330,7 +328,6 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
     setUploadingSignature(false);
     setApproving(false);
     setRejecting(false);
-    setConfirmPending(null);
     setDynamicFieldMap(null);
   }, [submission?.id]);
 
@@ -383,7 +380,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
           exit={{ scale: 0.95, opacity: 0, y: 8 }}
           transition={{ type: 'spring', damping: 22, stiffness: 280 }}
           onClick={e => e.stopPropagation()}
-          className="glass-card w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl"
+          className="glass-card ui-surface w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl"
         >
           {/* Header — sticky, ref + title + form, with status chips inline on desktop */}
           <div className="px-7 pt-6 pb-5 border-b border-slate-200/80 flex items-start justify-between sticky top-0 bg-white/95 backdrop-blur z-10">
@@ -507,34 +504,15 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                         {pushResult.message}
                       </div>
                     )}
-                    {confirmPending ? (
-                      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
-                        <p className="text-sm font-semibold text-amber-900">Confirm Task Completion</p>
-                        <p className="text-xs text-amber-700">This action cannot be undone.</p>
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => { setConfirmPending(null); handleApproval('approve'); }}
-                            disabled={isSubmitting}
-                            className="flex-1 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm disabled:opacity-40"
-                          >
-                            {isSubmitting ? 'Completing...' : 'Yes, Mark Complete'}
-                          </button>
-                          <button type="button" onClick={() => setConfirmPending(null)} disabled={isSubmitting} className="px-4 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-700 font-semibold text-sm">
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setConfirmPending('approve')}
-                        disabled={!isDesignatedApprover || isSubmitting}
-                        title={!isDesignatedApprover ? `Only ${designatedApproverEmail} can complete this task` : ''}
-                        className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-teal-600 hover:bg-teal-500 disabled:opacity-30 disabled:cursor-not-allowed text-white rounded-xl font-semibold text-sm border border-teal-600 transition-all"
-                      >
-                        <ClipboardList className="w-4 h-4" /> Mark Task Complete
-                      </button>
-                    )}
+                    <button
+                      onClick={() => handleApproval('approve')}
+                      disabled={!isDesignatedApprover || isSubmitting}
+                      title={!isDesignatedApprover ? `Only ${designatedApproverEmail} can complete this task` : ''}
+                      className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-teal-600 hover:bg-teal-500 disabled:opacity-30 disabled:cursor-not-allowed text-white rounded-xl font-semibold text-sm border border-teal-600 transition-all"
+                    >
+                      {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}
+                      {isSubmitting ? 'Completing task…' : 'Mark Task Complete'}
+                    </button>
                   </div>
                 )}
 
@@ -629,42 +607,8 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                   </div>
                 )}
 
-                {/* Step 3: Approve / Reject — two-click confirmation */}
-                {confirmPending ? (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
-                    <div className="flex items-start gap-2">
-                      <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
-                      <p className="text-sm text-amber-900 font-semibold">
-                        Confirm {confirmPending === 'approve' ? 'Approval' : 'Rejection'}
-                        <span className="block text-xs text-amber-700 font-normal mt-0.5">This action cannot be undone.</span>
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => { setConfirmPending(null); handleApproval(confirmPending); }}
-                        disabled={isSubmitting}
-                        className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all disabled:opacity-40 shadow-sm ${
-                          confirmPending === 'approve'
-                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                            : 'bg-rose-600 hover:bg-rose-700 text-white'
-                        }`}
-                      >
-                        {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : confirmPending === 'approve' ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
-                        {uploadingSignature ? 'Saving signature...' : approving || rejecting ? 'Submitting...' : `Yes, ${confirmPending === 'approve' ? 'Approve' : 'Reject'}`}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmPending(null)}
-                        disabled={isSubmitting}
-                        className="px-4 py-2.5 rounded-lg font-semibold text-sm bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-all disabled:opacity-40"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-2 pt-1">
+                {/* One signed action: the signature is the confirmation, so do not ask twice. */}
+                <div className="space-y-2 pt-1">
                     {/* Show who needs to act if it's not the current user */}
                     {!isDesignatedApprover && designatedApproverEmail && (
                       <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
@@ -677,7 +621,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                   <div className="flex gap-2.5 pt-1">
                     <button
                       type="button"
-                      onClick={() => setConfirmPending('approve')}
+                      onClick={() => handleApproval('approve')}
                       disabled={!approveEnabled || isSubmitting}
                       title={!isDesignatedApprover ? `Only ${designatedApproverEmail} can approve at this level` : ''}
                       className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white rounded-xl font-bold text-sm shadow-sm hover:shadow-md transition-all"
@@ -686,7 +630,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                     </button>
                     <button
                       type="button"
-                      onClick={() => setConfirmPending('reject')}
+                      onClick={() => handleApproval('reject')}
                       disabled={!rejectEnabled || isSubmitting}
                       title={!isDesignatedApprover ? `Only ${designatedApproverEmail} can reject at this level` : ''}
                       className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white rounded-xl font-bold text-sm shadow-sm hover:shadow-md transition-all"
@@ -694,8 +638,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                       <XCircle className="w-4 h-4" /> Reject
                     </button>
                   </div>
-                  </div>
-                )}
+                </div>
 
                 {/* What's still needed */}
                 {signatureRequired && !signature && (

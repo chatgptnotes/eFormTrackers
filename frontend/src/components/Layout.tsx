@@ -6,7 +6,7 @@ import {
   Users, CreditCard, HelpCircle, Building2, BarChart3, Kanban,
   FolderOpen, Folder, ChevronRight, ChevronDown, LayoutGrid, Package,
   DollarSign, Monitor, Scale, Briefcase, Megaphone, ShieldCheck, PlusCircle,
-  Sun, Moon, ExternalLink, CheckCircle2,
+  Sun, Moon, ExternalLink, CheckCircle2, FileText,
 } from 'lucide-react';
 import { RefreshConfig, SidebarCategory } from '../types';
 import { JFFormMeta } from '../services/formDiscovery';
@@ -15,7 +15,7 @@ import { useApp } from '../contexts/AppContext';
 import { SIDEBAR_CATEGORIES } from '../services/mockData';
 import NotificationBell from './NotificationBell';
 import UserDropdown from './UserDropdown';
-import { JOTFORM_LOGO_URL, JOTFORM_WORKSPACE_URL } from '../config/jotform';
+import { JOTFORM_WORKSPACE_URL } from '../config/jotform';
 
 const SHOW_SUBMIT_REQUEST_BUTTON = false;
 const SHOW_DASHBOARD_TAB = false;
@@ -101,16 +101,16 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
   };
 
   const TOOL_NAV = [
-    // { path: '/app', icon: LayoutDashboard, label: 'Analytics Dashboard', roles: ['super_admin', 'admin', 'approver'] },
-    // { path: '/app/tracker', icon: Table2, label: 'Workflow Tracker', roles: ['super_admin', 'admin', 'approver'] },
-    // { path: '/app/bottlenecks', icon: AlertTriangle, label: 'Bottleneck Analysis', roles: ['super_admin', 'admin'] },
-    // { path: '/app/kanban', icon: Kanban, label: 'Kanban Board', roles: ['super_admin', 'admin', 'approver'] },
-    // { path: '/app/analytics', icon: BarChart3, label: 'Advanced Analytics', roles: ['super_admin', 'admin'] },
-    { path: '/app/team', icon: Users, label: 'Team', roles: ['super_admin', 'admin'] },
-    // { path: '/app/activity', icon: FileText, label: 'Activity Log', roles: ['super_admin', 'admin'] },
-    // { path: '/app/billing', icon: CreditCard, label: 'Billing', roles: ['super_admin'] },
-    // Organization and Settings are intentionally hidden from sidebar navigation.
-    // { path: '/app/help', icon: HelpCircle, label: 'Help & Support', roles: ['super_admin', 'admin', 'approver', 'viewer'] },
+    { path: '/app/tracker', icon: Table2, label: 'Workflow tracker', roles: ['super_admin', 'admin', 'approver'] },
+    { path: '/app/kanban', icon: Kanban, label: 'Board view', roles: ['super_admin', 'admin', 'approver'] },
+    { path: '/app/emails', icon: FileText, label: 'My workflow emails', roles: ['super_admin', 'admin', 'approver', 'viewer', 'user'] },
+    { path: '/app/analytics', icon: BarChart3, label: 'Analytics', roles: ['super_admin', 'admin'] },
+    { path: '/app/bottlenecks', icon: AlertTriangle, label: 'Bottlenecks', roles: ['super_admin', 'admin'] },
+    { path: '/app/activity', icon: Clock, label: 'Audit activity', roles: ['super_admin', 'admin'] },
+    { path: '/app/admin/emails', icon: FileText, label: 'Email archive', roles: ['super_admin', 'admin'] },
+    { path: '/app/admin/users', icon: Users, label: 'User directory', roles: ['super_admin', 'admin'] },
+    { path: '/app/team', icon: Users, label: 'Team settings', roles: ['super_admin', 'admin'] },
+    { path: '/app/settings', icon: ShieldCheck, label: 'Settings', roles: ['super_admin', 'admin', 'approver'] },
   ].filter(item => item.roles.includes(orgRole));
 
   const currentLabel = location.pathname === '/app/director'
@@ -128,19 +128,14 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
       {/* Sidebar — bg-navy adapts: dark in dark mode, white in light mode */}
       <aside className={`fixed inset-y-0 left-0 z-[80] w-64 max-w-[calc(100vw-2rem)] bg-gradient-to-b from-blue-950 to-slate-800 border-r border-slate-800 transform transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex flex-col h-full">
-          {/* Logo — FlowAccel branding */}
-          <div className="p-5 border-b border-slate-800">
+          <div className="p-5 border-b border-white/10">
             <div className="flex items-center gap-3">
-              {/* FlowAccel logo mark — click 5x within 3s to toggle All Assets visibility */}
-              <div onClick={handleLogoClick} className="w-9 h-9 flex items-center justify-center flex-shrink-0 cursor-pointer select-none">
-                <img src={JOTFORM_LOGO_URL} alt="Eform Tracker logo" width={36} height={36} loading="eager" className="w-full h-full object-contain" draggable={false} />
-              </div>
+              <button type="button" onClick={handleLogoClick} aria-label="eFormTracker" className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 text-xs font-black tracking-tight text-white shadow-lg shadow-cyan-950/30">
+                ET
+              </button>
               <div>
-                <div className="flex items-baseline gap-1">
-                  <span className="font-bold text-base tracking-tight" style={{ color: '#ffffff' }}>Eform</span>
-                  <span className="font-bold text-base tracking-tight" style={{ color: '#1E88E5' }}>Tracker</span>
-                </div>
-                <p className="text-[10px] text-gray-500 truncate max-w-[160px] leading-tight">{organization?.name || 'Workflow Dashboard'}</p>
+                <p className="font-bold text-base tracking-tight text-white">eForm<span className="text-cyan-400">Tracker</span></p>
+                <p className="max-w-[160px] truncate text-[10px] leading-tight text-slate-400">{organization?.name || 'Workflow workspace'}</p>
               </div>
             </div>
           </div>
@@ -164,9 +159,9 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
               </div>
             )}
 
-            {/* Section 1: Department Categories */}
+            {/* Primary workspace */}
             <div className="px-4 pb-2">
-              <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-2 px-2">Departments</p>
+              <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">Workspace</p>
 
               {/* Dashboard link */}
               {SHOW_DASHBOARD_TAB && (
@@ -231,7 +226,7 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
                 </>
               )}
 
-              {/* Category items */}
+              {/* Department filters */}
               {orgRole !== 'super_admin' && SIDEBAR_CATEGORIES.filter(cat => (cat.type === 'all' ? showAllAssetsTab : cat.filter?.departments && cat.filter.departments.some(d => activeDepartments.includes(d)))).map(cat => {
                 const Icon = CATEGORY_ICONS[cat.id] || Folder;
                 const isActive = activeSidebarCategory?.id === cat.id;
@@ -293,12 +288,12 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
               })}
             </div>
 
-            {/* Separator */}
+            {/* Client services documented in the Enterprise API guide */}
             <div className="mx-4 border-t border-slate-800 my-2" />
 
             {/* Section 3: Tools */}
             <div className="px-4 pt-1 pb-4 space-y-0.5">
-              <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-2 px-2">Tools</p>
+              <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-2 px-2">Operations</p>
               {TOOL_NAV.map(item => {
                 const active = location.pathname === item.path;
                 return (
@@ -416,7 +411,7 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
         </header>
 
         {/* Page Content */}
-        <main className="p-3 sm:p-6">
+        <main>
           <motion.div
             key={location.pathname}
             initial={{ opacity: 0, y: 20 }}

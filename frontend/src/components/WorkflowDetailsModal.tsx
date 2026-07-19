@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, CheckCircle2, XCircle, Clock, Eye, Lock, ClipboardList, FileEdit, Loader2, ExternalLink } from 'lucide-react';
+import { X, CheckCircle2, XCircle, Clock, Eye, Lock, ClipboardList, FileEdit, Loader2, ExternalLink, PenLine } from 'lucide-react';
 import { Submission, WorkflowTask } from '../types';
 
 interface Props {
@@ -244,22 +244,13 @@ export default function WorkflowDetailsModal({
                                     </button>
                                   </div>
                                 ) : (
-                                  <>
-                                    <button
-                                      onClick={() => onTaskApprove?.(submission.id)}
-                                      disabled={taskActionLoading === submission.id}
-                                      className="px-3.5 py-1.5 rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 disabled:opacity-50 text-xs font-semibold flex items-center gap-1.5 border border-emerald-200 transition-colors cursor-pointer"
-                                    >
-                                      <CheckCircle2 className="w-3.5 h-3.5" /> Approve
-                                    </button>
-                                    <button
-                                      onClick={() => onSetTaskRejecting?.(task.taskId || '')}
-                                      disabled={taskActionLoading === submission.id}
-                                      className="px-3.5 py-1.5 rounded-lg bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50 text-xs font-semibold flex items-center gap-1.5 border border-red-200 transition-colors cursor-pointer"
-                                    >
-                                      <XCircle className="w-3.5 h-3.5" /> Reject
-                                    </button>
-                                  </>
+                                  <button
+                                    onClick={() => onTaskApprove?.(submission.id)}
+                                    disabled={taskActionLoading === submission.id}
+                                    className="px-3.5 py-1.5 rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 disabled:opacity-50 text-xs font-semibold flex items-center gap-1.5 border border-emerald-200 transition-colors cursor-pointer"
+                                  >
+                                    <PenLine className="w-3.5 h-3.5" /> Review &amp; Sign
+                                  </button>
                                 )}
                               </div>
                             ) : (
@@ -350,9 +341,9 @@ export default function WorkflowDetailsModal({
                                     <ClipboardList className="w-3 h-3" /> Mark Complete
                                   </button>
                                 ) : (
-                                  <a href={task.accessLink} target="_blank" rel="noopener noreferrer" className="text-xs text-gold hover:underline inline-flex items-center gap-1">
-                                    <ClipboardList className="w-3 h-3" /> View Task
-                                  </a>
+                                  <button onClick={() => onTaskApprove?.(submission.id)} className="text-xs text-gold hover:underline inline-flex items-center gap-1">
+                                    <PenLine className="w-3 h-3" /> Review &amp; Sign
+                                  </button>
                                 )
                               ) : isCompleted ? <span className="text-[10px] text-gray-500">Done</span> : <span className="text-[10px] text-gray-500">—</span>}
                             </td>

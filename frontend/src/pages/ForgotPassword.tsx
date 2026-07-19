@@ -46,7 +46,7 @@ export default function ForgotPassword() {
             <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-sky-500 p-2 shadow-xl flex items-center justify-center">
               <img src={JOTFORM_LOGO_URL} alt="Logo" className="w-full h-full object-contain" />
             </div>
-            <span className="text-2xl font-black text-slate-900">Eform <span className="text-blue-600">Tracker</span></span>
+            <span className="text-2xl font-black text-slate-900">eForm<span className="text-blue-600">Tracker</span></span>
           </Link>
           <h1 className="text-3xl font-black text-slate-900">Reset Password</h1>
           <p className="text-slate-600 mt-1">Enter your email to generate a reset link</p>

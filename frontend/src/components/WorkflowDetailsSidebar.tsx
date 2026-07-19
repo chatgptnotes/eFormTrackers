@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, CheckCircle2, XCircle, Clock, Eye, Lock, ClipboardList, FileEdit, Loader2 } from 'lucide-react';
+import { X, CheckCircle2, XCircle, Clock, Eye, Lock, ClipboardList, FileEdit, Loader2, PenLine } from 'lucide-react';
 import { Submission, WorkflowTask } from '../types';
 
 interface Props {
@@ -102,7 +102,7 @@ export default function WorkflowDetailsSidebar({
             animate={{ x: 0 }}
             exit={{ x: 480 }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className={`${panelClass} right-0 top-0 w-screen max-w-[480px] bg-white border-l border-slate-200 overflow-y-auto shadow-xl`}
+            className={`${panelClass} ui-surface right-0 top-0 w-screen max-w-[480px] bg-white border-l border-slate-200 overflow-y-auto shadow-xl`}
           >
             {/* Header */}
             <div className="sticky top-0 bg-white border-b border-slate-200 px-4 py-5 sm:px-6 flex items-center justify-between gap-3 z-50">
@@ -255,22 +255,13 @@ export default function WorkflowDetailsSidebar({
                                   </span>
                                 ) : isActive && task.type === 'workflow_approval' ? (
                                   emailMatch ? (
-                                    <>
-                                      <button
-                                        onClick={() => onTaskApprove?.(submission?.id || '')}
-                                        disabled={taskActionLoading === submission?.id}
-                                        className="text-[11px] px-3 py-1.5 rounded-md bg-emerald-100 text-emerald-700 hover:bg-emerald-200 disabled:opacity-50 transition-colors cursor-pointer font-medium"
-                                      >
-                                        <CheckCircle2 className="w-3.5 h-3.5 inline mr-1" /> Approve
-                                      </button>
-                                      <button
-                                        onClick={() => onSetTaskRejecting?.(task.taskId || '')}
-                                        disabled={taskActionLoading === submission?.id}
-                                        className="text-[11px] px-3 py-1.5 rounded-md bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50 transition-colors cursor-pointer font-medium"
-                                      >
-                                        <XCircle className="w-3.5 h-3.5 inline mr-1" /> Reject
-                                      </button>
-                                    </>
+                                    <button
+                                      onClick={() => onTaskApprove?.(submission?.id || '')}
+                                      disabled={taskActionLoading === submission?.id}
+                                      className="text-[11px] px-3 py-1.5 rounded-md bg-emerald-100 text-emerald-700 hover:bg-emerald-200 disabled:opacity-50 transition-colors cursor-pointer font-medium"
+                                    >
+                                      <PenLine className="w-3.5 h-3.5 inline mr-1" /> Review &amp; Sign
+                                    </button>
                                   ) : (
                                     <span className="text-[11px] px-3 py-1.5 rounded-md bg-slate-100 text-slate-600 font-medium flex items-center gap-1">
                                       <Lock className="w-3.5 h-3.5" /> Not Assigned

@@ -53,13 +53,13 @@
 
   /* ── Light mode: body ── */
   .light-mode body {
-    background-color: #f3f7ff;
-    color: #0A1551;
+    background-color: #f6f8fc;
+    color: #172033;
   }
 
   /* ── Light mode: typography overrides ── */
   .light-mode .text-white          { color: #0A1551 !important; }
-  .light-mode aside .text-white    { color: white !important; }
+  .light-mode aside .text-white    { color: #334155 !important; }
   .light-mode .text-gray-100       { color: #1e2a4a !important; }
   .light-mode .text-gray-200       { color: #2d3a5a !important; }
   .light-mode .text-gray-300       { color: #3d4f70 !important; }
@@ -90,6 +90,10 @@
     min-width: 0;
     min-height: 100dvh;
     overflow-x: hidden;
+    padding: clamp(1rem, 2vw, 1.5rem);
+    background:
+      radial-gradient(circle at top right, rgba(14, 165, 233, .09), transparent 28rem),
+      var(--navy-dark);
   }
 
   @supports not (min-height: 100dvh) {
@@ -117,6 +121,28 @@
     gap: 1rem;
   }
 
+  /* Shared, deliberately small visual system: pages inherit the same spacing,
+     cards and action treatment without each page owning another design. */
+  .ui-surface {
+    background: rgba(15, 23, 42, .72);
+    border: 1px solid rgba(148, 163, 184, .18);
+    border-radius: 1rem;
+    box-shadow: 0 18px 45px rgba(2, 6, 23, .16);
+  }
+  .ui-action {
+    min-height: 2.75rem;
+    border-radius: .75rem;
+    font-weight: 700;
+    transition: transform .15s ease, box-shadow .15s ease, background-color .15s ease;
+  }
+  .ui-action:not(:disabled):hover { transform: translateY(-1px); }
+  .ui-action:focus-visible,
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible { outline: 3px solid rgba(14, 165, 233, .45); outline-offset: 2px; }
+
   /* ─ Glass card (dark default) ─ */
   .glass-card {
     background-color: rgba(27, 42, 74, 0.80);
@@ -135,6 +161,63 @@
     box-shadow: 0 2px 8px rgba(10, 21, 81, 0.07) !important;
     backdrop-filter: none !important;
   }
+  .light-mode .ui-surface {
+    background: #fff;
+    border-color: #dbe4ee;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, .08);
+  }
+
+  /* Application whitewash: legacy pages share utility classes, so this
+     converts their old navy panels into one restrained enterprise surface
+     without duplicating a page implementation for every route. */
+  .light-mode .app-page {
+    background: #f6f8fc;
+  }
+  .light-mode .bg-navy,
+  .light-mode .bg-navy-dark,
+  .light-mode [class*="bg-navy-dark/"],
+  .light-mode [class*="bg-navy-light/"] {
+    background-color: #ffffff !important;
+  }
+  .light-mode .bg-navy-light {
+    background-color: #eef3f9 !important;
+  }
+  .light-mode .text-gold,
+  .light-mode [class*="text-gold/"] { color: #2563eb !important; }
+  .light-mode .bg-gold,
+  .light-mode [class*="bg-gold/"] { background-color: #eff6ff !important; }
+  .light-mode [class*="border-gold/"] { border-color: #bfdbfe !important; }
+  .light-mode .gold-gradient {
+    background: #2563eb !important;
+    color: #ffffff !important;
+  }
+  .light-mode .glass-card,
+  .light-mode .glass-card-hover {
+    border-color: #e2e8f0 !important;
+    border-radius: 16px !important;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, .06) !important;
+  }
+  .light-mode aside {
+    background: #ffffff !important;
+    border-color: #e2e8f0 !important;
+    box-shadow: 8px 0 30px rgba(15, 23, 42, .04);
+  }
+  .light-mode aside .text-gray-500 { color: #94a3b8 !important; }
+  .light-mode aside .border-slate-800 { border-color: #e2e8f0 !important; }
+  .light-mode aside [class~="hover:bg-slate-800"]:hover { background-color: #f1f5f9 !important; }
+  .light-mode aside [class~="bg-cyan-500/10"] { background-color: #eff6ff !important; }
+  .light-mode aside .text-cyan-400 { color: #2563eb !important; }
+  .light-mode aside [class~="border-cyan-500/20"] { border-color: #bfdbfe !important; }
+  .light-mode header.sticky {
+    box-shadow: 0 1px 0 rgba(15, 23, 42, .06);
+  }
+  .light-mode header [class~="bg-slate-700/30"] { background-color: #f1f5f9 !important; }
+  .light-mode header .text-gray-400 { color: #475569 !important; }
+  .light-mode .auth-hero,
+  .light-mode .auth-hero.text-white,
+  .light-mode .auth-hero .text-white,
+  .light-mode .auth-microsoft,
+  .light-mode .auth-microsoft.text-white { color: #ffffff !important; }
   .light-mode .glass-card-hover:hover {
     border-color: var(--jf-blue) !important;
     box-shadow: 0 4px 16px rgba(0, 117, 227, 0.12) !important;
@@ -193,7 +276,7 @@
   /* ─ Light mode: sidebar stays dark (JotForm-style dark navy sidebar) ─ */
   /* INTENTIONALLY NOT overriding aside background — sidebar stays dark navy */
   /* Restore white text inside the dark sidebar even in light mode */
-  .light-mode aside .text-white { color: #ffffff !important; }
+  .light-mode aside .text-white { color: #334155 !important; }
   .light-mode aside svg          { color: inherit !important; }
 
   /* ─ Light mode: header ─ */

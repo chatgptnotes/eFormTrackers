@@ -104,27 +104,26 @@ interface StatCardProps {
 }
 
 const StatCard = memo(function StatCard({ label, value, trend, color, idx }: StatCardProps) {
-  const borderColorMap: Record<number, string> = {
-    0: 'border-blue-500', 1: 'border-cyan-400', 2: 'border-blue-400', 3: 'border-indigo-400',
-  };
-  const bgColorMap: Record<number, string> = {
-    0: 'bg-blue-50', 1: 'bg-cyan-50', 2: 'bg-blue-50', 3: 'bg-indigo-50',
-  };
-  const textColorMap: Record<number, string> = {
-    0: 'text-blue-700', 1: 'text-cyan-700', 2: 'text-blue-700', 3: 'text-indigo-700',
-  };
+  const visuals = [
+    { icon: FileText, iconClass: 'bg-blue-600 text-white', chipClass: 'bg-blue-50 text-blue-700' },
+    { icon: Clock, iconClass: 'bg-cyan-500 text-white', chipClass: 'bg-cyan-50 text-cyan-700' },
+    { icon: AlertCircle, iconClass: 'bg-amber-500 text-white', chipClass: 'bg-amber-50 text-amber-700' },
+    { icon: Zap, iconClass: 'bg-violet-600 text-white', chipClass: 'bg-violet-50 text-violet-700' },
+  ][idx % 4];
+  const Icon = visuals.icon;
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: idx * 0.1 }}
-      className={`group relative overflow-hidden rounded-2xl p-6 border-2 transition-all duration-300 cursor-pointer shadow-md hover:shadow-xl hover:border-opacity-80 ${borderColorMap[idx % 4]}`}
-      style={{ background: '#ffffff' }}
+      className="group relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.07)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_18px_42px_rgba(15,23,42,0.12)]"
     >
+      <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${color}`} />
       <div className="relative z-10">
-        <div className="flex items-start justify-between mb-4">
-          <span className={`text-xs font-bold px-3 py-1.5 rounded-lg border backdrop-blur-sm ${textColorMap[idx % 4]} ${bgColorMap[idx % 4]} ${borderColorMap[idx % 4]}`}>{trend}</span>
+        <div className="mb-6 flex items-start justify-between">
+          <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${visuals.chipClass}`}>{trend}</span>
+          <span className={`grid h-10 w-10 place-items-center rounded-2xl shadow-sm ${visuals.iconClass}`}><Icon className="h-5 w-5" /></span>
         </div>
-        <p className="text-gray-700 text-xs font-semibold uppercase tracking-wider mb-2">{label}</p>
-        <div className="flex items-baseline gap-2"><span className="text-3xl md:text-4xl font-black text-black">{value}</span></div>
+        <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">{label}</p>
+        <div className="flex items-baseline gap-2"><span className="text-4xl font-black tracking-tight text-slate-950">{value}</span></div>
       </div>
     </motion.div>
   );
@@ -148,26 +147,25 @@ const SubmissionCard = memo(function SubmissionCard({ submission, idx, user, onV
       initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
       transition={{ delay: idx * 0.05 }}
       onClick={() => !isPreparingPrefill && onOpenModal(submission)}
-      className={`group relative overflow-hidden rounded-2xl p-6 border-2 transition-all duration-300 ${isPreparingPrefill ? 'cursor-wait' : 'cursor-pointer hover:shadow-xl'} shadow-md ${status === 'pending' ? 'border-cyan-400 hover:border-cyan-500' : status === 'approved' ? 'border-blue-400 hover:border-blue-500' : status === 'rejected' ? 'border-red-400 hover:border-red-500' : 'border-cyan-300 hover:border-cyan-400'}`}
-      style={{ background: '#ffffff' }}
+      className={`group relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 transition-all duration-300 ${isPreparingPrefill ? 'cursor-wait' : 'cursor-pointer hover:-translate-y-1 hover:shadow-xl'} shadow-[0_8px_24px_rgba(15,23,42,0.06)] ${status === 'pending' ? 'before:bg-cyan-500' : status === 'approved' ? 'before:bg-blue-500' : status === 'rejected' ? 'before:bg-rose-500' : 'before:bg-emerald-500'} before:absolute before:inset-y-0 before:left-0 before:w-1`}
     >
       <div className="relative z-10 space-y-3">
         <div>
-          <p className="text-xs font-bold text-gray-800 uppercase tracking-wider mb-1">{submission.formTitle || 'Form Submission'}</p>
+          <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">{submission.formTitle || 'Form Submission'}</p>
           <div className="flex items-start justify-between gap-3">
-            <div className="flex-1"><p className="text-sm font-black text-black font-mono">ID: {submission.id.slice(0, 8).toUpperCase()}</p></div>
-            <span className={`inline-block text-xs font-bold px-2.5 py-1 rounded-lg text-white bg-gradient-to-r ${sc.color}`}>{sc.label}</span>
+            <div className="flex-1"><p className="font-mono text-sm font-black text-slate-950">#{submission.id.slice(0, 8).toUpperCase()}</p></div>
+            <span className={`inline-block rounded-full px-2.5 py-1 text-[11px] font-bold text-white shadow-sm bg-gradient-to-r ${sc.color}`}>{sc.label}</span>
           </div>
           {(() => {
             const myRole = getMyWorkflowRole(submission, user?.email);
             return myRole ? <span className="inline-block mt-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">You: {myRole}</span> : null;
           })()}
         </div>
-        <div className="flex items-center gap-2 py-2 border-t border-gray-200">
+        <div className="flex items-center gap-2 border-t border-slate-100 py-3">
           <User className="w-4 h-4 text-gray-700" />
           <div className="flex-1 min-w-0"><p className="text-xs text-gray-800 font-medium">Submitted By</p><p className="text-sm font-bold text-black truncate">{submission.submittedBy.name}</p><p className="text-xs text-gray-500 truncate">{submission.submittedBy.email}</p></div>
         </div>
-        <div className="flex items-center gap-2 py-2 border-t border-gray-200 bg-blue-50 px-3 rounded-lg">
+        <div className="flex items-center gap-2 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2.5">
           <Briefcase className="w-4 h-4 text-blue-700 flex-shrink-0" />
           <div className="flex-1 min-w-0"><p className="text-xs text-gray-900 font-medium">Pending With</p>{(() => {
             const resolved = displayApproverName(submission.pendingApproverName, '');
@@ -176,7 +174,7 @@ const SubmissionCard = memo(function SubmissionCard({ submission, idx, user, onV
               : <p className="text-sm font-medium text-gray-400 italic truncate">Not assigned</p>;
           })()}{submission.pendingApproverEmail && <p className="text-xs text-gray-500 truncate">{submission.pendingApproverEmail}</p>}</div>
         </div>
-        <div className="grid grid-cols-2 gap-2 py-2 border-t border-gray-200 text-xs">
+        <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 text-xs">
           <div><p className="text-gray-900 font-medium">Department</p><p className="font-bold text-black">{submission.submittedBy.department || '—'}</p></div>
           <div><p className="text-gray-900 font-medium">Priority</p><p className={`font-bold text-sm ${submission.priority === 'urgent' ? 'text-red-600' : submission.priority === 'high' ? 'text-orange-600' : submission.priority === 'medium' ? 'text-yellow-600' : 'text-green-600'}`}>{submission.priority?.toUpperCase() || '—'}</p></div>
         </div>
@@ -815,12 +813,22 @@ export default function ModernDashboard({ data }: Props) {
 
   return (
     <div className="app-page relative">
-      <div className={`space-y-8 w-full px-4 transition-all duration-300 ${workflowSidebarSubmission ? '2xl:pr-[500px]' : ''}`}>
+      <div className={`mx-auto max-w-[1440px] space-y-6 transition-all duration-300 ${workflowSidebarSubmission ? '2xl:pr-[500px]' : ''}`}>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[.14em] text-slate-400">My workspace</p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">Active workflow requests</h1>
+            <p className="mt-1 text-sm text-slate-500">Review requests assigned to you and keep work moving.</p>
+          </div>
+          {canUseQueueScope && <div className="inline-flex self-start rounded-lg border border-slate-200 bg-white p-1 shadow-sm sm:self-auto">
+            {(['all', 'mine'] as const).map(scope => <button key={scope} onClick={() => setQueueScope(scope)} className={`rounded-md px-3 py-1.5 text-xs font-bold transition-colors ${queueScope === scope ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>{scope === 'all' ? 'All visible work' : 'My queue'}</button>)}
+          </div>}
+        </div>
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ staggerChildren: 0.1 }} className="responsive-card-grid">
           {stats.map((stat, idx) => (<StatCard key={idx} idx={idx} label={stat.label} value={stat.value} trend={stat.trend} color={stat.color} />))}
         </motion.div>
 
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="space-y-4">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="space-y-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,.05)]">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex w-full flex-col gap-3 sm:flex-row xl:max-w-4xl">
               <TeamProfilePicker />

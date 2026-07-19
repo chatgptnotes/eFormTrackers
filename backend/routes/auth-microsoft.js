@@ -55,15 +55,12 @@ async function fetchGraphProfile(accessToken) {
   }
 }
 
-// Map JotForm workspace accountType to app role:
-//   ADMIN  → 'admin'    (workspace admin can manage everything)
-//   USER   → 'approver' (workspace members are approvers by default)
-// Never downgrades an existing role — only elevates if the stored role is weaker.
-function roleFromAccountType(accountType, existingRole) {
+// Map the JotForm workspace account type only when creating an app account.
+// Existing app roles are managed in this application and must not be changed
+// by a subsequent Microsoft sign-in.
+function roleFromAccountType(accountType) {
   const jfRole = String(accountType || '').toUpperCase() === 'ADMIN' ? 'admin' : 'approver';
-  const hierarchy = { super_admin: 4, admin: 3, approver: 2, viewer: 1, user: 1 };
-  const existing = existingRole || 'viewer';
-  return (hierarchy[jfRole] || 1) > (hierarchy[existing] || 1) ? jfRole : existing;
+  return jfRole;
 }
 
 // ── GET /api/auth/microsoft — Redirect to Microsoft login ──
@@ -140,9 +137,8 @@ router.get('/microsoft/callback', async (req, res) => {
       return res.redirect('/login?error=not_workspace_member');
     }
 
-    // 5. Determine role: use JotForm accountType to assign appropriate level.
-    //    New users get the role derived from accountType; existing users are only
-    //    elevated (never downgraded) so manual admin promotions are preserved.
+    // 5. Determine the role for a new account. Existing accounts retain their
+    //    app-managed role (for example, an explicitly demoted admin).
     const jfAccountType = workspace.member?.accountType || 'USER';
 
     // 6. Find or create user in DB
@@ -159,9 +155,9 @@ router.get('/microsoft/callback', async (req, res) => {
     if (existing.rows.length > 0) {
       userRow = existing.rows[0];
 
-      // Update display name + department from latest Graph data on every login.
-      // Never overwrite a manually-set role to a weaker one.
-      const updatedRole = roleFromAccountType(jfAccountType, userRow.role);
+      // Update display name + department from latest Graph data on every login;
+      // retain the role configured in the app database.
+      const updatedRole = userRow.role || 'approver';
       const profileUpdate = await pool.query(
         `UPDATE profiles SET full_name = $1, department = CASE WHEN $2 = '' THEN department ELSE $2 END,
          role = $3, updated_at = now() WHERE user_id = $4`,
@@ -187,7 +183,7 @@ router.get('/microsoft/callback', async (req, res) => {
       userRow.role = updatedRole;
     } else {
       // New user — create with role derived from JotForm workspace accountType
-      const newRole = roleFromAccountType(jfAccountType, 'viewer');
+      const newRole = roleFromAccountType(jfAccountType);
 
       const ins = await pool.query(
         `INSERT INTO users (email, password_hash, full_name)
