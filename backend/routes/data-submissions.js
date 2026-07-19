@@ -66,8 +66,10 @@ router.get('/submissions', async (req, res, next) => {
       }
     } else {
       const email = String(req.session.email || '').toLowerCase();
-      // Normal users see "my work" across every synced workspace; the email
-      // participation filter below is the access boundary.
+      // Normal users see their work in the selected workspace only; the email
+      // participation filter remains the access boundary within that workspace.
+      conditions.push(`profile_id = $${idx++}`);
+      params.push(profileId);
       conditions.push(`(
         lower(coalesce(submitter_email, '')) = $${idx}
         OR lower(coalesce(pending_approver_email, '')) = $${idx}

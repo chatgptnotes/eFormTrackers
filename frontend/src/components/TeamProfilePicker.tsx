@@ -82,11 +82,11 @@ export default function TeamProfilePicker() {
   if (profiles.length === 0) return null;
 
   return (
-    <div ref={ref} className="relative w-full sm:w-80">
+    <div ref={ref} className="relative w-full">
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className="flex w-full items-center justify-between gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2 text-left text-sm font-semibold text-gray-800 shadow-sm ring-2 ring-transparent transition-all focus:border-blue-500 focus:outline-none focus:ring-blue-500/20"
+        className="flex h-16 w-full items-center justify-between gap-2 rounded-xl border border-gray-300 bg-white px-3 text-left text-sm font-semibold text-gray-800 shadow-sm ring-2 ring-transparent transition-all focus:border-blue-500 focus:outline-none focus:ring-blue-500/20"
         aria-haspopup="listbox"
         aria-expanded={open}
       >

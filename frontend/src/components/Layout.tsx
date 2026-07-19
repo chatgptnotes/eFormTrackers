@@ -1,12 +1,12 @@
 import { ReactNode, useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   LayoutDashboard, Table2, AlertTriangle, RefreshCw, Menu, X, Clock, Zap,
   Users, CreditCard, HelpCircle, Building2, BarChart3, Kanban,
   FolderOpen, Folder, ChevronRight, ChevronDown, LayoutGrid, Package,
   DollarSign, Monitor, Scale, Briefcase, Megaphone, ShieldCheck, PlusCircle,
-  Sun, Moon, ExternalLink, CheckCircle2, FileText,
+  Sun, Moon, CheckCircle2, FileText,
 } from 'lucide-react';
 import { RefreshConfig, SidebarCategory } from '../types';
 import { JFFormMeta } from '../services/formDiscovery';
@@ -15,7 +15,6 @@ import { useApp } from '../contexts/AppContext';
 import { SIDEBAR_CATEGORIES } from '../services/mockData';
 import NotificationBell from './NotificationBell';
 import UserDropdown from './UserDropdown';
-import { JOTFORM_WORKSPACE_URL } from '../config/jotform';
 
 const SHOW_SUBMIT_REQUEST_BUTTON = false;
 const SHOW_DASHBOARD_TAB = false;
@@ -288,24 +287,15 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
               })}
             </div>
 
-            {/* Client services documented in the Enterprise API guide */}
-            <div className="mx-4 border-t border-slate-800 my-2" />
-
-            {/* Section 3: Tools */}
-            <div className="px-4 pt-1 pb-4 space-y-0.5">
-              <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-2 px-2">Operations</p>
-              {TOOL_NAV.map(item => {
+            <div className="px-4 pb-4 space-y-0.5">
+              {TOOL_NAV.filter(item => ['Team settings', 'Settings'].includes(item.label)).map(item => {
                 const active = location.pathname === item.path;
                 return (
                   <Link
                     key={item.path}
                     to={item.path}
                     onClick={() => setSidebarOpen(false)}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-xl transition-all duration-200 ${
-                      active
-                        ? 'bg-gold/10 text-gold border border-gold/20'
-                        : 'text-white hover:bg-slate-800'
-                    }`}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-xl transition-all duration-200 ${active ? 'bg-gold/10 text-gold border border-gold/20' : 'text-white hover:bg-slate-800'}`}
                   >
                     <item.icon className="w-4 h-4" />
                     <span className="text-sm font-medium">{item.label}</span>
@@ -369,22 +359,6 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
               </div>
             </div>
             <div className="flex flex-shrink-0 items-center gap-2 sm:gap-3">
-              <a
-                href={JOTFORM_WORKSPACE_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-700/30 hover:bg-slate-700/50 text-gray-400 hover:text-gold transition-all text-sm font-semibold"
-              >
-                <ExternalLink className="w-4 h-4" />
-                Workspace
-              </a>
-              <Link
-                to="/app/submit-request"
-                className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gold/20 hover:bg-gold/30 text-gold text-sm font-semibold transition-all border border-gold/20"
-              >
-                <PlusCircle className="w-4 h-4" />
-                New Request
-              </Link>
               <button
                 onClick={toggleTheme}
                 title={themeMode === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
@@ -412,15 +386,17 @@ export default function Layout({ children, refreshConfig, setRefreshConfig, onRe
 
         {/* Page Content */}
         <main>
-          <motion.div
-            key={location.pathname}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.3 }}
-          >
-            {children}
-          </motion.div>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={location.pathname}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+            >
+              {children}
+            </motion.div>
+          </AnimatePresence>
         </main>
       </div>
     </div>

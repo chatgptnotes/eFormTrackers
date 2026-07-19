@@ -358,6 +358,15 @@
   .light-mode .bg-navy-light\/20 { background-color: rgba(193,197,226,0.2) !important; }
 
   /* ─ Light mode: toggle buttons ─ */
+  .light-mode .stat-icon,
+  .light-mode .status-pill,
+  .light-mode .workflow-node,
+  .light-mode .flow-node { color: #fff !important; }
+  .light-mode .queue-scope-selected { color: #fff !important; }
   .light-mode .bg-gold     { background-color: var(--jf-blue) !important; }
   .light-mode .bg-navy-light { background-color: #C1C5E2 !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flow-stream { display: none; }
 }

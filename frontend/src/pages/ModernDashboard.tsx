@@ -29,10 +29,10 @@ const DELAYED_REVIEW_DAYS = 7;
 const CRITICAL_REVIEW_DAYS = 14;
 
 const statusConfig = {
-  pending: { color: 'from-cyan-400 to-sky-400', icon: Clock, label: 'Pending', text: 'text-white', bgLight: 'bg-cyan-400/20', iconColor: 'text-cyan-300' },
-  approved: { color: 'from-blue-400 to-blue-600', icon: CheckCircle2, label: 'Approved', text: 'text-white', bgLight: 'bg-blue-500/20', iconColor: 'text-blue-300' },
-  rejected: { color: 'from-red-500 to-rose-600', icon: AlertCircle, label: 'Rejected', text: 'text-white', bgLight: 'bg-red-500/20', iconColor: 'text-red-300' },
-  completed: { color: 'from-cyan-300 to-blue-400', icon: Zap, label: 'Completed', text: 'text-white', bgLight: 'bg-cyan-400/20', iconColor: 'text-cyan-200' },
+  pending: { color: 'from-slate-700 to-slate-800', icon: Clock, label: 'Pending', text: 'text-white', bgLight: 'bg-slate-100', iconColor: 'text-slate-600' },
+  approved: { color: 'from-blue-600 to-blue-700', icon: CheckCircle2, label: 'Approved', text: 'text-white', bgLight: 'bg-blue-50', iconColor: 'text-blue-600' },
+  rejected: { color: 'from-rose-600 to-rose-700', icon: AlertCircle, label: 'Rejected', text: 'text-white', bgLight: 'bg-rose-50', iconColor: 'text-rose-600' },
+  completed: { color: 'from-blue-600 to-blue-700', icon: Zap, label: 'Completed', text: 'text-white', bgLight: 'bg-blue-50', iconColor: 'text-blue-600' },
 };
 
 function getSubmissionStatus(submission: Submission): keyof typeof statusConfig {
@@ -105,10 +105,10 @@ interface StatCardProps {
 
 const StatCard = memo(function StatCard({ label, value, trend, color, idx }: StatCardProps) {
   const visuals = [
-    { icon: FileText, iconClass: 'bg-blue-600 text-white', chipClass: 'bg-blue-50 text-blue-700' },
-    { icon: Clock, iconClass: 'bg-cyan-500 text-white', chipClass: 'bg-cyan-50 text-cyan-700' },
-    { icon: AlertCircle, iconClass: 'bg-amber-500 text-white', chipClass: 'bg-amber-50 text-amber-700' },
-    { icon: Zap, iconClass: 'bg-violet-600 text-white', chipClass: 'bg-violet-50 text-violet-700' },
+    { icon: FileText, iconClass: 'bg-slate-800 text-white', chipClass: 'bg-slate-100 text-slate-700' },
+    { icon: Clock, iconClass: 'bg-blue-600 text-white', chipClass: 'bg-blue-50 text-blue-700' },
+    { icon: AlertCircle, iconClass: 'bg-slate-700 text-white', chipClass: 'bg-slate-100 text-slate-700' },
+    { icon: Zap, iconClass: 'bg-blue-700 text-white', chipClass: 'bg-blue-50 text-blue-700' },
   ][idx % 4];
   const Icon = visuals.icon;
   return (
@@ -120,10 +120,16 @@ const StatCard = memo(function StatCard({ label, value, trend, color, idx }: Sta
       <div className="relative z-10">
         <div className="mb-6 flex items-start justify-between">
           <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${visuals.chipClass}`}>{trend}</span>
-          <span className={`grid h-10 w-10 place-items-center rounded-2xl shadow-sm ${visuals.iconClass}`}><Icon className="h-5 w-5" /></span>
+          <motion.span
+            initial={{ opacity: 0, rotate: -10, scale: 0.8 }}
+            animate={{ opacity: 1, rotate: 0, scale: 1 }}
+            whileHover={{ rotate: idx % 2 ? 8 : -8, scale: 1.08 }}
+            transition={{ delay: idx * 0.1 + 0.15, type: 'spring', stiffness: 260, damping: 18 }}
+            className={`stat-icon grid h-10 w-10 place-items-center rounded-2xl shadow-sm ${visuals.iconClass}`}
+          ><Icon className="h-5 w-5" /></motion.span>
         </div>
         <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">{label}</p>
-        <div className="flex items-baseline gap-2"><span className="text-4xl font-black tracking-tight text-slate-950">{value}</span></div>
+        <div className="flex items-baseline gap-2"><motion.span initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.1 + 0.15, type: 'spring', stiffness: 220 }} className="text-4xl font-black tracking-tight text-slate-950">{value}</motion.span></div>
       </div>
     </motion.div>
   );
@@ -147,48 +153,48 @@ const SubmissionCard = memo(function SubmissionCard({ submission, idx, user, onV
       initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
       transition={{ delay: idx * 0.05 }}
       onClick={() => !isPreparingPrefill && onOpenModal(submission)}
-      className={`group relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 transition-all duration-300 ${isPreparingPrefill ? 'cursor-wait' : 'cursor-pointer hover:-translate-y-1 hover:shadow-xl'} shadow-[0_8px_24px_rgba(15,23,42,0.06)] ${status === 'pending' ? 'before:bg-cyan-500' : status === 'approved' ? 'before:bg-blue-500' : status === 'rejected' ? 'before:bg-rose-500' : 'before:bg-emerald-500'} before:absolute before:inset-y-0 before:left-0 before:w-1`}
+      className={`group h-full rounded-2xl border border-slate-200 bg-white p-5 transition-all duration-300 ${isPreparingPrefill ? 'cursor-wait' : 'cursor-pointer hover:-translate-y-1 hover:border-blue-300 hover:shadow-[0_14px_34px_rgba(15,23,42,0.10)]'}`}
     >
-      <div className="relative z-10 space-y-3">
+      <div className="relative z-10 flex h-full flex-col gap-3">
         <div>
-          <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">{submission.formTitle || 'Form Submission'}</p>
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">{submission.formTitle || 'Form Submission'}</p>
           <div className="flex items-start justify-between gap-3">
-            <div className="flex-1"><p className="font-mono text-sm font-black text-slate-950">#{submission.id.slice(0, 8).toUpperCase()}</p></div>
-            <span className={`inline-block rounded-full px-2.5 py-1 text-[11px] font-bold text-white shadow-sm bg-gradient-to-r ${sc.color}`}>{sc.label}</span>
+            <div className="flex-1"><p className="font-mono text-sm font-semibold text-slate-950">#{submission.id.slice(0, 8).toUpperCase()}</p></div>
+            <span className={`status-pill inline-block rounded-full px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm bg-gradient-to-r ${sc.color}`}>{sc.label}</span>
           </div>
           {(() => {
             const myRole = getMyWorkflowRole(submission, user?.email);
-            return myRole ? <span className="inline-block mt-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">You: {myRole}</span> : null;
+            return myRole ? <span className="inline-block mt-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">You: {myRole}</span> : null;
           })()}
         </div>
         <div className="flex items-center gap-2 border-t border-slate-100 py-3">
           <User className="w-4 h-4 text-gray-700" />
-          <div className="flex-1 min-w-0"><p className="text-xs text-gray-800 font-medium">Submitted By</p><p className="text-sm font-bold text-black truncate">{submission.submittedBy.name}</p><p className="text-xs text-gray-500 truncate">{submission.submittedBy.email}</p></div>
+          <div className="flex-1 min-w-0"><p className="text-xs text-gray-800 font-medium">Submitted By</p><p className="text-sm font-semibold text-black truncate">{submission.submittedBy.name}</p><p className="text-xs text-gray-500 truncate">{submission.submittedBy.email}</p></div>
         </div>
         <div className="flex items-center gap-2 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2.5">
           <Briefcase className="w-4 h-4 text-blue-700 flex-shrink-0" />
           <div className="flex-1 min-w-0"><p className="text-xs text-gray-900 font-medium">Pending With</p>{(() => {
             const resolved = displayApproverName(submission.pendingApproverName, '');
             return resolved
-              ? <p className="text-sm font-bold text-black truncate">{resolved}</p>
+              ? <p className="text-sm font-semibold text-black truncate">{resolved}</p>
               : <p className="text-sm font-medium text-gray-400 italic truncate">Not assigned</p>;
           })()}{submission.pendingApproverEmail && <p className="text-xs text-gray-500 truncate">{submission.pendingApproverEmail}</p>}</div>
         </div>
         <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 text-xs">
-          <div><p className="text-gray-900 font-medium">Department</p><p className="font-bold text-black">{submission.submittedBy.department || '—'}</p></div>
-          <div><p className="text-gray-900 font-medium">Priority</p><p className={`font-bold text-sm ${submission.priority === 'urgent' ? 'text-red-600' : submission.priority === 'high' ? 'text-orange-600' : submission.priority === 'medium' ? 'text-yellow-600' : 'text-green-600'}`}>{submission.priority?.toUpperCase() || '—'}</p></div>
+          <div><p className="text-gray-900 font-medium">Department</p><p className="font-semibold text-black">{submission.submittedBy.department || '—'}</p></div>
+          <div><p className="text-gray-900 font-medium">Priority</p><p className={`font-semibold text-sm ${submission.priority === 'urgent' || submission.priority === 'high' ? 'text-rose-600' : 'text-blue-600'}`}>{submission.priority?.toUpperCase() || '—'}</p></div>
         </div>
         <div className="grid grid-cols-2 gap-2 py-2 border-t border-gray-200 text-xs">
-          <div><p className="text-gray-900 font-medium">Submitted</p><p className="font-bold text-black">{new Date(submission.submissionDate).toLocaleDateString()}</p></div>
-          <div><p className="text-gray-900 font-medium">Pending For</p><p className={`font-bold text-sm ${submission.daysAtCurrentLevel > 14 ? 'text-red-600' : submission.daysAtCurrentLevel > 7 ? 'text-orange-600' : 'text-gray-900'}`}>{submission.daysAtCurrentLevel || 0} days</p></div>
+          <div><p className="text-gray-900 font-medium">Submitted</p><p className="font-semibold text-black">{new Date(submission.submissionDate).toLocaleDateString()}</p></div>
+          <div><p className="text-gray-900 font-medium">Pending For</p><p className={`font-semibold text-sm ${submission.daysAtCurrentLevel > 14 ? 'text-red-600' : submission.daysAtCurrentLevel > 7 ? 'text-orange-600' : 'text-gray-900'}`}>{submission.daysAtCurrentLevel || 0} days</p></div>
         </div>
-        <div className="pt-2 border-t border-gray-200 space-y-2">
+        <div className="mt-auto border-t border-gray-200 pt-2">
           {(() => {
             // CTA reflects MY actual active task type — not a blanket "Review &
             // Approve". Approval opens the signature modal, assigned forms use
             // their prefill URL; task forms open externally, while text-only
             // tasks complete inside JotFlow.
-            const btnClass = `w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-gradient-to-r ${sc.color} text-white font-semibold text-sm transition-all hover:shadow-lg border border-transparent`;
+            const btnClass = 'w-full flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-800 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700';
             if (myAction === 'approval') {
               return <motion.button whileHover={{ scale: 1.02 }} onClick={() => onViewDetails(submission)} className={btnClass}><CheckCircle2 className="w-4 h-4" /><span>Review &amp; Approve</span></motion.button>;
             }
@@ -805,15 +811,15 @@ export default function ModernDashboard({ data }: Props) {
     ? Math.round(pendingSubmissions.reduce((sum, s) => sum + (s.daysAtCurrentLevel || 0), 0) / pendingSubmissions.length) : 0;
 
   const stats = [
-    { label: 'Pending Submissions', value: pendingSubmissions.length, color: 'from-blue-500 to-blue-600', trend: pendingSubmissions.length > 0 ? `${pendingSubmissions.length} open` : '0' },
-    { label: 'Pending Review', value: pendingCount, color: 'from-cyan-400 to-sky-500', trend: delayedCount > 0 ? `${delayedCount} >7d` : 'On track' },
-    { label: 'Critical Review', value: criticalCount, color: 'from-blue-400 to-blue-600', trend: criticalCount > 0 ? `>${CRITICAL_REVIEW_DAYS}d` : 'Clear' },
-    { label: 'Avg Pending', value: `${avgDays}d`, color: 'from-indigo-400 to-blue-500', trend: avgDays > 0 ? avgDays + 'd' : '—' },
+    { label: 'Pending Submissions', value: pendingSubmissions.length, color: 'from-slate-700 to-slate-800', trend: pendingSubmissions.length > 0 ? `${pendingSubmissions.length} open` : '0' },
+    { label: 'Pending Review', value: pendingCount, color: 'from-blue-600 to-blue-700', trend: delayedCount > 0 ? `${delayedCount} >7d` : 'On track' },
+    { label: 'Critical Review', value: criticalCount, color: 'from-slate-700 to-slate-800', trend: criticalCount > 0 ? `>${CRITICAL_REVIEW_DAYS}d` : 'Clear' },
+    { label: 'Avg Pending', value: `${avgDays}d`, color: 'from-blue-600 to-blue-700', trend: avgDays > 0 ? avgDays + 'd' : '—' },
   ];
 
   return (
     <div className="app-page relative">
-      <div className={`mx-auto max-w-[1440px] space-y-6 transition-all duration-300 ${workflowSidebarSubmission ? '2xl:pr-[500px]' : ''}`}>
+      <div className={`mx-auto max-w-[1440px] space-y-6 transition-all duration-300 ${workflowSidebarSubmission ? '2xl:pr-[440px]' : ''}`}>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-[.14em] text-slate-400">My workspace</p>
@@ -821,35 +827,35 @@ export default function ModernDashboard({ data }: Props) {
             <p className="mt-1 text-sm text-slate-500">Review requests assigned to you and keep work moving.</p>
           </div>
           {canUseQueueScope && <div className="inline-flex self-start rounded-lg border border-slate-200 bg-white p-1 shadow-sm sm:self-auto">
-            {(['all', 'mine'] as const).map(scope => <button key={scope} onClick={() => setQueueScope(scope)} className={`rounded-md px-3 py-1.5 text-xs font-bold transition-colors ${queueScope === scope ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>{scope === 'all' ? 'All visible work' : 'My queue'}</button>)}
+            {(['all', 'mine'] as const).map(scope => <button key={scope} onClick={() => setQueueScope(scope)} className={`rounded-md px-3 py-1.5 text-xs font-bold transition-colors ${queueScope === scope ? 'queue-scope-selected bg-slate-900' : 'text-slate-600 hover:bg-slate-100'}`}>{scope === 'all' ? 'All visible work' : 'My queue'}</button>)}
           </div>}
         </div>
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ staggerChildren: 0.1 }} className="responsive-card-grid">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ staggerChildren: 0.1 }} className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {stats.map((stat, idx) => (<StatCard key={idx} idx={idx} label={stat.label} value={stat.value} trend={stat.trend} color={stat.color} />))}
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="space-y-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,.05)]">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex w-full flex-col gap-3 sm:flex-row xl:max-w-4xl">
-              <TeamProfilePicker />
-              <WorkflowPicker
+          <div className={`grid grid-cols-1 gap-3 ${workflowSidebarSubmission ? 'sm:grid-cols-2' : '2xl:grid-cols-[18rem_18rem_minmax(15rem,1fr)_auto] 2xl:items-center'}`}>
+            <div className="contents">
+              <div className="w-full"><TeamProfilePicker /></div>
+              <div className="w-full"><WorkflowPicker
                 value={activeWorkflowId}
                 options={workflowOptions}
                 onChange={id => { setActiveWorkflowId(id); setCurrentPage(1); }}
                 accent="blue"
-              />
-              <div className="relative w-full sm:max-w-md">
+              /></div>
+              <div className={`relative min-w-0 sm:col-span-2 ${workflowSidebarSubmission ? '' : '2xl:col-span-1'}`}>
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
                 <input type="text" placeholder="Search ID, name, or form title" value={searchQuery} onChange={handleSearchChange}
-                  className="w-full rounded-xl border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm text-black placeholder-gray-500 transition-all duration-200 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+                  className="h-16 w-full rounded-xl border border-gray-300 bg-white pl-9 pr-3 text-sm text-black placeholder-gray-500 transition-all duration-200 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
               </div>
             </div>
 
-            <div className="flex gap-2 items-center flex-wrap">
+            <div className={`flex flex-wrap items-center gap-2 self-start ${workflowSidebarSubmission ? 'sm:col-span-2' : ''}`}>
               <motion.button
                 whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
                 onClick={() => setShowFilters(s => !s)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-semibold transition-colors shadow-sm ${
+                className={`flex h-16 items-center gap-2 px-4 rounded-xl border text-sm font-semibold transition-colors shadow-sm ${
                   showFilters || activeFilterCount > 0
                     ? 'bg-blue-50 border-blue-400 text-blue-700'
                     : 'bg-white border-gray-300 text-gray-700 hover:border-blue-400 hover:text-blue-600'
@@ -862,7 +868,7 @@ export default function ModernDashboard({ data }: Props) {
               {/* View Mode Dropdown */}
               <div className="relative" ref={dropdownRef}>
                 <button onClick={() => setDropdownOpen(o => !o)}
-                  className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-xl text-sm font-semibold text-gray-700 hover:border-blue-400 hover:text-blue-600 transition-colors shadow-sm">
+                  className="flex h-16 items-center gap-2 px-4 bg-white border border-gray-300 rounded-xl text-sm font-semibold text-gray-700 hover:border-blue-400 hover:text-blue-600 transition-colors shadow-sm">
                   <CurrentIcon className="w-4 h-4" /><span>{currentView.label}</span><ChevronDown className={`w-3.5 h-3.5 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
                 <AnimatePresence>
@@ -882,15 +888,15 @@ export default function ModernDashboard({ data }: Props) {
 
               <div className="relative">
                 <select value={sortBy} onChange={handleSortChange}
-                  className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-800 font-semibold text-sm focus:outline-none focus:border-blue-500 appearance-none pr-8 cursor-pointer">
+                  className="h-16 px-3 rounded-xl border border-gray-300 bg-white text-gray-800 font-semibold text-sm focus:outline-none focus:border-blue-500 appearance-none pr-8 cursor-pointer">
                   <option value="latest">Latest First</option><option value="oldest">Oldest First</option><option value="days">Days Pending</option>
                 </select>
-                <ArrowUpDown className="w-4 h-4 absolute right-2 top-2.5 text-gray-600 pointer-events-none" />
+                <ArrowUpDown className="w-4 h-4 absolute right-2 top-1/2 -translate-y-1/2 text-gray-600 pointer-events-none" />
               </div>
 
               <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={handleExport}
                 disabled={filteredAndSortedSubmissions.length === 0}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-blue-500 to-blue-600 text-white font-semibold text-sm transition-all hover:shadow-lg border border-transparent disabled:opacity-50 disabled:cursor-not-allowed">
+                className="flex h-16 items-center gap-2 px-4 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 text-white font-semibold text-sm transition-all hover:shadow-lg border border-transparent disabled:opacity-50 disabled:cursor-not-allowed">
                 <Download className="w-4 h-4" />Export
               </motion.button>
             </div>

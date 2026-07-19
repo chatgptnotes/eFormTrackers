@@ -44,11 +44,11 @@ export default function WorkflowPicker({ value, options, onChange, accent = 'blu
   };
 
   return (
-    <div ref={ref} className="relative w-full sm:w-72">
+    <div ref={ref} className="relative w-full">
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className={`flex w-full items-center justify-between gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2 text-left text-sm font-semibold text-gray-800 shadow-sm ring-2 ring-transparent transition-all ${accentClass[accent]}`}
+        className={`flex h-16 w-full items-center justify-between gap-2 rounded-xl border border-gray-300 bg-white px-3 text-left text-sm font-semibold text-gray-800 shadow-sm ring-2 ring-transparent transition-all ${accentClass[accent]}`}
         aria-haspopup="listbox"
         aria-expanded={open}
       >
