@@ -1,0 +1,61 @@
+name: Build JotFlow Windows installer
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: [self-hosted, Windows, X64]
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Download repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = Join-Path $env:RUNNER_TEMP 'jotflow-installer-source.zip'
+          $extract = Join-Path $env:RUNNER_TEMP 'jotflow-installer-source'
+          Remove-Item $archive, $extract -Recurse -Force -ErrorAction SilentlyContinue
+          Invoke-WebRequest -Headers @{ Authorization = "Bearer $env:GH_TOKEN" } -Uri "https://api.github.com/repos/${{ github.repository }}/zipball/${{ github.sha }}" -OutFile $archive
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [IO.Compression.ZipFile]::ExtractToDirectory($archive, $extract)
+          Get-ChildItem -LiteralPath $env:GITHUB_WORKSPACE -Force | Remove-Item -Recurse -Force
+          $source = Get-ChildItem -LiteralPath $extract -Directory | Select-Object -First 1
+          Get-ChildItem -LiteralPath $source.FullName -Force | Copy-Item -Destination $env:GITHUB_WORKSPACE -Recurse -Force
+
+      - name: Prepare Node 18 and Inno Setup
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $nodeZip = Join-Path $env:RUNNER_TEMP 'node-v18.20.4-win-x64.zip'
+          $nodeRoot = Join-Path $env:RUNNER_TEMP 'node18'
+          Invoke-WebRequest -Uri 'https://nodejs.org/dist/v18.20.4/node-v18.20.4-win-x64.zip' -OutFile $nodeZip
+          Expand-Archive -Path $nodeZip -DestinationPath $nodeRoot -Force
+          $nodeDir = (Get-ChildItem $nodeRoot -Directory | Select-Object -First 1).FullName
+          "NODE18_DIR=$nodeDir" | Add-Content -Path $env:GITHUB_ENV -Encoding utf8
+          $inno = Join-Path $env:RUNNER_TEMP 'innosetup.exe'
+          Invoke-WebRequest -Uri 'https://jrsoftware.org/download.php/is.exe' -OutFile $inno
+          Start-Process -FilePath $inno -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CURRENTUSER' -Wait
+
+      - name: Build offline installer
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:Path = "$env:NODE18_DIR;$env:Path"
+          node --version
+          Set-Location 'FlowAccel Installer\payload\installers'
+          powershell -ExecutionPolicy Bypass -File .\fetch-payloads.ps1
+          Set-Location ..\..
+          cmd /c build-installer.bat
+          if ($LASTEXITCODE -ne 0) { throw "Installer build failed with exit code $LASTEXITCODE" }
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: JotFlow-Windows-installer
+          path: FlowAccel Installer/output/JotFlow-Setup-1.0.5.exe
+          if-no-files-found: error
+          retention-days: 7

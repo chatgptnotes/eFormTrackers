@@ -11,6 +11,14 @@ deploy-output
 everything-claude-code/
 backend/.env.production
 
+# Native Windows installer build artifacts and vendor payloads (large binaries).
+FlowAccel Installer/output/
+FlowAccel Installer/payload/app/
+FlowAccel Installer/payload/installers/*.exe
+FlowAccel Installer/payload/installers/*.msi
+FlowAccel Installer/payload/installers/*.zip
+FlowAccel Installer/payload/installers/SHA256SUMS.txt
+
 # JotForm API profiles — routing config may reference secrets; keep local
 backend/config/jotform-profiles.json
 
