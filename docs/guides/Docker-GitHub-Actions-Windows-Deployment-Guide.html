@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>JotFlow Docker + GitHub Actions Guide</title>
+<style>@page{size:A4;margin:17mm 15mm}*{box-sizing:border-box}body{font:11px/1.55 "Segoe UI",Arial,sans-serif;color:#1f2933;margin:0}h1,h2,h3{color:#0b3d63;line-height:1.25}h1{font-size:32px}h2{font-size:17px;border-bottom:2px solid #2563a8;padding-bottom:4px;margin-top:28px}h3{font-size:13px;margin-top:18px}code,pre{font-family:Consolas,"Courier New",monospace}code{background:#eef2f6;color:#b8004a;padding:1px 4px;border-radius:3px}pre{background:#0f2233;color:#e6edf3;padding:10px 12px;border-radius:5px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:9.3px}pre code{background:none;color:inherit;padding:0}table{border-collapse:collapse;width:100%;margin:.7em 0}th,td{border:1px solid #c7d2dd;padding:6px 8px;text-align:left;vertical-align:top}th{background:#e8f0f7;color:#0b3d63}.cover{text-align:center;padding-top:150px;page-break-after:always}.badge{display:inline-block;background:#2563a8;color:#fff;letter-spacing:3px;padding:6px 18px;border-radius:4px}.sub,.meta{color:#5b6b7a}.meta{margin-top:55px}.note,.warn,.tip{border-left:4px solid;padding:8px 11px;margin:.8em 0;border-radius:0 4px 4px 0;font-size:10px}.note{background:#eef6ff;border-color:#2563a8}.warn{background:#fff4e5;border-color:#d98400}.tip{background:#ecfaf0;border-color:#1f9d57}.section{page-break-before:always}.check li{list-style:"☐  ";padding-left:4px}footer{border-top:1px solid #c7d2dd;color:#5b6b7a;font-size:9px;margin-top:30px;padding-top:6px}</style>
+</head><body>
+<div class="cover"><div class="badge">BEGINNER DEPLOYMENT GUIDE</div><h1>JotFlow with Docker<br>and GitHub Actions</h1><div class="sub">Windows 10/11 • Docker Desktop • PostgreSQL • automatic deployment</div><div class="meta">Copy-paste guide for a new administrator<br>Version 1.0 • July 2026</div></div>
+
+<h2>1. What you are setting up</h2>
+<p>This guide deploys JotFlow on one Windows 10/11 PC. After setup, each push to GitHub’s <code>main</code> branch automatically rebuilds and starts the application on that PC.</p>
+<table><tr><th>Term</th><th>Meaning</th></tr><tr><td>Container</td><td>A small isolated program. We run frontend, backend, and PostgreSQL containers.</td></tr><tr><td>Docker Compose</td><td>One configuration file that connects those containers.</td></tr><tr><td>GitHub Actions runner</td><td>A GitHub program installed on this PC. It receives deployment jobs.</td></tr><tr><td>Volume</td><td>Docker-managed disk space that survives container replacement.</td></tr></table>
+<div class="note"><b>Linux containers do not replace Windows.</b> Docker Desktop runs them using its WSL 2 backend. Windows stays your PC’s operating system.</div>
+<pre><code>Developer pushes to main
+        │
+        ▼
+GitHub Actions runner on the Windows PC
+        │
+        ▼
+Docker Desktop starts: frontend → backend → PostgreSQL
+
+Browser → http://PC-IP:8080 → Nginx frontend → Node backend → PostgreSQL</code></pre>
+<div class="tip">The frontend forwards <code>/api</code>, <code>/uploads</code>, and <code>/socket.io</code> internally. Users only open one browser address.</div>
+
+<h2 class="section">2. Prepare the Windows PC</h2>
+<h3>Step 1 — Check Windows</h3>
+<p>Open <b>PowerShell as Administrator</b>:</p><pre><code>winver
+wsl --status</code></pre>
+<p>Use Windows 10 or 11 with virtualization enabled in BIOS/UEFI.</p>
+<h3>Step 2 — Install Docker Desktop</h3>
+<ol><li>Download Docker Desktop for Windows from Docker’s official website.</li><li>During installation choose <b>Use WSL 2 instead of Hyper-V</b>.</li><li>Restart if requested, open Docker Desktop, and wait for <b>Engine running</b>.</li></ol>
+<pre><code>docker version
+docker compose version
+docker run --rm hello-world</code></pre>
+<div class="warn"><b>Docker Desktop must remain running.</b> The PC must be powered on, connected to the network, and not asleep for automatic deployments.</div>
+<h3>Step 3 — Find the PC IP</h3><pre><code>ipconfig</code></pre>
+<p>Copy the IPv4 Address from the active Wi-Fi or Ethernet adapter, for example <code>192.168.1.50</code>. Give this PC a DHCP reservation/static IP in the router so it does not change.</p>
+<h3>Step 4 — Open the firewall port</h3><pre><code>New-NetFirewallRule -DisplayName "JotFlow HTTP 8080" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8080</code></pre>
+<p>LAN users will open <code>http://&lt;PC-IP&gt;:8080</code>. Do not expose the port publicly until a domain and HTTPS reverse proxy are added.</p>
+
+<h2 class="section">3. Create the private production configuration</h2>
+<p>Secrets are kept only on the Windows PC, not in Git or GitHub Actions.</p>
+<pre><code>New-Item -ItemType Directory -Force C:\JotFlow
+New-Item -ItemType Directory -Force C:\JotFlow\backups
+notepad C:\JotFlow\production.env</code></pre>
+<p>Paste this and replace every <code>REPLACE_ME</code> value. The database password must match in both marked locations.</p>
+<pre><code>APP_PORT=8080
+POSTGRES_USER=jotflow
+POSTGRES_PASSWORD=REPLACE_ME_LONG_UNIQUE_PASSWORD
+POSTGRES_DB=jotflow
+DATABASE_URL=postgresql://jotflow:REPLACE_ME_SAME_PASSWORD@db:5432/jotflow
+SESSION_SECRET=REPLACE_ME_RANDOM_SECRET
+NODE_ENV=production
+ALLOWED_ORIGIN=http://&lt;PC-IP&gt;:8080
+PUBLIC_BASE_URL=http://&lt;PC-IP&gt;:8080
+JOTFORM_API_KEY=REPLACE_ME
+JOTFORM_API_KEY_GDMO=REPLACE_ME
+JOTFORM_TEAM_ID=
+JOTFORM_WEBHOOK_SECRET=REPLACE_ME
+ENABLE_POLLER=1
+POLL_INTERVAL_MINUTES=2
+POLL_QUICK_SECONDS=1
+POLLER_KEY_TYPE=gdmo</code></pre>
+<p>Generate a session secret:</p><pre><code>[Convert]::ToBase64String((1..48 | ForEach-Object { Get-Random -Maximum 256 }))</code></pre>
+<div class="warn">Never commit <code>C:\JotFlow\production.env</code> or paste it into an Actions log, issue, chat, or screenshot.</div>
+
+<h2 class="section">4. Install the GitHub Actions runner</h2>
+<ol><li>Open your GitHub repository → <b>Settings</b> → <b>Actions</b> → <b>Runners</b> → <b>New self-hosted runner</b>.</li><li>Select <b>Windows</b> and <b>x64</b>. Keep GitHub’s page open; it contains a one-time token.</li><li>Open PowerShell as the account that uses Docker Desktop and follow GitHub’s download commands. The important registration command looks like this:</li></ol>
+<pre><code>New-Item -ItemType Directory -Force C:\actions-runner
+Set-Location C:\actions-runner
+# Download and extract the ZIP specified by GitHub.
+.\config.cmd --url https://github.com/&lt;OWNER&gt;/&lt;REPOSITORY&gt; --token &lt;ONE_TIME_TOKEN&gt;
+.\run.cmd</code></pre>
+<p>After the first successful deployment, use GitHub’s instructions to install the runner as a Windows service. Add its Windows account to the <code>docker-users</code> group, then sign out and back in.</p>
+<p>GitHub should show the runner as <b>Idle</b> with labels <code>self-hosted</code>, <code>Windows</code>, and <code>X64</code>.</p>
+
+<h2 class="section">5. First deployment</h2>
+<p>The repository includes:</p>
+<table><tr><th>File</th><th>Job</th></tr><tr><td><code>Dockerfile.frontend</code></td><td>Build React and serve it with Nginx.</td></tr><tr><td><code>Dockerfile.backend</code></td><td>Run Node API and Socket.IO.</td></tr><tr><td><code>docker-compose.production.yml</code></td><td>Connect the three containers and persistent volumes.</td></tr><tr><td><code>.github/workflows/deploy.yml</code></td><td>Deploy automatically on every push to <code>main</code>.</td></tr></table>
+<p>Commit and push those repository files:</p><pre><code>git add .
+git commit -m "Add Docker production deployment"
+git push origin main</code></pre>
+<p>Open the GitHub <b>Actions</b> tab. The workflow validates the local env file, builds images, starts PostgreSQL, runs the schema migration, starts frontend/backend, and calls the health endpoint.</p>
+<p>When the job is green, open:</p><pre><code>http://&lt;PC-IP&gt;:8080
+http://&lt;PC-IP&gt;:8080/api/health/ready</code></pre>
+<p>The health response should include <code>"ok":true</code> and <code>"db":"up"</code>.</p>
+
+<h2 class="section">6. Everyday use and troubleshooting</h2>
+<p>Future releases need only:</p><pre><code>git add .
+git commit -m "Describe the change"
+git push origin main</code></pre>
+<pre><code># View container state
+docker compose --env-file C:/JotFlow/production.env -f docker-compose.production.yml ps
+
+# Read backend logs (Ctrl+C stops viewing only)
+docker compose --env-file C:/JotFlow/production.env -f docker-compose.production.yml logs -f backend
+
+# Test locally on the PC
+Invoke-WebRequest http://127.0.0.1:8080/api/health/ready -UseBasicParsing</code></pre>
+<table><tr><th>Problem</th><th>Fix</th></tr><tr><td>Action stays queued</td><td>Docker Desktop and the self-hosted runner must be running; the PC cannot be sleeping.</td></tr><tr><td>Browser cannot connect</td><td>Check <code>ipconfig</code>, firewall port 8080, and container state.</td></tr><tr><td>Database health fails</td><td>Read database logs and ensure the two password occurrences in <code>production.env</code> match.</td></tr><tr><td>API/login blocked</td><td><code>ALLOWED_ORIGIN</code> and <code>PUBLIC_BASE_URL</code> must equal the exact browser address, including IP and port.</td></tr><tr><td>Data seems missing</td><td>Do not run <code>docker compose down -v</code>; <code>-v</code> deletes stored volumes.</td></tr></table>
+
+<h2 class="section">7. Daily PostgreSQL backups</h2>
+<p>Create <code>C:\JotFlow\backup-postgres.ps1</code>:</p>
+<pre><code>$ErrorActionPreference = 'Stop'
+$env:JOTFLOW_ENV_FILE = 'C:/JotFlow/production.env'
+$repo = 'C:\actions-runner\_work\&lt;REPOSITORY&gt;\&lt;REPOSITORY&gt;'
+$stamp = Get-Date -Format 'yyyy-MM-dd_HHmmss'
+$file = "C:\JotFlow\backups\jotflow_$stamp.sql"
+Set-Location $repo
+docker compose --env-file $env:JOTFLOW_ENV_FILE -f docker-compose.production.yml exec -T db pg_dump -U jotflow -d jotflow | Out-File -Encoding utf8 $file
+Get-ChildItem C:\JotFlow\backups\*.sql | Where-Object LastWriteTime -lt (Get-Date).AddDays(-14) | Remove-Item</code></pre>
+<p>Replace <code>&lt;REPOSITORY&gt;</code>, then create a daily Task Scheduler task that runs:</p><pre><code>powershell.exe -ExecutionPolicy Bypass -File C:\JotFlow\backup-postgres.ps1</code></pre>
+<div class="tip">Test it once and copy backups to a different machine/cloud location. A backup on the same PC does not protect against disk failure.</div>
+
+<h2>Final checklist</h2><ul class="check"><li>Docker Desktop is running in Linux container mode.</li><li>The PC has a stable IP and the firewall allows TCP 8080.</li><li><code>C:\JotFlow\production.env</code> exists only on the deployment PC.</li><li>GitHub shows the self-hosted runner as Idle.</li><li>A push to <code>main</code> produces a green deployment.</li><li><code>/api/health/ready</code> reports a healthy database.</li><li>Daily backups are written and copied off the PC.</li></ul>
+<footer>JotFlow Docker + GitHub Actions Windows Deployment Guide</footer></body></html>

@@ -13,7 +13,7 @@ interface Props {
   taskRejectReason?: string;
   taskConfirmRejectId?: string | null;
   sigLoading?: string;
-  user?: { email?: string } | null;
+  user?: { email?: string; role?: string } | null;
   showOverlay?: boolean;
   isAbsolute?: boolean;
   onClose: () => void;
@@ -37,16 +37,23 @@ function usernameFromEmail(email?: string) {
 }
 
 function taskUserDetails(task: WorkflowTask, submission: Submission | null, isActive: boolean, isCompleted: boolean) {
+  if (task.type === 'workflow_start_point') {
+    const owner = submission?.workflowOwner;
+    return { label: 'Created by', username: owner?.name || (owner?.email ? usernameFromEmail(owner.email) : submission?.submittedBy.name || usernameFromEmail(submission?.submittedBy.email)), mailId: owner?.email || submission?.submittedBy.email || '—' };
+  }
+  if (isCompleted) {
+    const mailId = task.submittedByEmail || task.assigneeEmail || '';
+    return { label: 'Completed by', username: task.submittedBy || task.assigneeName || usernameFromEmail(mailId), mailId: mailId || '—' };
+  }
   const mailId = task.assigneeEmail
     || (isActive ? submission?.pendingApproverEmail : '')
-    || (isCompleted ? task.submittedByEmail : '')
     || '';
   const username = task.assigneeName
     || (isActive ? submission?.pendingApproverName : '')
-    || (isCompleted ? task.submittedBy : '')
     || usernameFromEmail(mailId);
 
   return {
+    label: 'Assigned to',
     username: username || '—',
     mailId: mailId || '—',
   };
@@ -83,6 +90,11 @@ export default function WorkflowDetailsSidebar({
   });
   const activeStepIndex = Math.max(0, flowTasks.findIndex(task => task.status === 'ACTIVE'));
   const activeFlowProgress = flowTasks.length > 1 ? activeStepIndex / (flowTasks.length - 1) : 0;
+  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+  const workflowEndTask = submission && (submission.currentApprovalLevel === 'completed' || submission.currentApprovalLevel === 'rejected')
+    ? [...expandedTasks].filter(task => task.status === 'COMPLETED' && task.type !== 'workflow_start_point' && (task.submittedBy || task.submittedByEmail || task.assigneeName || task.assigneeEmail)).sort((a, b) => (b.level || 0) - (a.level || 0))[0]
+    : undefined;
+  const workflowEndedBy = workflowEndTask && taskUserDetails(workflowEndTask, submission, false, true);
 
   return (
     <AnimatePresence>
@@ -157,6 +169,22 @@ export default function WorkflowDetailsSidebar({
                 </div>
               )}
 
+              {submission && (
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">JotForm workflow owner</p>
+                  <p className="text-base font-semibold text-slate-900">{submission.workflowOwner?.name || (submission.workflowOwner?.email ? usernameFromEmail(submission.workflowOwner.email) : submission.submittedBy.name)}</p>
+                  <p className="mt-0.5 text-xs font-mono text-slate-600">{submission.workflowOwner?.email || submission.submittedBy.email || '—'}</p>
+                </div>
+              )}
+
+              {workflowEndedBy && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-emerald-700">Workflow ended by</p>
+                  <p className="text-base font-semibold text-slate-900">{workflowEndedBy.username}</p>
+                  <p className="mt-0.5 text-xs font-mono text-slate-600">{workflowEndedBy.mailId}</p>
+                </div>
+              )}
+
               {/* Card 1: Process Timeline - Clean JotForm Style */}
               <div className="space-y-4">
                 <h3 className="text-xs font-bold text-slate-700 uppercase tracking-widest">Process Timeline</h3>
@@ -183,6 +211,7 @@ export default function WorkflowDetailsSidebar({
                       const isActive = task.status === 'ACTIVE';
                       const isPending = task.status === 'PENDING';
                       const emailMatch = user?.email && task.assigneeEmail?.toLowerCase() === user.email.toLowerCase();
+                      const canAct = Boolean(emailMatch) || isAdmin;
                       const typeBadge = task.type === 'workflow_approval' ? 'Approval' : task.type === 'workflow_assign_task' ? 'Task' : task.type === 'workflow_assign_form' ? 'Form' : task.type;
 
                       const details = taskUserDetails(task, submission || null, isActive, isCompleted);
@@ -224,11 +253,11 @@ export default function WorkflowDetailsSidebar({
 
                               <div className="mb-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
                                 <div className="flex items-start justify-between gap-3">
-                                  <span className="font-semibold text-slate-500">Username</span>
+                                  <span className="font-semibold text-slate-500">{details.label}</span>
                                   <span className="text-right font-semibold text-slate-800 break-all">{details.username}</span>
                                 </div>
                                 <div className="mt-1 flex items-start justify-between gap-3">
-                                  <span className="font-semibold text-slate-500">Mail ID</span>
+                                  <span className="font-semibold text-slate-500">Email</span>
                                   <span className="text-right font-mono text-slate-700 break-all">{details.mailId}</span>
                                 </div>
                               </div>
@@ -271,13 +300,13 @@ export default function WorkflowDetailsSidebar({
                                     <Clock className="w-3.5 h-3.5" /> Awaiting
                                   </span>
                                 ) : isActive && task.type === 'workflow_approval' ? (
-                                  emailMatch ? (
+                                  canAct ? (
                                     <button
                                       onClick={() => onTaskApprove?.(submission?.id || '')}
                                       disabled={taskActionLoading === submission?.id}
                                       className="text-[11px] px-3 py-1.5 rounded-md bg-emerald-100 text-emerald-700 hover:bg-emerald-200 disabled:opacity-50 transition-colors cursor-pointer font-medium"
                                     >
-                                      <PenLine className="w-3.5 h-3.5 inline mr-1" /> Review &amp; Sign
+                                      <PenLine className="w-3.5 h-3.5 inline mr-1" /> {isAdmin && !emailMatch ? 'Sign as Admin' : 'Review & Sign'}
                                     </button>
                                   ) : (
                                     <span className="text-[11px] px-3 py-1.5 rounded-md bg-slate-100 text-slate-600 font-medium flex items-center gap-1">
@@ -286,12 +315,12 @@ export default function WorkflowDetailsSidebar({
                                   )
                                 ) : isActive && task.type === 'workflow_assign_task' ? (
                                   <div className="flex items-center gap-1.5 flex-wrap">
-                                    {emailMatch ? (
+                                    {canAct ? (
                                       <button
                                         onClick={() => onTaskApprove?.(submission?.id || '')}
                                         className="text-[11px] px-3 py-1.5 rounded-md bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors cursor-pointer font-medium"
                                       >
-                                        <ClipboardList className="w-3.5 h-3.5 inline mr-1" /> Mark Complete
+                                        <ClipboardList className="w-3.5 h-3.5 inline mr-1" /> {isAdmin && !emailMatch ? 'Complete as Admin' : 'Mark Complete'}
                                       </button>
                                     ) : (
                                       <span className="text-[11px] px-3 py-1.5 rounded-md bg-slate-100 text-slate-600 font-medium flex items-center gap-1">
@@ -300,12 +329,12 @@ export default function WorkflowDetailsSidebar({
                                     )}
                                   </div>
                                 ) : isActive && task.type === 'workflow_assign_form' ? (
-                                  emailMatch ? (
+                                  canAct ? (
                                     <button
                                       onClick={() => onOpenTaskLink?.(task)}
                                       className="text-[11px] px-3 py-1.5 rounded-md bg-cyan-100 text-cyan-700 hover:bg-cyan-200 transition-colors cursor-pointer font-medium"
                                     >
-                                      <FileEdit className="w-3.5 h-3.5 inline mr-1" /> Fill Form
+                                      <FileEdit className="w-3.5 h-3.5 inline mr-1" /> {isAdmin && !emailMatch ? 'Fill as Admin' : 'Fill Form'}
                                     </button>
                                   ) : (
                                     <span className="text-[11px] px-3 py-1.5 rounded-md bg-slate-100 text-slate-600 font-medium flex items-center gap-1">
@@ -348,11 +377,11 @@ export default function WorkflowDetailsSidebar({
 
 	                              <div className="space-y-1 text-xs">
 	                                <div className="flex justify-between">
-                                  <span className="text-slate-500">Username:</span>
+                                  <span className="text-slate-500">{details.label}:</span>
                                   <span className="text-right text-slate-800 break-all">{details.username}</span>
 	                                </div>
 	                                <div className="flex justify-between gap-4">
-                                  <span className="text-slate-500">Mail ID:</span>
+                                  <span className="text-slate-500">Email:</span>
                                   <span className="text-right font-mono text-slate-700 break-all">{details.mailId}</span>
 	                                </div>
                                 <div className="flex justify-between">

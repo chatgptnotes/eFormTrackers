@@ -10,6 +10,7 @@ const { upsertEmailLogs } = require('./email-log');
 const { getDefaultProfile, hasProfile, listProfiles, makeTeamProfileId } = require('./profiles');
 const { upsertWorkspaceForm, upsertWorkspaceLinks } = require('./workspace-links');
 const { applyResourceShareLinks, buildWorkflowTaskUrl } = require('./jotform-link');
+const { syncProfileOwner } = require('./profile-owner');
 
 function parseEmailFromActionText(text) {
   if (!text || typeof text !== 'string') return '';
@@ -249,6 +250,7 @@ async function pollOnce(opts = {}) {
   if (!quick) console.log(`[poller] Poll started for ${profileId}`);
 
   try {
+    if (!quick) await syncProfileOwner(profileId).catch(err => console.warn(`[poller] profile owner sync failed for ${profileId}:`, err.message));
     // 1. Fetch all enabled forms
     const forms = await fetchEnabledForms(profileId, quick);
 

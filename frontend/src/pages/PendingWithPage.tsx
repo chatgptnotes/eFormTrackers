@@ -41,7 +41,7 @@ const PendingWithCard = memo(function PendingWithCard({ submission, idx, onClick
       transition={{ delay: idx * 0.05 }}
       whileHover={{ y: -8, transition: { duration: 0.3 } }}
       onClick={() => onClick(submission)}
-      className="group relative overflow-hidden rounded-2xl p-6 border-2 border-amber-400 hover:border-amber-500 bg-white transition-all duration-300 cursor-pointer shadow-md hover:shadow-lg"
+      className="group relative overflow-hidden rounded-2xl border border-slate-200 border-t-4 border-t-amber-500 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-amber-300 hover:shadow-lg cursor-pointer"
     >
       <div className="relative z-10 space-y-3">
         <div>
@@ -50,13 +50,13 @@ const PendingWithCard = memo(function PendingWithCard({ submission, idx, onClick
           </p>
           <div className="flex items-start justify-between gap-3">
             <p className="text-sm font-black text-black font-mono">ID: {submission.id.slice(0, 8).toUpperCase()}</p>
-            <span className="inline-block text-xs font-bold px-2.5 py-1 rounded-lg text-white bg-gradient-to-r from-amber-400 to-orange-500">
+            <span className="inline-block rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700 ring-1 ring-inset ring-amber-200">
               {typeof level === 'number' ? `Level ${level}` : 'In Progress'}
             </span>
           </div>
           {myRole ? <span className="inline-block mt-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">You: {myRole}</span> : null}
         </div>
-        <div className="flex items-center gap-2 py-2 border-t border-gray-200 bg-amber-50 px-3 rounded-lg">
+        <div className="flex items-center gap-2 rounded-xl border border-amber-100 bg-amber-50/70 px-3 py-2.5">
           <Hourglass className="w-4 h-4 text-amber-600 flex-shrink-0" />
           <div className="flex-1 min-w-0">
             <p className="text-xs text-gray-900 font-medium">Pending With</p>
@@ -86,7 +86,7 @@ const PendingWithCard = memo(function PendingWithCard({ submission, idx, onClick
           <motion.button
             whileHover={{ x: 4 }}
             onClick={(e) => { e.stopPropagation(); onClick(submission); }}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-gradient-to-r from-amber-400 to-orange-500 text-white font-semibold text-sm transition-all hover:shadow-lg"
+            className="details-cta w-full flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-amber-600"
           >
             <span>View Details</span>
             <span className="group-hover:translate-x-1 transition-transform">→</span>
@@ -232,29 +232,37 @@ export default function PendingWithPage({ data }: Props) {
   return (
     <div className="app-page relative">
       <div className={`space-y-6 w-full px-4 py-2 transition-all duration-300 ${sidebarSubmission ? '2xl:pr-[500px]' : ''}`}>
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="flex items-center gap-2 text-gray-600">
-            <Clock className="w-5 h-5 text-amber-500" />
-            <span className="text-sm font-semibold">{filtered.length} workflow{filtered.length === 1 ? '' : 's'} pending</span>
-          </div>
-          <TeamProfilePicker />
-          <WorkflowPicker
-            value={activeWorkflowId}
-            options={workflowOptions}
-            onChange={id => { setActiveWorkflowId(id); setCurrentPage(1); }}
-            accent="amber"
-          />
-          <div className="relative w-full sm:w-80">
-            <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search ID, title, or person"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-gray-300 text-black placeholder-gray-500 text-sm focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all"
-            />
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-amber-500" />
+              <h1 className="text-xl font-bold text-slate-900">Pending With</h1>
+            </div>
+            <p className="mt-1 text-sm text-slate-500">{filtered.length} workflow{filtered.length === 1 ? '' : 's'} awaiting action</p>
           </div>
         </div>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="grid gap-3 2xl:grid-cols-[minmax(220px,1fr)_minmax(220px,1fr)_minmax(260px,1.2fr)] 2xl:items-center">
+            <TeamProfilePicker />
+            <WorkflowPicker
+              value={activeWorkflowId}
+              options={workflowOptions}
+              onChange={id => { setActiveWorkflowId(id); setCurrentPage(1); }}
+              accent="amber"
+            />
+            <div className="relative w-full">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search ID, title, or person"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="h-16 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-4 text-sm text-slate-900 placeholder:text-slate-400 focus:border-amber-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-400/20"
+              />
+            </div>
+          </div>
+        </section>
 
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 px-4 text-center">

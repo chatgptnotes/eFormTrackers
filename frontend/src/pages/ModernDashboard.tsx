@@ -137,6 +137,7 @@ const StatCard = memo(function StatCard({ label, value, trend, color, idx }: Sta
 
 const SubmissionCard = memo(function SubmissionCard({ submission, idx, user, onViewDetails, onOpenModal, onOpenTask, onCompleteTask }: SubmissionCardProps) {
   const status = getSubmissionStatus(submission);
+  const workflowOwner = submission.workflowOwner || submission.submittedBy;
   const sc = statusConfig[status];
   const StatusIcon = sc.icon;
   const myAction = getMyActionType(submission, user?.email);
@@ -169,7 +170,7 @@ const SubmissionCard = memo(function SubmissionCard({ submission, idx, user, onV
         </div>
         <div className="flex items-center gap-2 border-t border-slate-100 py-3">
           <User className="w-4 h-4 text-gray-700" />
-          <div className="flex-1 min-w-0"><p className="text-xs text-gray-800 font-medium">Submitted By</p><p className="text-sm font-semibold text-black truncate">{submission.submittedBy.name}</p><p className="text-xs text-gray-500 truncate">{submission.submittedBy.email}</p></div>
+          <div className="flex-1 min-w-0"><p className="text-xs text-gray-800 font-medium">JotForm Workflow Owner</p><p className="text-sm font-semibold text-black truncate">{workflowOwner.name}</p><p className="text-xs text-gray-500 truncate">{workflowOwner.email}</p></div>
         </div>
         <div className="flex items-center gap-2 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2.5">
           <Briefcase className="w-4 h-4 text-blue-700 flex-shrink-0" />
@@ -1013,7 +1014,16 @@ export default function ModernDashboard({ data }: Props) {
       </div>
 
       <AnimatePresence>
-        {selectedSubmission && <SubmissionModal submission={selectedSubmission} onClose={() => setSelectedSubmission(null)} />}
+        {selectedSubmission && (
+          <SubmissionModal
+            submission={selectedSubmission}
+            onClose={() => setSelectedSubmission(null)}
+            onUpdate={(updatedId, newLevel, newStatus) => {
+              if (updatedId) data.optimisticUpdate(updatedId, { newLevel, newJotformStatus: newStatus, approverName: user?.fullName });
+              data.scheduleRefreshAfterAction();
+            }}
+          />
+        )}
       </AnimatePresence>
 
       <WorkflowDetailsSidebar

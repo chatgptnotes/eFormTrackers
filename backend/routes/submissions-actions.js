@@ -5,13 +5,14 @@ const { readKeyType } = require('../lib/key-type');
 const { validate } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { insertNotification } = require('../lib/notifications');
-const { extractTask, deriveWorkflowStatus } = require('../lib/workflow-task');
+const { extractTask, findWorkflowOutcome, deriveWorkflowStatus } = require('../lib/workflow-task');
 const {
   workflowActionBodySchema,
   deleteSubmissionQuerySchema,
   jotformUpdateQuerySchema,
 } = require('../schemas/submissions');
 const { emitToAll } = require('../lib/realtime');
+const { isAdminRole } = require('../lib/visibility');
 
 const router = Router();
 
@@ -44,7 +45,7 @@ router.get('/workflow-tasks', async (req, res, next) => {
       : Array.isArray(taskData?.content?.taskList) ? taskData.content.taskList
       : [];
 
-    if (rawTaskList.length === 0 && !workflowInstanceID) {
+    if (!workflowInstanceID) {
       try {
         const subData = await jotformFetch(`submission/${submissionId}`, {
           params: { addWorkflowStatus: '1' },
@@ -57,9 +58,20 @@ router.get('/workflow-tasks', async (req, res, next) => {
       }
     }
 
-    if (rawTaskList.length === 0 && workflowInstanceID) {
-      const instData = await jotformFetch(`workflow/instance/${workflowInstanceID}`, { keyType });
-      rawTaskList = instData?.content?.taskList || instData?.taskList || [];
+    let workflowName = '';
+    if (workflowInstanceID) {
+      try {
+        const instData = await jotformFetch(`workflow/instance/${workflowInstanceID}`, { keyType });
+        if (rawTaskList.length === 0) rawTaskList = instData?.content?.taskList || instData?.taskList || [];
+        const workflowId = String(instData?.content?.workflow_id || '');
+        if (workflowId) {
+          const workflowData = await jotformFetch(`workflow/${workflowId}`, { keyType });
+          workflowName = String(workflowData?.content?.title || '');
+        }
+      } catch (err) {
+        if (rawTaskList.length === 0) throw err;
+        req.log.warn({ err, submissionId }, '[workflow-tasks] workflow name lookup failed');
+      }
     }
 
     const filteredTasks = rawTaskList.filter((t) => {
@@ -73,7 +85,7 @@ router.get('/workflow-tasks', async (req, res, next) => {
       return { ...e, level: index + 1 };
     });
 
-    res.json({ tasks, workflowInstanceId: workflowInstanceID });
+    res.json({ tasks, workflowInstanceId: workflowInstanceID, workflowName });
   } catch (err) {
     if (err.status === 404) return res.json({ tasks: [] });
     next(err);
@@ -86,7 +98,11 @@ router.post('/workflow-action', validate(workflowActionBodySchema), async (req, 
     let keyType = readKeyType(req);
     if (!resolveApiKey(keyType)) return res.status(500).json({ error: `JotForm API key for "${keyType}" not set` });
 
-    const { submissionId, taskId: requestedTaskId, action, comment, signature } = req.body;
+    const { submissionId, taskId: requestedTaskId, action, comment, signature, adminOverride, overrideReason } = req.body;
+    const isAdminOverride = Boolean(adminOverride);
+    if (isAdminOverride && !isAdminRole(req.session.role)) {
+      return res.status(403).json({ error: 'Admin override is restricted to admin users' });
+    }
 
     // Step 1: Get workflowInstanceID — read from DB first to avoid a JotForm
     // submission/{id} call that 401s on the Enterprise endpoint.
@@ -135,10 +151,14 @@ router.post('/workflow-action', validate(workflowActionBodySchema), async (req, 
       const requestedTask = activeTasks.find(t => String(t.id || '') === String(requestedTaskId));
       if (!requestedTask) return res.status(400).json({ error: 'Requested task is not active' });
       const requestedAssignee = String(extractTask(requestedTask).assigneeEmail).toLowerCase();
-      if (requestedAssignee && requestedAssignee !== myEmail) {
+      if (!isAdminOverride && requestedAssignee && requestedAssignee !== myEmail) {
         return res.status(403).json({ error: 'You are not the assigned user for this task' });
       }
       activeTask = requestedTask;
+    }
+
+    if (isAdminOverride && !activeTask) {
+      return res.status(400).json({ error: 'Admin override requires the active task ID' });
     }
 
     if (!activeTask) {
@@ -175,10 +195,10 @@ router.post('/workflow-action', validate(workflowActionBodySchema), async (req, 
     // Step 4: Determine outcomeID
     let outcomeID;
     if (action === 'approve') {
-      const approveOutcome = outcomes.find(o => String(o.type).toUpperCase() === 'APPROVE');
+      const approveOutcome = findWorkflowOutcome(outcomes, 'approve');
       outcomeID = approveOutcome ? Number(approveOutcome.outcomeID) : (outcomes.length > 0 ? Number(outcomes[0].outcomeID) : 1);
     } else if (action === 'reject') {
-      const denyOutcome = outcomes.find(o => String(o.type).toUpperCase() === 'DENY');
+      const denyOutcome = findWorkflowOutcome(outcomes, 'reject');
       if (!denyOutcome) {
         return res.status(400).json({ error: `Step "${taskName}" does not support rejection — it's a ${taskType} step` });
       }
@@ -254,14 +274,19 @@ router.post('/workflow-action', validate(workflowActionBodySchema), async (req, 
     try {
       const taskProps = activeTask.properties || {};
       const assigneeUser = taskProps.assigneeUser || {};
+      const assigned = extractTask(activeTask);
+      const actorName = isAdminOverride ? String(req.session.fullName || req.session.email || 'Admin') : String(assigneeUser.name || '');
+      const actorEmail = isAdminOverride ? String(req.session.email || '') : String(assigneeUser.email || '');
+      const auditComment = isAdminOverride
+        ? `[ADMIN OVERRIDE] Assigned to: ${assigned.assigneeName || 'Unassigned'} (${assigned.assigneeEmail || '—'}) | Reason: ${overrideReason}`
+        : (comment || '');
       await pool.query(
         `INSERT INTO jf_approval_history (submission_id, form_id, level, action, approver_name, approver_email, comment)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT ON CONSTRAINT idx_jf_approval_history_sub_level DO UPDATE SET
            action=$4, approver_name=$5, approver_email=$6, comment=$7`,
         [submissionId, formIdForHistory, Number(activeTask.level || 0),
-         action.toUpperCase(), String(assigneeUser.name || ''), String(assigneeUser.email || ''),
-         comment || '']
+         action.toUpperCase(), actorName, actorEmail, auditComment]
       );
     } catch (histErr) {
       req.log.warn({ err: histErr }, '[workflow-action] History save failed');
@@ -332,7 +357,7 @@ router.post('/workflow-action', validate(workflowActionBodySchema), async (req, 
 
     emitToAll('submissions:updated', { source: 'action', submissionId, action });
     res.json({
-      ok: true, action, taskId, taskName, taskType, outcomeID,
+      ok: true, action, taskId, taskName, taskType, outcomeID, adminOverride: isAdminOverride,
       instanceCompleted,
     });
   } catch (err) { next(err); }

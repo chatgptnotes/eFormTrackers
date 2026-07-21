@@ -28,6 +28,14 @@ const SUBMISSION_LIST_COLUMNS = [
   'jotform_status', 'answers', 'workflow_tasks', 'level_history', 'edit_link',
   'approval_url', 'needs_sync', 'created_at_jf', 'updated_at_jf',
   'days_at_level', 'total_days', 'last_synced', 'created_at', 'updated_at',
+  `(SELECT COALESCE(NULLIF(name, ''), NULLIF(username, ''))
+      FROM jotform_profile_owners
+      WHERE profile_id = jf_submissions.profile_id OR jf_submissions.profile_id LIKE profile_id || '__team_%'
+      ORDER BY (profile_id = jf_submissions.profile_id) DESC, synced_at DESC LIMIT 1) AS workflow_owner_name`,
+  `(SELECT NULLIF(email, '')
+      FROM jotform_profile_owners
+      WHERE profile_id = jf_submissions.profile_id OR jf_submissions.profile_id LIKE profile_id || '__team_%'
+      ORDER BY (profile_id = jf_submissions.profile_id) DESC, synced_at DESC LIMIT 1) AS workflow_owner_email`,
 ].join(', ');
 
 // ══════════════════════════════════════════════════════════

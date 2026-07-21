@@ -46,6 +46,7 @@ export function clearWorkflowStepCache(): void {
 export interface WorkflowTaskInfo {
   name: string;
   type: string;
+  subType: string;
   level: number;
   assigneeName: string;
   assigneeEmail: string;
@@ -59,6 +60,7 @@ export interface WorkflowTaskInfo {
 export interface WorkflowTaskResult {
   tasks: WorkflowTaskInfo[];
   workflowInstanceId?: string;
+  workflowName?: string;
 }
 
 const workflowTaskCache: Record<string, { result: WorkflowTaskResult; at: number }> = {};
@@ -67,12 +69,13 @@ const WORKFLOW_TASK_CACHE_TTL = 5 * 60 * 1000;
 export async function fetchWorkflowTasks(submissionId: string): Promise<WorkflowTaskResult> {
   const cacheKey = `${getJotformKeyType()}:${submissionId}`;
   const cached = workflowTaskCache[cacheKey];
-  if (cached && Date.now() - cached.at < WORKFLOW_TASK_CACHE_TTL) return cached.result;
+  if (cached?.result.workflowName && Date.now() - cached.at < WORKFLOW_TASK_CACHE_TTL) return cached.result;
   try {
-    const data = await apiFetch<{ tasks?: Array<Record<string, unknown>>; workflowInstanceId?: string }>(`/api/workflow-tasks?submissionId=${submissionId}`);
+    const data = await apiFetch<{ tasks?: Array<Record<string, unknown>>; workflowInstanceId?: string; workflowName?: string }>(`/api/workflow-tasks?submissionId=${submissionId}`);
     const tasks: WorkflowTaskInfo[] = (data.tasks || []).map((t) => ({
       name: String(t.name || ''),
       type: String(t.type || ''),
+      subType: String(t.subType || ''),
       level: Number(t.level || 0),
       assigneeName: String(t.assigneeName || ''),
       assigneeEmail: String(t.assigneeEmail || ''),
@@ -85,6 +88,7 @@ export async function fetchWorkflowTasks(submissionId: string): Promise<Workflow
     const result: WorkflowTaskResult = {
       tasks,
       workflowInstanceId: String(data.workflowInstanceId || '') || undefined,
+      workflowName: String(data.workflowName || '') || undefined,
     };
     workflowTaskCache[cacheKey] = { result, at: Date.now() };
     return result;

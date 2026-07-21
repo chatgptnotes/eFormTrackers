@@ -438,6 +438,16 @@ CREATE TABLE IF NOT EXISTS jf_users (
 CREATE INDEX IF NOT EXISTS idx_jf_users_email ON jf_users (lower(email));
 CREATE INDEX IF NOT EXISTS idx_jf_users_type  ON jf_users (profile_id, account_type);
 
+-- JotForm account behind each configured API profile. This is the workflow
+-- owner, distinct from the person who submits a form to start a workflow.
+CREATE TABLE IF NOT EXISTS jotform_profile_owners (
+  profile_id TEXT PRIMARY KEY,
+  username   TEXT DEFAULT '',
+  name       TEXT DEFAULT '',
+  email      TEXT DEFAULT '',
+  synced_at  TIMESTAMPTZ DEFAULT now()
+);
+
 -- ============================================================
 -- 16. system_logs (JotForm enterprise activity log mirror)
 -- ============================================================

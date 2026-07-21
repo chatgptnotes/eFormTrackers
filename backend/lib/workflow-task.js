@@ -29,6 +29,7 @@ function extractTask(t, derivedLevel) {
   return {
     name: String(element.name || props.taskName || t.name || ''),
     type: rawType,
+    subType: String(element.subType || ''),
     status,
     assigneeName: String(assigneeUser.name || firstRecipient.name || firstElementAssignee.text || t.assignee_name || ''),
     assigneeEmail: String(props.assigneeEmail || assigneeUser.email || firstRecipient.email || firstElementAssignee.value || firstElementAssignee.text || t.assignee || ''),
@@ -46,6 +47,13 @@ function extractTask(t, derivedLevel) {
     // separate from form-field (control_signature) signatures in answers.
     signatureUrl: String(props.signature?.value || props.signature || ''),
   };
+}
+
+function findWorkflowOutcome(outcomes, action) {
+  const list = Array.isArray(outcomes) ? outcomes : [];
+  if (action === 'approve') return list.find(o => String(o.type).toUpperCase() === 'APPROVE');
+  return list.find(o => ['DENY', 'REJECT'].includes(String(o.type).toUpperCase())
+    || /\b(reject(?:ed|ion)?|deny|decline)\b/i.test(`${o.type || ''} ${o.text || ''}`));
 }
 
 function taskListFromResponse(data) {
@@ -125,4 +133,4 @@ function mergeWorkflowTasksSql(param) {
   )`;
 }
 
-module.exports = { extractTask, taskListFromResponse, deriveWorkflowStatus, mergeWorkflowTasksSql };
+module.exports = { extractTask, findWorkflowOutcome, taskListFromResponse, deriveWorkflowStatus, mergeWorkflowTasksSql };

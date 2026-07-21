@@ -522,6 +522,10 @@ export function mapSupabaseRow(row: Record<string, unknown>): Submission {
       department: String(row.department || 'General'),
       email: submitterEmail,
     },
+    workflowOwner: row.workflow_owner_name || row.workflow_owner_email ? {
+      name: String(row.workflow_owner_name || ''),
+      email: String(row.workflow_owner_email || ''),
+    } : undefined,
     submissionDate: String(row.submission_date || new Date().toISOString()).slice(0, 10),
     currentApprovalLevel: currentLevel,
     approvalHistory: history,

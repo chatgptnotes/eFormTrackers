@@ -36,6 +36,12 @@ const workflowActionBodySchema = z.object({
   action: z.enum(['approve', 'reject', 'complete']),
   comment: z.string().optional(),
   signature: z.string().optional(),
+  adminOverride: z.boolean().optional(),
+  overrideReason: z.string().trim().min(3).max(1000).optional(),
+}).superRefine((value, ctx) => {
+  if (value.adminOverride && !value.overrideReason) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['overrideReason'], message: 'Admin override reason is required' });
+  }
 });
 
 // DELETE /api/delete-submission?submissionId=xxx

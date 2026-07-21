@@ -201,19 +201,12 @@ export function useSubmissions() {
     }
   }, []);
 
-  // ─── Action cooldown: prevent real-time refresh from overwriting optimistic updates ──
-  const actionCooldownUntil = React.useRef<number>(0);
-  const startActionCooldown = useCallback((durationMs = 4000) => {
-    actionCooldownUntil.current = Date.now() + durationMs;
-  }, []);
-
   // ─── Supabase live-mirror read — fast first paint + webhook-driven refresh ──
   // Webhook keeps jf_submissions live; reading it is ~100ms vs seconds for JotForm.
   // CRITICAL: scope by active form IDs so rows written under a previous
   // JOTFORM_API_KEY don't leak into the dashboard when the current key only
   // has access to a smaller form set.
   const loadFromSupabase = useCallback(async (opts?: { force?: boolean }) => {
-    if (!opts?.force && Date.now() < actionCooldownUntil.current) return;
     if (!opts?.force && cloudSyncingRef.current) return;
     const profileId = getJotformKeyType();
     const profileHeaders = profileId ? { 'x-jotform-profile-id': profileId } : undefined;
@@ -422,7 +415,9 @@ export function useSubmissions() {
     socketRef.current = socket;
 
     socket.on('submissions:updated', () => {
-      loadFromSupabase();
+      // Actions emit only after their database write has completed. Bypass the
+      // cooldown so the source-of-truth update is visible immediately.
+      loadFromSupabase({ force: true });
     });
     socket.on('sync:progress', (payload: {
       event?: string;
@@ -570,16 +565,13 @@ export function useSubmissions() {
     }));
   }, [stepsByForm]);
 
-  // ─── Schedule staggered refresh after an action (catches webhook delay) ─────
+  // ─── Refresh after an action (immediate, with one delayed reconciliation) ───
   const scheduleRefreshAfterAction = useCallback(() => {
-    startActionCooldown(4000);
     try { localStorage.removeItem('jotflow_submissions_cache'); } catch { /* ignore */ }
-    // Staggered retries: 3s, 6s, 12s — webhook usually fires within 5-10s.
-    const timers = [3000, 6000, 12000].map(ms =>
-      setTimeout(() => loadFromSupabase({ force: true }), ms)
-    );
-    return () => timers.forEach(t => clearTimeout(t));
-  }, [loadFromSupabase, startActionCooldown]);
+    void loadFromSupabase({ force: true });
+    const timer = setTimeout(() => loadFromSupabase({ force: true }), 1000);
+    return () => clearTimeout(timer);
+  }, [loadFromSupabase]);
 
   return {
     allSubmissions, filteredSubmissions, paginatedSubmissions,

@@ -12,6 +12,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { apiFetch } from '../lib/api';
 import { humanizeError, messageFromStatus } from '../lib/errors';
 import { getUsableTaskAccessLink } from '../lib/jotformLinks';
+import { fetchWorkflowTasks } from '../hooks/workflowTaskCache';
 
 interface Props {
   submission: Submission | null;
@@ -66,12 +67,14 @@ async function ensureFields(formId: string): Promise<{
   }
 }
 
-// All approval levels require signature — every Approve action must be signed
-
 export default function SubmissionModal({ submission, onClose, onUpdate }: Props) {
   const { user } = useAuth();
   const currentUser = getUserConfig(user?.email);
-  const actionType = submission ? (getMyActionType(submission, user?.email) || submission.actionType) : 'approval';
+  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+  const activeWorkflowTask = submission?.workflowTasks?.find(task => task.status === 'ACTIVE');
+  const adminActionType = activeWorkflowTask?.type === 'workflow_assign_task' ? 'task'
+    : activeWorkflowTask?.type === 'workflow_assign_form' ? 'form' : 'approval';
+  const actionType = submission ? (isAdmin && activeWorkflowTask ? adminActionType : (getMyActionType(submission, user?.email) || submission.actionType)) : 'approval';
 
   const [approving, setApproving] = useState(false);
   const [rejecting, setRejecting] = useState(false);
@@ -81,6 +84,8 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
   const [pushResult, setPushResult] = useState<{ success: boolean; message: string } | null>(null);
   const [comment, setComment] = useState('');
   const [signature, setSignature] = useState('');
+  const [liveApprovalSubType, setLiveApprovalSubType] = useState('');
+  const [liveWorkflowName, setLiveWorkflowName] = useState('');
 
   const [ensuringFields, setEnsuringFields] = useState(false);
   // Dynamically resolved field map (from ensureFields API) — used when form has no built-in fields
@@ -89,7 +94,26 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
   const isSubmitting = approving || rejecting || uploadingSignature || ensuringFields;
 
   const level = typeof submission?.currentApprovalLevel === 'number' ? submission.currentApprovalLevel : null;
-  const signatureRequired = level !== null;
+  const activeApprovalTask = submission?.workflowTasks?.find(task =>
+    task.status === 'ACTIVE' && task.type === 'workflow_approval'
+  );
+  const activeApprovalName = activeApprovalTask?.name || '';
+  const signatureRequired = /with_sign|\b(sign|signature)\b/i.test(activeApprovalTask?.subType || liveApprovalSubType || activeApprovalName);
+  const workflowOwner = submission?.workflowOwner?.name || submission?.workflowOwner?.email ? submission.workflowOwner : submission?.submittedBy;
+  const workflowLabel = liveWorkflowName || (submission?.formTitle ? `Workflow: ${submission.formTitle}` : 'Workflow');
+
+  useEffect(() => {
+    if (!submission) return;
+    let cancelled = false;
+    fetchWorkflowTasks(submission.id).then(({ tasks, workflowName }) => {
+      const liveTask = tasks.find(task => task.taskId === activeApprovalTask?.taskId);
+      if (!cancelled) {
+        setLiveApprovalSubType(liveTask?.subType || activeApprovalTask?.subType || '');
+        setLiveWorkflowName(workflowName || '');
+      }
+    });
+    return () => { cancelled = true; };
+  }, [submission?.id, activeApprovalTask?.taskId, activeApprovalTask?.subType]);
 
   // Check if this form supports direct approval (has known field map or dynamic one)
   const hasStaticFieldMap = submission !== null && level !== null && getFieldMap(submission, level) !== null;
@@ -103,19 +127,22 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
         ? submission.approvalHistory.find(a => a.level === submission.currentApprovalLevel && a.status === 'pending')
         : submission.approvalHistory.find(a => a.status === 'pending'))
     : null;
-  const designatedApproverEmail = submission?.pendingApproverEmail || pendingEntry?.approverEmail || pendingEntry?.approverName || '';
+  const designatedApproverEmail = activeWorkflowTask?.assigneeEmail || submission?.pendingApproverEmail || pendingEntry?.approverEmail || pendingEntry?.approverName || '';
   // isDesignatedApprover: true only if logged-in user's email matches the
   // evaluator email. No role override — matches the backend assignee-only gate.
   const isDesignatedApprover = !!user?.email &&
     designatedApproverEmail.toLowerCase() === user.email.toLowerCase();
 
-  // Comment is optional — signature is required only for L3/L4 approvals
-  const approveEnabled = isDesignatedApprover && (!signatureRequired || signature !== '');
-  const rejectEnabled = isDesignatedApprover;
+  // Only JotForm's Approve & Sign steps require a signature.
+  const isAdminOverride = isAdmin && !isDesignatedApprover;
+  const overrideReady = !isAdminOverride || comment.trim().length >= 3;
+  const approveEnabled = (isDesignatedApprover || isAdmin) && overrideReady && (!signatureRequired || signature !== '');
+  const rejectEnabled = (isDesignatedApprover || isAdmin) && overrideReady;
 
   const handleApproval = async (action: 'approve' | 'reject') => {
     if (!submission || typeof submission.currentApprovalLevel !== 'number') return;
     if (actionType !== 'task' && action === 'approve' && signatureRequired && !signature) return;
+    if (isAdminOverride && !overrideReady) return;
 
     action === 'approve' ? setApproving(true) : setRejecting(true);
     setPushResult(null);
@@ -197,9 +224,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
     let instanceCompleted = false;
     try {
       const wfAction = actionType === 'task' ? 'complete' : action === 'approve' ? 'approve' : 'reject';
-      const activeTaskId = submission.workflowTasks?.find(t =>
-        t.status === 'ACTIVE' && (t.type === 'workflow_assign_task' || !t.internalFormID)
-      )?.taskId;
+      const activeTaskId = activeWorkflowTask?.taskId;
       // throwOnError:true so a 403 (non-assignee) / 4xx surfaces as an ApiError with
       // the real status — humanizeError turns 403 into "You don't have permission…".
       // Never report false success on a failed action.
@@ -211,6 +236,8 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
           action: wfAction,
           comment: comment.trim() || approverNote,
           signature: signature || undefined,
+          adminOverride: isAdminOverride,
+          overrideReason: isAdminOverride ? comment.trim() : undefined,
         }),
       });
       if (data.ok) {
@@ -388,9 +415,9 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
               <div className="flex items-center gap-2">
                 <span className="text-[11px] tracking-wider font-bold text-teal-600 uppercase">{submission.referenceNumber}</span>
                 <span className="text-slate-300">·</span>
-                <span className="text-[11px] text-slate-500">{submission.formTitle}</span>
+                <span className="text-[11px] text-slate-500">{submission.formTitle || 'Workflow request'}</span>
               </div>
-              <h3 className="text-[22px] font-bold text-slate-900 mt-1 leading-tight truncate">{submission.title}</h3>
+              <h3 className="text-[22px] font-bold text-slate-900 mt-1 leading-tight truncate">{workflowLabel}</h3>
             </div>
             <button
               onClick={onClose}
@@ -426,8 +453,9 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                   <User className="w-4 h-4 text-slate-500" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[11px] uppercase tracking-wide text-slate-500 font-medium">Submitted By</p>
-                  <p className="text-sm text-slate-900 font-medium truncate">{submission.submittedBy.name}</p>
+                  <p className="text-[11px] uppercase tracking-wide text-slate-500 font-medium">JotForm Workflow Owner</p>
+                  <p className="text-sm text-slate-900 font-medium truncate">{workflowOwner?.name || 'Unknown'}</p>
+                  {workflowOwner?.email && <p className="text-xs text-slate-500 truncate">{workflowOwner.email}</p>}
                 </div>
               </div>
               <div className="flex items-center gap-3">
@@ -469,18 +497,25 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                     </span>
                     {actionType === 'task' ? 'Task Action' :
                      actionType === 'form' ? 'Complete Form' :
-                     `Take Action — Level ${submission.currentApprovalLevel}`}
+                     `${signatureRequired ? 'Approve & Sign' : 'Approval'} — Level ${submission.currentApprovalLevel}`}
                   </h4>
                   <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold whitespace-nowrap">
                     {actionType === 'approval' ? 'JotForm Enterprise' : actionType === 'form' ? 'Opens in JotForm' : 'JotFlow'}
                   </span>
                 </div>
 
+                {isAdminOverride && (
+                  <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                    <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                    <span>Admin override for <strong>{designatedApproverEmail || 'the active assignee'}</strong>. A reason is required and the action is recorded under your account.</span>
+                  </div>
+                )}
+
                 {/* ── TASK step ── */}
                 {actionType === 'task' && (
                   <div className="space-y-3">
                     {/* Show who needs to act */}
-                    {!isDesignatedApprover && designatedApproverEmail && (
+                    {!isDesignatedApprover && designatedApproverEmail && !isAdmin && (
                       <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
                         <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
                         <p className="text-xs text-amber-300">
@@ -495,7 +530,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                     <textarea
                       value={comment}
                       onChange={e => setComment(e.target.value)}
-                      placeholder="Task completion note (optional)..."
+                      placeholder={isAdminOverride ? 'Required: reason for admin override...' : 'Task completion note (optional)...'}
                       rows={2}
                       className="w-full px-3 py-2 rounded-lg bg-navy-light/30 border border-navy-light/40 text-white text-sm placeholder-gray-500 resize-none focus:outline-none focus:border-teal-500/50"
                     />
@@ -506,8 +541,8 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                     )}
                     <button
                       onClick={() => handleApproval('approve')}
-                      disabled={!isDesignatedApprover || isSubmitting}
-                      title={!isDesignatedApprover ? `Only ${designatedApproverEmail} can complete this task` : ''}
+                      disabled={!(isDesignatedApprover || isAdmin) || !overrideReady || isSubmitting}
+                      title={isAdminOverride && !overrideReady ? 'Enter an admin override reason' : (!isDesignatedApprover && !isAdmin ? `Only ${designatedApproverEmail} can complete this task` : '')}
                       className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-teal-600 hover:bg-teal-500 disabled:opacity-30 disabled:cursor-not-allowed text-white rounded-xl font-semibold text-sm border border-teal-600 transition-all"
                     >
                       {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}
@@ -562,13 +597,13 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                 <div>
                   <label className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-700 mb-2">
                     <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-amber-100 text-amber-700 text-[10px] font-bold">1</span>
-                    Comment
-                    <span className="text-slate-400 font-normal text-xs">(optional)</span>
+                    {isAdminOverride ? 'Admin override reason' : 'Comment'}
+                    <span className="text-slate-400 font-normal text-xs">{isAdminOverride ? '(required)' : '(optional)'}</span>
                   </label>
                   <textarea
                     value={comment}
                     onChange={e => setComment(e.target.value)}
-                    placeholder="Enter your comment or reason for approval/rejection..."
+                    placeholder={isAdminOverride ? 'Required: reason for admin override...' : 'Enter your comment or reason for approval/rejection...'}
                     rows={2}
                     className="w-full px-3.5 py-2.5 rounded-lg bg-white border border-slate-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-100 text-sm text-slate-900 placeholder-slate-400 focus:outline-none resize-none transition-all"
                   />
@@ -583,7 +618,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                       </span>
                       Digital Signature
                       <span className="text-rose-500 font-bold">*</span>
-                      <span className="text-slate-400 font-normal text-xs">required for Level {submission.currentApprovalLevel}</span>
+                      <span className="text-slate-400 font-normal text-xs">required for this approval step</span>
                     </label>
                     {signature ? (
                       <div className="relative border-2 border-emerald-300 rounded-xl overflow-hidden bg-white shadow-sm">
@@ -610,7 +645,7 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                 {/* One signed action: the signature is the confirmation, so do not ask twice. */}
                 <div className="space-y-2 pt-1">
                     {/* Show who needs to act if it's not the current user */}
-                    {!isDesignatedApprover && designatedApproverEmail && (
+                    {!isDesignatedApprover && designatedApproverEmail && !isAdmin && (
                       <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
                         <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
                         <p className="text-xs text-amber-300">
@@ -623,16 +658,16 @@ export default function SubmissionModal({ submission, onClose, onUpdate }: Props
                       type="button"
                       onClick={() => handleApproval('approve')}
                       disabled={!approveEnabled || isSubmitting}
-                      title={!isDesignatedApprover ? `Only ${designatedApproverEmail} can approve at this level` : ''}
+                      title={isAdminOverride && !overrideReady ? 'Enter an admin override reason' : (!isDesignatedApprover && !isAdmin ? `Only ${designatedApproverEmail} can approve at this level` : '')}
                       className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white rounded-xl font-bold text-sm shadow-sm hover:shadow-md transition-all"
                     >
-                      <CheckCircle2 className="w-4 h-4" /> Approve &amp; Sign
+                      <CheckCircle2 className="w-4 h-4" /> {signatureRequired ? 'Approve & Sign' : 'Approve'}
                     </button>
                     <button
                       type="button"
                       onClick={() => handleApproval('reject')}
                       disabled={!rejectEnabled || isSubmitting}
-                      title={!isDesignatedApprover ? `Only ${designatedApproverEmail} can reject at this level` : ''}
+                      title={isAdminOverride && !overrideReady ? 'Enter an admin override reason' : (!isDesignatedApprover && !isAdmin ? `Only ${designatedApproverEmail} can reject at this level` : '')}
                       className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white rounded-xl font-bold text-sm shadow-sm hover:shadow-md transition-all"
                     >
                       <XCircle className="w-4 h-4" /> Reject

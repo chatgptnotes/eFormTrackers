@@ -23,6 +23,8 @@ export interface Submission {
     department: string;
     email: string;
   };
+  /** JotForm account that owns the form/workflow. */
+  workflowOwner?: { name: string; email: string };
   submissionDate: string;
   currentApprovalLevel: ApprovalLevel | 'completed' | 'rejected';
   approvalHistory: ApprovalEntry[];
@@ -133,6 +135,7 @@ export interface RefreshConfig {
 export interface WorkflowTask {
   name: string;
   type: string;           // "workflow_approval", "workflow_assign_task", "workflow_assign_form"
+  subType?: string;       // e.g. "workflow_approval_with_sign"
   status: string;         // "COMPLETED", "ACTIVE", "PENDING"
   assigneeName: string;
   assigneeEmail: string;

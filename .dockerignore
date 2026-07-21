@@ -1,0 +1,14 @@
+.git
+.github
+node_modules
+**/node_modules
+dist
+backend/uploads
+backend/logs
+.env
+**/.env
+.env.*
+**/.env.*
+*.pdf
+deploy-output
+

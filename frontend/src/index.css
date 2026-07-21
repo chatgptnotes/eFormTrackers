@@ -363,6 +363,7 @@
   .light-mode .workflow-node,
   .light-mode .flow-node { color: #fff !important; }
   .light-mode .queue-scope-selected { color: #fff !important; }
+  .light-mode .details-cta { color: #fff !important; }
   .light-mode .bg-gold     { background-color: var(--jf-blue) !important; }
   .light-mode .bg-navy-light { background-color: #C1C5E2 !important; }
 }

@@ -77,6 +77,7 @@ const CompletedCard = memo(function CompletedCard({ submission, idx, onClick, us
   const lastApprover = getLastApprover(submission);
   const myRole = getMyWorkflowRole(submission, userEmail);
   const workflowBacked = hasApprovalWorkflow(submission);
+  const workflowOwner = submission.workflowOwner?.name || submission.workflowOwner?.email ? submission.workflowOwner : submission.submittedBy;
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.9 }}
@@ -85,7 +86,7 @@ const CompletedCard = memo(function CompletedCard({ submission, idx, onClick, us
       transition={{ delay: idx * 0.05 }}
       whileHover={{ y: -8, transition: { duration: 0.3 } }}
       onClick={() => onClick(submission)}
-      className="group relative overflow-hidden rounded-2xl p-6 border-2 border-emerald-400 hover:border-emerald-500 bg-white transition-all duration-300 cursor-pointer shadow-md hover:shadow-lg"
+      className="group relative overflow-hidden rounded-2xl border border-slate-200 border-t-4 border-t-emerald-500 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-emerald-300 hover:shadow-lg cursor-pointer"
     >
       <div className="relative z-10 space-y-3">
         <div>
@@ -94,7 +95,7 @@ const CompletedCard = memo(function CompletedCard({ submission, idx, onClick, us
           </p>
           <div className="flex items-start justify-between gap-3">
             <p className="text-sm font-black text-black font-mono">ID: {submission.id.slice(0, 8).toUpperCase()}</p>
-            <span className="inline-block text-xs font-bold px-2.5 py-1 rounded-lg text-white bg-gradient-to-r from-emerald-400 to-green-500">Completed</span>
+            <span className="inline-block rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 ring-1 ring-inset ring-emerald-200">Completed</span>
           </div>
           <span className={`inline-block mt-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md border ${
             workflowBacked
@@ -108,12 +109,12 @@ const CompletedCard = memo(function CompletedCard({ submission, idx, onClick, us
         <div className="flex items-center gap-2 py-2 border-t border-gray-200">
           <User className="w-4 h-4 text-gray-700" />
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-gray-800 font-medium">Submitted By</p>
-            <p className="text-sm font-bold text-black truncate">{submission.submittedBy.name}</p>
-            <p className="text-xs text-gray-500 truncate">{submission.submittedBy.email}</p>
+            <p className="text-xs text-gray-800 font-medium">JotForm Workflow Owner</p>
+            <p className="text-sm font-bold text-black truncate">{workflowOwner.name || workflowOwner.email || 'Unknown'}</p>
+            <p className="text-xs text-gray-500 truncate">{workflowOwner.email || '—'}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 py-2 border-t border-gray-200 bg-emerald-50 px-3 rounded-lg">
+        <div className="flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-2.5">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
           <div className="flex-1 min-w-0">
             <p className="text-xs text-gray-900 font-medium">Final Approver</p>
@@ -132,7 +133,7 @@ const CompletedCard = memo(function CompletedCard({ submission, idx, onClick, us
           <motion.button
             whileHover={{ x: 4 }}
             onClick={(e) => { e.stopPropagation(); onClick(submission); }}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-gradient-to-r from-emerald-400 to-green-500 text-white font-semibold text-sm transition-all hover:shadow-lg"
+            className="details-cta w-full flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-600"
           >
             <span>View Details</span>
             <span className="group-hover:translate-x-1 transition-transform">→</span>
@@ -640,25 +641,26 @@ export default function CompletedPage({ data }: Props) {
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <TeamProfilePicker />
-          <WorkflowPicker
-            value={activeWorkflowId}
-            options={workflowOptions}
-            onChange={id => { setActiveWorkflowId(id); setCurrentPage(1); }}
-            accent="emerald"
-          />
-          <div className="relative w-full sm:max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search form, ID, name, department"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400/40 focus:border-emerald-400"
+        <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="grid gap-3 2xl:grid-cols-[minmax(220px,1fr)_minmax(220px,1fr)_minmax(260px,1.2fr)_auto] 2xl:items-center">
+            <TeamProfilePicker />
+            <WorkflowPicker
+              value={activeWorkflowId}
+              options={workflowOptions}
+              onChange={id => { setActiveWorkflowId(id); setCurrentPage(1); }}
+              accent="emerald"
             />
-          </div>
-          <fieldset className="flex flex-wrap items-center gap-2">
+            <div className="relative w-full">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search form, ID, name, department"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="h-16 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-4 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400/20"
+              />
+            </div>
+            <fieldset className="flex flex-wrap items-center gap-1 rounded-xl bg-slate-100 p-1">
             {([
               ['all', 'All'],
               ['with', 'Approval workflow'],
@@ -668,8 +670,8 @@ export default function CompletedPage({ data }: Props) {
                 key={value}
                 className={`cursor-pointer rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
                   workflowFilter === value
-                    ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                    : 'border-gray-200 bg-white text-gray-700 hover:border-emerald-300'
+                    ? 'border-emerald-200 bg-white text-emerald-700 shadow-sm'
+                    : 'border-transparent bg-transparent text-slate-600 hover:bg-white/70'
                 }`}
               >
                 <input
@@ -683,8 +685,9 @@ export default function CompletedPage({ data }: Props) {
                 {label}
               </label>
             ))}
-          </fieldset>
-        </div>
+            </fieldset>
+          </div>
+        </section>
 
         {/* Main Content Area */}
         {mainContent}

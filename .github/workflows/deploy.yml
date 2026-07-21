@@ -1,0 +1,39 @@
+name: Deploy to Windows Docker Desktop
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: jotflow-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, Windows, X64]
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify production configuration
+        run: |
+          $env:JOTFLOW_ENV_FILE = 'C:/JotFlow/production.env'
+          if (-not (Test-Path $env:JOTFLOW_ENV_FILE)) { throw "Missing $env:JOTFLOW_ENV_FILE" }
+          docker version
+          docker compose --env-file $env:JOTFLOW_ENV_FILE -f docker-compose.production.yml config --quiet
+
+      - name: Build, migrate, and start
+        run: |
+          $env:JOTFLOW_ENV_FILE = 'C:/JotFlow/production.env'
+          docker compose --env-file $env:JOTFLOW_ENV_FILE -f docker-compose.production.yml build
+          docker compose --env-file $env:JOTFLOW_ENV_FILE -f docker-compose.production.yml up -d --wait db
+          docker compose --env-file $env:JOTFLOW_ENV_FILE -f docker-compose.production.yml run --rm --no-deps backend node db/migrate.js
+          docker compose --env-file $env:JOTFLOW_ENV_FILE -f docker-compose.production.yml up -d --wait --remove-orphans frontend backend
+
+      - name: Confirm the application is ready
+        run: |
+          $port = (Get-Content 'C:/JotFlow/production.env' | Where-Object { $_ -match '^APP_PORT=' } | Select-Object -First 1).Split('=', 2)[1]
+          Invoke-WebRequest "http://127.0.0.1:$port/api/health/ready" -UseBasicParsing | Select-Object -ExpandProperty Content
