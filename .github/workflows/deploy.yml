@@ -16,16 +16,20 @@ jobs:
       run:
         shell: powershell
     steps:
-      - name: Ensure Git is available
+      - name: Download repository
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-            winget install --id Git.Git --exact --silent --disable-interactivity --accept-package-agreements --accept-source-agreements
-          }
-          $gitPath = "$env:ProgramFiles\Git\cmd"
-          if (Test-Path $gitPath) { $gitPath | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8 }
-          git --version
-
-      - uses: actions/checkout@v4
+          $ErrorActionPreference = 'Stop'
+          $archive = Join-Path $env:RUNNER_TEMP 'jotflow-source.zip'
+          $extract = Join-Path $env:RUNNER_TEMP 'jotflow-source'
+          Remove-Item $archive, $extract -Recurse -Force -ErrorAction SilentlyContinue
+          Invoke-WebRequest -Headers @{ Authorization = "Bearer $env:GH_TOKEN" } -Uri "https://api.github.com/repos/${{ github.repository }}/zipball/${{ github.sha }}" -OutFile $archive
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [IO.Compression.ZipFile]::ExtractToDirectory($archive, $extract)
+          Get-ChildItem -LiteralPath $env:GITHUB_WORKSPACE -Force | Remove-Item -Recurse -Force
+          $source = Get-ChildItem -LiteralPath $extract -Directory | Select-Object -First 1
+          Get-ChildItem -LiteralPath $source.FullName -Force | Copy-Item -Destination $env:GITHUB_WORKSPACE -Recurse -Force
 
       - name: Verify production configuration
         run: |
