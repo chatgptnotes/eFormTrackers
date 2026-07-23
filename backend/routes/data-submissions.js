@@ -49,18 +49,21 @@ router.get('/submissions', async (req, res, next) => {
     const params = [];
     let idx = 1;
     const adminView = isAdminRole(req.session.role);
-    const profileId = storageProfileId(readKeyType(req));
+    const requestedProfileId = readKeyType(req);
+    const profileId = storageProfileId(requestedProfileId);
     const allTeamWorkspaces = String(req.session.role || '').toLowerCase() === 'super_admin' &&
-      !String(readKeyType(req)).includes('__team_');
+      !String(requestedProfileId).includes('__team_') && requestedProfileId !== 'all';
 
     if (adminView) {
       // Admins browse one selected workspace. Normal users browse "my work"
       // across all team workspaces, then the visibility gate below enforces it.
-      const profileParam = idx++;
-      conditions.push(allTeamWorkspaces
-        ? `(profile_id = $${profileParam} OR profile_id LIKE $${profileParam} || '__team_%')`
-        : `profile_id = $${profileParam}`);
-      params.push(profileId);
+      if (requestedProfileId !== 'all') {
+        const profileParam = idx++;
+        conditions.push(allTeamWorkspaces
+          ? `(profile_id = $${profileParam} OR profile_id LIKE $${profileParam} || '__team_%')`
+          : `profile_id = $${profileParam}`);
+        params.push(profileId);
+      }
 
       if (req.query.form_ids) {
         const ids = req.query.form_ids.split(',').map(s => s.trim()).filter(Boolean);

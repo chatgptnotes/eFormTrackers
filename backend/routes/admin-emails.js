@@ -22,7 +22,10 @@ router.get('/', async (req, res, next) => {
     const conditions = [];
     const params = [];
     // Scope to the active profile so each API's emails stay separate.
-    params.push(readKeyType(req)); conditions.push(`profile_id = $${params.length}`);
+    const requestedProfileId = readKeyType(req);
+    if (requestedProfileId !== 'all') {
+      params.push(requestedProfileId); conditions.push(`profile_id = $${params.length}`);
+    }
     if (q)             { params.push(`%${q}%`);          conditions.push(`(subject ILIKE $${params.length} OR preview ILIKE $${params.length} OR to_addr ILIKE $${params.length})`); }
     if (to)            { params.push(`%${to}%`);         conditions.push(`to_addr ILIKE $${params.length}`); }
     if (recipient_email) { params.push(`%${recipient_email}%`); conditions.push(`recipient_email ILIKE $${params.length}`); }
@@ -54,7 +57,14 @@ router.get('/', async (req, res, next) => {
 // GET /api/admin/emails/:emailId — full body + action links
 router.get('/:emailId', async (req, res, next) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM jf_email_archive WHERE profile_id = $1 AND email_id = $2', [readKeyType(req), req.params.emailId]);
+    const requestedProfileId = readKeyType(req);
+    const sql = requestedProfileId === 'all'
+      ? 'SELECT * FROM jf_email_archive WHERE email_id = $1'
+      : 'SELECT * FROM jf_email_archive WHERE profile_id = $1 AND email_id = $2';
+    const params = requestedProfileId === 'all'
+      ? [req.params.emailId]
+      : [requestedProfileId, req.params.emailId];
+    const { rows } = await pool.query(sql, params);
     if (!rows[0]) return res.status(404).json({ error: 'Email not found' });
     const row = rows[0];
     res.json({

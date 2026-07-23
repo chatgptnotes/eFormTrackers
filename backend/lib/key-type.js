@@ -14,6 +14,7 @@ function readKeyType(req) {
   const v =
     req.headers['x-jotform-profile-id'] || req.query?.profileId ||
     req.headers['x-jotform-key-type'] || req.query?.keyType;
+  if (v && String(v) === 'all') return 'all';
   if (v && hasProfile(String(v))) return String(v);
   return getDefaultProfile().id;
 }

@@ -40,6 +40,17 @@ export default function TeamProfilePicker() {
       .then(d => {
         const source = d.profiles || [];
         const byId = new Map<string, ApiProfile>();
+        if (adminView) {
+          byId.set('all', {
+            id: 'all',
+            label: 'All workspaces',
+            scope: 'all',
+            teamId: '',
+            default: false,
+            configured: true,
+            source: 'virtual',
+          });
+        }
         for (const profile of source) {
           if (!profile?.id) continue;
           if (!byId.has(profile.id)) byId.set(profile.id, profile);

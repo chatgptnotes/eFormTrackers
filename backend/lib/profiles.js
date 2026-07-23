@@ -117,6 +117,7 @@ function makeNoTeamProfileId(baseId) {
 }
 
 function storageProfileId(id) {
+  if (String(id || '') === 'all') return 'all';
   const noTeamBaseId = parseNoTeamProfileId(id);
   return noTeamBaseId || String(id || getDefaultProfile().id);
 }
@@ -142,6 +143,7 @@ function getDefaultProfile() {
 }
 
 function hasProfile(id) {
+  if (String(id || '') === 'all') return true;
   const noTeamBaseId = parseNoTeamProfileId(id);
   if (noTeamBaseId) return load().some(p => p.id === noTeamBaseId);
   const team = parseTeamProfileId(id);

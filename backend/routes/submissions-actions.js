@@ -37,6 +37,9 @@ router.get('/workflow-tasks', async (req, res, next) => {
       );
       workflowInstanceID = wRows[0]?.wid || null;
       keyType = wRows[0]?.profile_id || keyType;
+      if (keyType === 'all') {
+        keyType = wRows[0]?.profile_id || keyType;
+      }
     }
     if (!resolveApiKey(keyType)) return res.status(500).json({ error: `JotForm API key for "${keyType}" not set` });
 

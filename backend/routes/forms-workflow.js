@@ -249,10 +249,15 @@ router.get('/active-form-ids', async (req, res, next) => {
   try {
     const requestedProfileId = readKeyType(req);
     const profileId = storageProfileId(requestedProfileId);
-    const allTeamWorkspaces = String(req.session.role || '').toLowerCase() === 'super_admin' && !requestedProfileId.includes('__team_');
-    scheduleQuickSync(requestedProfileId);
+    const allTeamWorkspaces = String(req.session.role || '').toLowerCase() === 'super_admin' &&
+      !requestedProfileId.includes('__team_') && requestedProfileId !== 'all';
+    if (requestedProfileId !== 'all') scheduleQuickSync(requestedProfileId);
     // Serve from synced jf_forms table — no live JotForm API call needed.
     // Poller keeps jf_forms up to date every POLL_INTERVAL_MINUTES.
+    const formWhere = requestedProfileId === 'all'
+      ? ''
+      : `WHERE ${allTeamWorkspaces ? `(f.team_workspace_id = $1 OR f.team_workspace_id LIKE $1 || '__team_%')` : 'f.team_workspace_id = $1'}`;
+    const formParams = requestedProfileId === 'all' ? [] : [profileId];
     const { rows } = await pool.query(
       `SELECT f.form_id AS id,
               f.title,
@@ -263,15 +268,17 @@ router.get('/active-form-ids', async (req, res, next) => {
          LEFT JOIN jf_submissions s
            ON s.form_id = f.form_id
           AND s.profile_id = f.team_workspace_id
-        WHERE ${allTeamWorkspaces ? `(f.team_workspace_id = $1 OR f.team_workspace_id LIKE $1 || '__team_%')` : 'f.team_workspace_id = $1'}
+        ${formWhere}
          GROUP BY f.form_id, f.title, f.status, f.updated_at_jf
          ORDER BY f.title`,
-      [profileId]
+      formParams
     );
-    const params = [profileId];
-    let where = allTeamWorkspaces
-      ? `WHERE (profile_id = $1 OR profile_id LIKE $1 || '__team_%')`
-      : 'WHERE profile_id = $1';
+    const params = requestedProfileId === 'all' ? [] : [profileId];
+    let where = requestedProfileId === 'all'
+      ? ''
+      : (allTeamWorkspaces
+        ? `WHERE (profile_id = $1 OR profile_id LIKE $1 || '__team_%')`
+        : 'WHERE profile_id = $1');
     if (!isAdminRole(req.session.role)) {
       const email = String(req.session.email || '').toLowerCase();
       params.push(email, `%${email}%`);
@@ -323,7 +330,19 @@ function detectStepType(label) {
 router.get('/form-workflow', validate(formIdRequiredQuerySchema, 'query'), async (req, res, next) => {
   try {
     const formId = req.query.formId;
-    const keyType = readKeyType(req);
+    const requestedProfileId = readKeyType(req);
+    let keyType = requestedProfileId;
+    if (requestedProfileId === 'all') {
+      const { rows } = await pool.query(
+        `SELECT profile_id
+           FROM jf_forms
+          WHERE form_id = $1
+          ORDER BY updated_at_jf DESC NULLS LAST, last_synced DESC NULLS LAST
+          LIMIT 1`,
+        [formId]
+      );
+      keyType = rows[0]?.profile_id || keyType;
+    }
     // Cache key includes keyType — same formId resolved against default vs gdmo
     // returns different shapes (different teams / scopes), so they must not collide.
     const cacheKey = `${keyType}:${formId}`;
