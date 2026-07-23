@@ -1,52 +1,83 @@
-name: Deploy to Windows Docker Desktop
+name: Deploy JotFlow to IIS
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
-  group: jotflow-production
+  group: jotflow-iis-production
   cancel-in-progress: false
 
 jobs:
   deploy:
+    # This runner is installed on the IIS host, so deployment never exposes
+    # the backend port or copies production secrets through GitHub.
     runs-on: [self-hosted, Windows, X64]
     defaults:
       run:
         shell: powershell
+    env:
+      APP_ROOT: C:\apps\jotflow
+
     steps:
-      - name: Download repository
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Check out the release
+        uses: actions/checkout@v4
+
+      - name: Build the frontend
+        working-directory: frontend
         run: |
           $ErrorActionPreference = 'Stop'
-          $archive = Join-Path $env:RUNNER_TEMP 'jotflow-source.zip'
-          $extract = Join-Path $env:RUNNER_TEMP 'jotflow-source'
-          Remove-Item $archive, $extract -Recurse -Force -ErrorAction SilentlyContinue
-          Invoke-WebRequest -Headers @{ Authorization = "Bearer $env:GH_TOKEN" } -Uri "https://api.github.com/repos/${{ github.repository }}/zipball/${{ github.sha }}" -OutFile $archive
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
-          [IO.Compression.ZipFile]::ExtractToDirectory($archive, $extract)
-          Get-ChildItem -LiteralPath $env:GITHUB_WORKSPACE -Force | Remove-Item -Recurse -Force
-          $source = Get-ChildItem -LiteralPath $extract -Directory | Select-Object -First 1
-          Get-ChildItem -LiteralPath $source.FullName -Force | Copy-Item -Destination $env:GITHUB_WORKSPACE -Recurse -Force
+          npm ci
+          npm run build
 
-      - name: Verify production configuration
+      - name: Deploy backend and frontend
         run: |
-          $env:JOTFLOW_ENV_FILE = 'C:/JotFlow/production.env'
-          if (-not (Test-Path $env:JOTFLOW_ENV_FILE)) { throw "Missing $env:JOTFLOW_ENV_FILE" }
-          docker version
-          docker compose --env-file $env:JOTFLOW_ENV_FILE -f docker-compose.production.yml config --quiet
+          $ErrorActionPreference = 'Stop'
+          $backendTarget = Join-Path $env:APP_ROOT 'backend'
+          $frontendTarget = Join-Path $env:APP_ROOT 'dist'
 
-      - name: Build, migrate, and start
-        run: |
-          $env:JOTFLOW_ENV_FILE = 'C:/JotFlow/production.env'
-          docker compose --env-file $env:JOTFLOW_ENV_FILE -f docker-compose.production.yml build
-          docker compose --env-file $env:JOTFLOW_ENV_FILE -f docker-compose.production.yml up -d --wait db
-          docker compose --env-file $env:JOTFLOW_ENV_FILE -f docker-compose.production.yml run --rm --no-deps backend node db/migrate.js
-          docker compose --env-file $env:JOTFLOW_ENV_FILE -f docker-compose.production.yml up -d --wait --remove-orphans frontend backend
+          foreach ($path in @($env:APP_ROOT, $backendTarget, $frontendTarget)) {
+            New-Item -ItemType Directory -Force -Path $path | Out-Null
+          }
 
-      - name: Confirm the application is ready
+          # Keep host-specific configuration and user-generated data out of Git.
+          robocopy frontend\dist $frontendTarget /MIR /R:2 /W:2
+          if ($LASTEXITCODE -gt 7) { throw "Frontend copy failed with exit code $LASTEXITCODE" }
+
+          robocopy backend $backendTarget /MIR /XD node_modules uploads logs /XF .env .env.* /R:2 /W:2
+          if ($LASTEXITCODE -gt 7) { throw "Backend copy failed with exit code $LASTEXITCODE" }
+
+          if (-not (Test-Path (Join-Path $backendTarget '.env'))) {
+            throw "Missing production configuration: $backendTarget\.env"
+          }
+          foreach ($folder in @('uploads', 'logs')) {
+            New-Item -ItemType Directory -Force -Path (Join-Path $backendTarget $folder) | Out-Null
+          }
+
+      - name: Install dependencies and migrate database
+        working-directory: C:\apps\jotflow\backend
         run: |
-          $port = (Get-Content 'C:/JotFlow/production.env' | Where-Object { $_ -match '^APP_PORT=' } | Select-Object -First 1).Split('=', 2)[1]
-          Invoke-WebRequest "http://127.0.0.1:$port/api/health/ready" -UseBasicParsing | Select-Object -ExpandProperty Content
+          $ErrorActionPreference = 'Stop'
+          npm ci --omit=dev
+          node db/migrate.js
+
+      - name: Reload JotFlow with PM2
+        working-directory: C:\apps\jotflow\backend
+        run: |
+          $ErrorActionPreference = 'Stop'
+          pm2 startOrReload ecosystem.config.js --update-env
+          pm2 save
+
+      - name: Verify readiness
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $portLine = Get-Content (Join-Path $env:APP_ROOT 'backend\.env') |
+            Where-Object { $_ -match '^\s*PORT\s*=' } |
+            Select-Object -First 1
+          $port = if ($portLine) { ($portLine -split '=', 2)[1].Trim() } else { '3001' }
+          $response = Invoke-WebRequest "http://127.0.0.1:$port/api/health/ready" -UseBasicParsing
+          if ($response.StatusCode -ne 200) { throw "Readiness check returned HTTP $($response.StatusCode)" }
