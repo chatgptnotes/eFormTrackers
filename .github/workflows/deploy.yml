@@ -45,7 +45,7 @@ jobs:
           }
 
           # Keep host-specific configuration and user-generated data out of Git.
-          robocopy frontend\dist $frontendTarget /MIR /R:2 /W:2
+          robocopy dist $frontendTarget /MIR /R:2 /W:2
           if ($LASTEXITCODE -gt 7) { throw "Frontend copy failed with exit code $LASTEXITCODE" }
 
           robocopy backend $backendTarget /MIR /XD node_modules uploads logs /XF .env .env.* /R:2 /W:2
