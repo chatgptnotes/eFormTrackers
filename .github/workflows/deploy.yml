@@ -69,8 +69,10 @@ jobs:
         working-directory: C:\apps\jotflow\backend
         run: |
           $ErrorActionPreference = 'Stop'
-          pm2 startOrReload ecosystem.config.js --update-env
-          pm2 save
+          $pm2 = Join-Path (npm prefix -g) 'pm2.cmd'
+          if (-not (Test-Path $pm2)) { npm install --global pm2 }
+          & $pm2 startOrReload ecosystem.config.js --update-env
+          & $pm2 save
 
       - name: Verify readiness
         run: |
