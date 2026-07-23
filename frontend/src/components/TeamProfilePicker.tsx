@@ -12,10 +12,14 @@ interface ApiProfile {
   teamId: string;
   default: boolean;
   configured: boolean;
+  formCount?: number;
+  submissionCount?: number;
+  updatedAt?: string | null;
+  source?: string;
 }
 
 export default function TeamProfilePicker() {
-  const { user } = useAuth();
+  const { user, orgRole } = useAuth();
   const { setActiveWorkflowId } = useApp();
   const [profiles, setProfiles] = useState<ApiProfile[]>([]);
   const [value, setValue] = useState(() => getJotformKeyTypeFor(user?.email));
@@ -30,19 +34,20 @@ export default function TeamProfilePicker() {
   }, [user?.email]);
 
   useEffect(() => {
-    apiFetch<{ profiles: ApiProfile[] }>('/api/jotform-profiles')
+    const adminView = orgRole === 'admin' || orgRole === 'super_admin';
+    const endpoint = adminView ? '/api/admin/workspaces' : '/api/jotform-profiles';
+    apiFetch<{ profiles: ApiProfile[] }>(endpoint)
       .then(d => {
-        const configured = (d.profiles || []).filter(p => p.configured);
-        const teams = configured.filter(p => p.teamId);
-        const byWorkspace = new Map<string, ApiProfile>();
-        [...teams, ...configured.filter(p => !p.teamId && !p.id.endsWith('__all'))].forEach(p => {
-          const key = p.teamId ? `team:${p.teamId}` : `profile:${p.id}`;
-          if (!byWorkspace.has(key)) byWorkspace.set(key, p);
-        });
-        setProfiles([...byWorkspace.values()]);
+        const source = d.profiles || [];
+        const byId = new Map<string, ApiProfile>();
+        for (const profile of source) {
+          if (!profile?.id) continue;
+          if (!byId.has(profile.id)) byId.set(profile.id, profile);
+        }
+        setProfiles([...byId.values()]);
       })
       .catch(() => setProfiles([]));
-  }, []);
+  }, [orgRole]);
 
   const fallback = profiles.find(p => p.default)?.id || profiles[0]?.id || '';
   const active = profiles.some(p => p.id === value) ? value : fallback;

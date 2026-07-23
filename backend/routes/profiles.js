@@ -27,6 +27,21 @@ function profilePayload(p) {
   };
 }
 
+function workspaceFromId(id, label, configured = false) {
+  const workspaceId = String(id || '');
+  const teamMatch = workspaceId.includes('__team_')
+    ? workspaceId.slice(workspaceId.indexOf('__team_') + '__team_'.length)
+    : '';
+  return {
+    id: workspaceId,
+    label: String(label || workspaceId),
+    scope: teamMatch ? 'user' : 'enterprise',
+    teamId: teamMatch,
+    default: false,
+    configured: !!configured,
+  };
+}
+
 // GET /api/jotform-profiles — include configured profiles plus every JotForm team the
 // key can see as a virtual profile: <baseProfile>__team_<teamId>.
 router.get('/jotform-profiles', requireAuth, async (req, res) => {
@@ -82,6 +97,65 @@ router.get('/jotform-profiles', requireAuth, async (req, res) => {
 
   const profiles = [...byId.values()].sort((a, b) => Number(b.default) - Number(a.default) || a.label.localeCompare(b.label));
   res.json({ profiles });
+});
+
+// GET /api/admin/workspaces — all workspace ids already present in the DB.
+// This is the admin-facing inventory used by the dashboard workspace picker.
+router.get('/admin/workspaces', requireAuth, requireRole('admin'), async (req, res, next) => {
+  try {
+    const configured = listProfiles();
+    const byId = new Map(configured.map(p => [p.id, profilePayload(p)]));
+
+    const { rows } = await pool.query(`
+      WITH workspace_sources AS (
+        SELECT profile_id::text AS workspace_id,
+               form_id::text AS form_id,
+               NULLIF(title::text, '') AS label,
+               updated_at_jf AS updated_at,
+               0 AS is_submission
+          FROM jf_forms
+        UNION ALL
+        SELECT profile_id::text AS workspace_id,
+               form_id::text AS form_id,
+               NULLIF(form_title::text, '') AS label,
+               updated_at_jf AS updated_at,
+               1 AS is_submission
+          FROM jf_submissions
+        UNION ALL
+        SELECT team_workspace_id::text AS workspace_id,
+               form_id::text AS form_id,
+               NULLIF(title::text, '') AS label,
+               updated_at_jf AS updated_at,
+               0 AS is_submission
+          FROM team_workspace_forms
+      )
+      SELECT workspace_id,
+             COALESCE(MAX(label) FILTER (WHERE label IS NOT NULL), workspace_id) AS label,
+             COUNT(DISTINCT form_id)::int AS form_count,
+             COUNT(*) FILTER (WHERE is_submission = 1)::int AS submission_count,
+             MAX(updated_at) AS updated_at
+        FROM workspace_sources
+       WHERE workspace_id IS NOT NULL AND workspace_id <> ''
+       GROUP BY workspace_id
+       ORDER BY MAX(updated_at) DESC NULLS LAST, workspace_id ASC
+    `);
+
+    for (const row of rows) {
+      const workspace = workspaceFromId(row.workspace_id, row.label, false);
+      byId.set(workspace.id, {
+        ...workspace,
+        formCount: Number(row.form_count || 0),
+        submissionCount: Number(row.submission_count || 0),
+        updatedAt: row.updated_at || null,
+        source: 'database',
+      });
+    }
+
+    const profiles = [...byId.values()].sort((a, b) => Number(b.default) - Number(a.default) || a.label.localeCompare(b.label));
+    res.json({ profiles });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // POST /api/admin/profiles/:id/sync — full ingest (forms + submissions + users +
